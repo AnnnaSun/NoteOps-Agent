@@ -38,6 +38,14 @@ temp/
 .tsbuildinfo
 docs/agent-prompts/
 
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
 # Java / Kotlin
 *.class
 
