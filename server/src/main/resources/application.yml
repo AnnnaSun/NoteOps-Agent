@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: noteops-agent-server
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/noteops}
+    username: ${DB_USERNAME:noteops}
+    password: ${DB_PASSWORD:noteops}
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

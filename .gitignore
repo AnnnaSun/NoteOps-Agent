@@ -35,23 +35,13 @@ coverage/
 .tmp/
 tmp/
 temp/
-
-# Python
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.venv/
-venv/
+.tsbuildinfo
+docs/agent-prompts/
 
 # Java / Kotlin
 *.class
-
-# Rust
-Cargo.lock
 
 # Package manager / tool caches
 .npm/
 .pnpm-store/
 .yarn/
-
