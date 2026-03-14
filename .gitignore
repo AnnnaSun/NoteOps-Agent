@@ -1,0 +1,57 @@
+# macOS
+.DS_Store
+
+# IDEs and editors
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Dependencies
+node_modules/
+
+# Build and cache output
+dist/
+build/
+out/
+target/
+coverage/
+.cache/
+.tmp/
+tmp/
+temp/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Java / Kotlin
+*.class
+
+# Rust
+Cargo.lock
+
+# Package manager / tool caches
+.npm/
+.pnpm-store/
+.yarn/
+
