@@ -210,10 +210,14 @@ docs/codex/
 - 所有新增 REST 响应统一返回 envelope：`success`、`trace_id`、`data/error`、`meta.server_time`；无 trace 的响应也显式返回 `trace_id: null`。
 - 缺少 `user_id` 等请求参数时，接口会返回 `400` 和统一 envelope 错误结构。
 - `NoteContentType` 代码枚举已与 migration 的取值范围对齐。
+- M4 已完成最小后端闭环：`GET /api/v1/reviews/today` 和 `POST /api/v1/reviews/{review_item_id}/complete` 已落地。
+- Today Review 采用懒创建策略：已有 Note 若缺少 `SCHEDULE` 记录，会在 Today 查询时自动补建。
+- `review_states` 采用双记录保留：同一 Note 可分别保留 `SCHEDULE` 和 `RECALL` 两条状态。
+- Review Today 只返回 `title`、`current_summary`、`current_key_points` 等当前解释层数据，不返回原始正文。
 
 ### 验证
 - 已运行 `mvn -q test`（`server/`），通过。
 
 ### 风险
 - URL 抽取仍是 Phase 1 允许的占位实现，未做真实抓取与质量优化。
-- 当前验证覆盖应用服务级单元测试和 Note 控制器测试，尚未补数据库集成测试。
+- 当前验证覆盖应用服务级单元测试以及 Note/Review 控制器测试，尚未补数据库集成测试。
