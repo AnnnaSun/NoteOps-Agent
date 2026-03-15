@@ -200,3 +200,20 @@ docs/codex/
 8. M8 文档收口
 
 如果仓库已经有部分代码，则先对照 `Plan.md` 确定当前停留在哪个里程碑，再继续下一个最小闭环。
+
+## 更新记录 2026-03-15
+
+### 已完成
+- M3 已完成并收口：`POST /api/v1/captures`、`GET /api/v1/captures/{id}`、`GET /api/v1/notes` 与 `GET /api/v1/notes/{id}` 已落地。
+- Capture 现支持 `TEXT` 真实落 Note，以及 `URL` 的占位提取流程；两者都会真实写入 `capture_jobs`、`notes`、`note_contents`、`agent_traces`、`tool_invocation_logs`、`user_action_events`。
+- Note 现支持按 `user_id` 回查列表与详情，列表按 `updated_at desc` 返回当前解释层摘要和关键点。
+- 所有新增 REST 响应统一返回 envelope：`success`、`trace_id`、`data/error`、`meta.server_time`；无 trace 的响应也显式返回 `trace_id: null`。
+- 缺少 `user_id` 等请求参数时，接口会返回 `400` 和统一 envelope 错误结构。
+- `NoteContentType` 代码枚举已与 migration 的取值范围对齐。
+
+### 验证
+- 已运行 `mvn -q test`（`server/`），通过。
+
+### 风险
+- URL 抽取仍是 Phase 1 允许的占位实现，未做真实抓取与质量优化。
+- 当前验证覆盖应用服务级单元测试和 Note 控制器测试，尚未补数据库集成测试。

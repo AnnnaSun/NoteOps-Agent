@@ -11,10 +11,10 @@ import java.util.Map;
 public class HealthController {
 
     @GetMapping
-    public Map<String, String> health() {
-        return Map.of(
+    public ApiEnvelope<Map<String, String>> health() {
+        return ApiEnvelope.success(null, Map.of(
             "service", "noteops-agent-server",
             "status", "UP"
-        );
+        ));
     }
 }

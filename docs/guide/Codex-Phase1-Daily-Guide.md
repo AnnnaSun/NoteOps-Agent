@@ -152,6 +152,9 @@ Codex 的执行方式说明。
 ### 6.1 开始执行下一个开发里程碑
 
 ```text
+Always communicate with me in Simplified Chinese, even if my prompt is in English.
+Do not translate code, identifiers, file paths, shell commands, SQL, API paths, database fields, or error/log messages unless I explicitly ask.
+
 Read AGENTS.md and docs/codex/*.md.
 Implement the next smallest unfinished milestone from docs/codex/Plan.md.
 Follow docs/codex/Implement.md.
@@ -171,6 +174,9 @@ Run the narrowest relevant validation and report:
 ### 6.2 继续上一轮开发
 
 ```text
+Always communicate with me in Simplified Chinese, even if my prompt is in English.
+Do not translate code, identifiers, file paths, shell commands, SQL, API paths, database fields, or error/log messages unless I explicitly ask.
+
 Continue from the current repository state.
 Read AGENTS.md and docs/codex/*.md again before making changes.
 Complete only the next unfinished milestone in Plan.md.
@@ -186,6 +192,9 @@ Keep the change minimal and reviewable.
 ### 6.3 做完代码后同步文档
 
 ```text
+Always communicate with me in Simplified Chinese, even if my prompt is in English.
+Do not translate code, identifiers, file paths, shell commands, SQL, API paths, database fields, or error/log messages unless I explicitly ask.
+
 Read AGENTS.md and docs/codex/*.md.
 Inspect the recent code changes.
 Update the minimum necessary docs to keep code, schema, and docs aligned.
@@ -201,6 +210,9 @@ Do not invent features or behavior that are not implemented.
 ### 6.4 检查表结构 / DTO / 状态机一致性
 
 ```text
+Always communicate with me in Simplified Chinese, even if my prompt is in English.
+Do not translate code, identifiers, file paths, shell commands, SQL, API paths, database fields, or error/log messages unless I explicitly ask.
+
 Read AGENTS.md and docs/codex/*.md.
 Inspect the schema-related changes.
 Check consistency across migration, entity/model, DTO, controller/API behavior, frontend usage, and docs.
@@ -217,6 +229,9 @@ Return every mismatch explicitly.
 ### 6.5 只让 Codex 先做计划，不直接写代码
 
 ```text
+Always communicate with me in Simplified Chinese, even if my prompt is in English.
+Do not translate code, identifiers, file paths, shell commands, SQL, API paths, database fields, or error/log messages unless I explicitly ask.
+
 Read AGENTS.md and docs/codex/*.md.
 Do not implement yet.
 Review the current repository state and Plan.md.
@@ -242,6 +257,9 @@ Tell me:
 ### 7.1 执行下一个里程碑
 
 ```text
+Always communicate with me in Simplified Chinese, even if my prompt is in English.
+Do not translate code, identifiers, file paths, shell commands, SQL, API paths, database fields, or error/log messages unless I explicitly ask you to do so.
+When summarizing changes, explaining decisions, or reporting validation results, use Simplified Chinese.
 $noteops-phase-implement
 Read AGENTS.md and docs/codex/*.md.
 Complete the next unfinished milestone only.
@@ -250,6 +268,9 @@ Complete the next unfinished milestone only.
 ### 7.2 同步文档
 
 ```text
+Always communicate with me in Simplified Chinese, even if my prompt is in English.
+Do not translate code, identifiers, file paths, shell commands, SQL, API paths, database fields, or error/log messages unless I explicitly ask you to do so.
+When summarizing changes, explaining decisions, or reporting validation results, use Simplified Chinese.
 $noteops-doc-sync
 Inspect recent code changes and sync the minimum necessary docs.
 ```
@@ -257,6 +278,9 @@ Inspect recent code changes and sync the minimum necessary docs.
 ### 7.3 守卫表结构与接口一致性
 
 ```text
+Always communicate with me in Simplified Chinese, even if my prompt is in English.
+Do not translate code, identifiers, file paths, shell commands, SQL, API paths, database fields, or error/log messages unless I explicitly ask you to do so.
+When summarizing changes, explaining decisions, or reporting validation results, use Simplified Chinese.
 $noteops-schema-guard
 Check migration, DTO, entity, API behavior, frontend usage, and docs consistency.
 ```
@@ -348,6 +372,9 @@ Check migration, DTO, entity, API behavior, frontend usage, and docs consistency
 如果今天只想马上开始，直接发这一条就够了：
 
 ```text
+Always communicate with me in Simplified Chinese, even if my prompt is in English.
+Do not translate code, identifiers, file paths, shell commands, SQL, API paths, database fields, or error/log messages unless I explicitly ask.
+
 Read AGENTS.md and docs/codex/*.md.
 Implement the next smallest unfinished milestone from Plan.md only.
 Run narrow validation and report changed files, validation results, and the remaining next step.
@@ -356,6 +383,9 @@ Run narrow validation and report changed files, validation results, and the rema
 如果今天只想继续上一轮，就发这一条：
 
 ```text
+Always communicate with me in Simplified Chinese, even if my prompt is in English.
+Do not translate code, identifiers, file paths, shell commands, SQL, API paths, database fields, or error/log messages unless I explicitly ask.
+
 Continue from the current repository state.
 Read AGENTS.md and docs/codex/*.md again.
 Complete only the next unfinished milestone in Plan.md.
@@ -364,6 +394,9 @@ Complete only the next unfinished milestone in Plan.md.
 如果今天只想补文档，就发这一条：
 
 ```text
+Always communicate with me in Simplified Chinese, even if my prompt is in English.
+Do not translate code, identifiers, file paths, shell commands, SQL, API paths, database fields, or error/log messages unless I explicitly ask.
+
 Read AGENTS.md and docs/codex/*.md.
 Inspect recent code changes and update only the necessary docs to keep them aligned.
 ```
