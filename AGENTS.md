@@ -1,5 +1,25 @@
 # AGENTS
-# AGENTS.md
+## Communication language
+
+Always communicate with the user in Simplified Chinese unless explicitly asked otherwise.
+
+Even if the user writes prompts in English, respond in Simplified Chinese.
+
+Keep the following in their original language unless the user explicitly requests translation:
+- source code
+- identifiers
+- class names
+- function names
+- file paths
+- shell commands
+- SQL
+- API routes
+- database tables and fields
+- logs and error messages
+
+For implementation summaries, validation reports, risks, blockers, and next steps, use Simplified Chinese.
+
+Do not change the language of existing repository files unless the task explicitly requires documentation or copy changes.
 
 ## 1. 文档目的
 
