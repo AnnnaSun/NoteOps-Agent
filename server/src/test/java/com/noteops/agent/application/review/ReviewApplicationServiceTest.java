@@ -5,9 +5,13 @@ import com.noteops.agent.application.note.NoteQueryService;
 import com.noteops.agent.domain.review.ReviewCompletionReason;
 import com.noteops.agent.domain.review.ReviewCompletionStatus;
 import com.noteops.agent.domain.review.ReviewQueueType;
+import com.noteops.agent.domain.task.TaskRelatedEntityType;
+import com.noteops.agent.domain.task.TaskSource;
+import com.noteops.agent.domain.task.TaskStatus;
 import com.noteops.agent.persistence.event.UserActionEventRepository;
 import com.noteops.agent.persistence.note.NoteRepository;
 import com.noteops.agent.persistence.review.ReviewStateRepository;
+import com.noteops.agent.persistence.task.TaskRepository;
 import com.noteops.agent.persistence.trace.AgentTraceRepository;
 import org.junit.jupiter.api.Test;
 
@@ -96,13 +100,16 @@ class ReviewApplicationServiceTest {
     void partialScheduleCreatesOrUpdatesRecall() {
         UUID userId = UUID.randomUUID();
         UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.notes.add(noteSummary(userId, noteId, "Recall note"));
         InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
         ReviewApplicationService.ReviewStateView schedule = reviewStateRepository.create(
             userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
             BigDecimal.valueOf(50), null, NOW, 0, 0
         );
 
-        ReviewApplicationService service = newService(reviewStateRepository, new InMemoryNoteRepository());
+        ReviewApplicationService service = newService(reviewStateRepository, noteRepository, taskRepository);
 
         ReviewApplicationService.ReviewCompletionView result = service.complete(
             schedule.id().toString(),
@@ -115,21 +122,30 @@ class ReviewApplicationServiceTest {
         assertThat(recall.retryAfterHours()).isEqualTo(24);
         assertThat(recall.unfinishedCount()).isEqualTo(1);
         assertThat(recall.completionReason()).isEqualTo(ReviewCompletionReason.TIME_LIMIT);
+        assertThat(taskRepository.findOpenByUserIdAndSourceAndTaskTypeAndNoteId(userId, TaskSource.SYSTEM, "REVIEW_FOLLOW_UP", noteId))
+            .get()
+            .extracting(ReviewApplicationServiceTest::taskStatus)
+            .isEqualTo(TaskStatus.TODO);
     }
 
     @Test
     void completedRecallRestoresScheduleWindow() {
         UUID userId = UUID.randomUUID();
         UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.notes.add(noteSummary(userId, noteId, "Recall note"));
         InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
         reviewStateRepository.create(userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.PARTIAL, ReviewCompletionReason.TIME_LIMIT,
             BigDecimal.valueOf(20), NOW.minusSeconds(3600), NOW.plusSeconds(3600), 0, 0);
         ReviewApplicationService.ReviewStateView recall = reviewStateRepository.create(
             userId, noteId, ReviewQueueType.RECALL, ReviewCompletionStatus.PARTIAL, ReviewCompletionReason.TIME_LIMIT,
             BigDecimal.valueOf(20), NOW.minusSeconds(3600), NOW, 1, 24
         );
+        taskRepository.create(userId, noteId, TaskSource.SYSTEM, "REVIEW_FOLLOW_UP", "Existing follow-up", null,
+            TaskStatus.TODO, 90, NOW.plusSeconds(24 * 3600L), TaskRelatedEntityType.REVIEW, recall.id());
 
-        ReviewApplicationService service = newService(reviewStateRepository, new InMemoryNoteRepository());
+        ReviewApplicationService service = newService(reviewStateRepository, noteRepository, taskRepository);
 
         ReviewApplicationService.ReviewCompletionView result = service.complete(
             recall.id().toString(),
@@ -141,6 +157,9 @@ class ReviewApplicationServiceTest {
             .orElseThrow();
         assertThat(schedule.nextReviewAt()).isEqualTo(NOW.plusSeconds(3 * 24 * 3600));
         assertThat(schedule.completionStatus()).isEqualTo(ReviewCompletionStatus.COMPLETED);
+        assertThat(taskRepository.findByIdAndUserId(taskRepository.lastTaskId, userId)).get()
+            .extracting(ReviewApplicationServiceTest::taskStatus)
+            .isEqualTo(TaskStatus.DONE);
     }
 
     @Test
@@ -165,13 +184,24 @@ class ReviewApplicationServiceTest {
 
     private ReviewApplicationService newService(InMemoryReviewStateRepository reviewStateRepository,
                                                InMemoryNoteRepository noteRepository) {
+        return newService(reviewStateRepository, noteRepository, new InMemoryTaskRepository());
+    }
+
+    private ReviewApplicationService newService(InMemoryReviewStateRepository reviewStateRepository,
+                                               InMemoryNoteRepository noteRepository,
+                                               InMemoryTaskRepository taskRepository) {
         return new ReviewApplicationService(
             reviewStateRepository,
             noteRepository,
+            taskRepository,
             new InMemoryAgentTraceRepository(),
             new InMemoryUserActionEventRepository(),
             Clock.fixed(NOW, ZoneOffset.UTC)
         );
+    }
+
+    private static TaskStatus taskStatus(com.noteops.agent.application.task.TaskApplicationService.TaskView task) {
+        return task.status();
     }
 
     private NoteQueryService.NoteSummaryView noteSummary(UUID userId, UUID noteId, String title) {
@@ -291,6 +321,120 @@ class ReviewApplicationServiceTest {
                 unfinishedCount,
                 retryAfterHours,
                 current.createdAt(),
+                NOW
+            ));
+        }
+    }
+
+    private static final class InMemoryTaskRepository implements TaskRepository {
+
+        private final Map<UUID, com.noteops.agent.application.task.TaskApplicationService.TaskView> tasks = new HashMap<>();
+        private UUID lastTaskId;
+
+        @Override
+        public com.noteops.agent.application.task.TaskApplicationService.TaskView create(UUID userId,
+                                                                                         UUID noteId,
+                                                                                         TaskSource taskSource,
+                                                                                         String taskType,
+                                                                                         String title,
+                                                                                         String description,
+                                                                                         TaskStatus status,
+                                                                                         int priority,
+                                                                                         Instant dueAt,
+                                                                                         TaskRelatedEntityType relatedEntityType,
+                                                                                         UUID relatedEntityId) {
+            UUID taskId = UUID.randomUUID();
+            lastTaskId = taskId;
+            com.noteops.agent.application.task.TaskApplicationService.TaskView view =
+                new com.noteops.agent.application.task.TaskApplicationService.TaskView(
+                    taskId,
+                    userId,
+                    noteId,
+                    taskSource,
+                    taskType,
+                    title,
+                    description,
+                    status,
+                    priority,
+                    dueAt,
+                    relatedEntityType,
+                    relatedEntityId,
+                    NOW,
+                    NOW
+                );
+            tasks.put(taskId, view);
+            return view;
+        }
+
+        @Override
+        public List<com.noteops.agent.application.task.TaskApplicationService.TaskView> findTodayByUserId(UUID userId, Instant dueAtInclusive) {
+            return List.of();
+        }
+
+        @Override
+        public Optional<com.noteops.agent.application.task.TaskApplicationService.TaskView> findByIdAndUserId(UUID taskId, UUID userId) {
+            return Optional.ofNullable(tasks.get(taskId))
+                .filter(task -> task.userId().equals(userId));
+        }
+
+        @Override
+        public Optional<com.noteops.agent.application.task.TaskApplicationService.TaskView> findOpenByUserIdAndSourceAndTaskTypeAndNoteId(UUID userId,
+                                                                                                                                        TaskSource taskSource,
+                                                                                                                                        String taskType,
+                                                                                                                                        UUID noteId) {
+            return tasks.values().stream()
+                .filter(task -> task.userId().equals(userId))
+                .filter(task -> task.taskSource() == taskSource)
+                .filter(task -> task.taskType().equals(taskType))
+                .filter(task -> noteId.equals(task.noteId()))
+                .filter(task -> task.status() == TaskStatus.TODO || task.status() == TaskStatus.IN_PROGRESS)
+                .findFirst();
+        }
+
+        @Override
+        public void updateStatus(UUID taskId, TaskStatus status) {
+            com.noteops.agent.application.task.TaskApplicationService.TaskView existing = tasks.get(taskId);
+            tasks.put(taskId, new com.noteops.agent.application.task.TaskApplicationService.TaskView(
+                existing.id(),
+                existing.userId(),
+                existing.noteId(),
+                existing.taskSource(),
+                existing.taskType(),
+                existing.title(),
+                existing.description(),
+                status,
+                existing.priority(),
+                existing.dueAt(),
+                existing.relatedEntityType(),
+                existing.relatedEntityId(),
+                existing.createdAt(),
+                NOW
+            ));
+        }
+
+        @Override
+        public void refreshOpenTask(UUID taskId,
+                                    String title,
+                                    String description,
+                                    int priority,
+                                    Instant dueAt,
+                                    TaskRelatedEntityType relatedEntityType,
+                                    UUID relatedEntityId) {
+            com.noteops.agent.application.task.TaskApplicationService.TaskView existing = tasks.get(taskId);
+            tasks.put(taskId, new com.noteops.agent.application.task.TaskApplicationService.TaskView(
+                existing.id(),
+                existing.userId(),
+                existing.noteId(),
+                existing.taskSource(),
+                existing.taskType(),
+                title,
+                description,
+                existing.status(),
+                priority,
+                dueAt,
+                relatedEntityType,
+                relatedEntityId,
+                existing.createdAt(),
                 NOW
             ));
         }

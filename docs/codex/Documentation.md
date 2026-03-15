@@ -214,10 +214,17 @@ docs/codex/
 - Today Review 采用懒创建策略：已有 Note 若缺少 `SCHEDULE` 记录，会在 Today 查询时自动补建。
 - `review_states` 采用双记录保留：同一 Note 可分别保留 `SCHEDULE` 和 `RECALL` 两条状态。
 - Review Today 只返回 `title`、`current_summary`、`current_key_points` 等当前解释层数据，不返回原始正文。
+- M5 已完成最小后端闭环：`POST /api/v1/tasks`、`GET /api/v1/tasks/today`、`POST /api/v1/tasks/{task_id}/complete` 与 `POST /api/v1/tasks/{task_id}/skip` 已落地。
+- User Task 现支持独立任务与绑定任务：可绑定 `NOTE / IDEA / REVIEW / NONE`，其中传入 `note_id` 时会默认按 `NOTE` 绑定。
+- Task 写操作现通过事务保护：Task 主记录与对应的 `agent_traces`、`user_action_events` 在同一提交内收口，避免“接口失败但任务已落库”的部分成功状态。
+- Today Task 当前返回 `TODO / IN_PROGRESS` 且 `due_at` 为空或不晚于“用户当天结束时间”的任务，并显式返回 `task_source`。接口支持可选 `timezone_offset` 参数；未传时默认按 UTC 兼容旧行为。
+- Review 现已接入一条最小 System Task 派生规则：未完成良好的 Review 会 upsert `REVIEW_FOLLOW_UP` 任务；后续完成 Recall 时会关闭该跟进任务。
 
 ### 验证
 - 已运行 `mvn -q test`（`server/`），通过。
+- 已补 Task 事务集成测试：使用真实 Spring 事务边界与 JDBC/H2 数据源，验证 `UserActionEventRepository` 抛错时 `tasks` 写入会整体回滚。
 
 ### 风险
 - URL 抽取仍是 Phase 1 允许的占位实现，未做真实抓取与质量优化。
-- 当前验证覆盖应用服务级单元测试以及 Note/Review 控制器测试，尚未补数据库集成测试。
+- 当前仅实现了 Review 派生 System Task，尚未补 Proposal 派生任务。
+- 当前已补 Task 事务回滚集成测试，但其余数据库集成测试仍未覆盖。

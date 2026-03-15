@@ -5,7 +5,7 @@ description: Guard schema consistency for NoteOps when tasks affect tables, colu
 
 # Purpose
 
-Prevent drift across migration, persistence, domain model, API contract, frontend usage, and documentation for NoteOps-Agent Phase 1.
+Prevent drift across migration, persistence, domain model, API contract, frontend usage, and documentation for the current NoteOps implementation phase.
 
 # Required context
 
