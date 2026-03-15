@@ -248,7 +248,13 @@ class CaptureApplicationServiceTest {
         private UUID latestTraceId;
 
         @Override
-        public UUID create(UUID userId, String goal, UUID captureId, List<String> workerSequence) {
+        public UUID create(UUID userId,
+                           String entryType,
+                           String goal,
+                           String rootEntityType,
+                           UUID rootEntityId,
+                           List<String> workerSequence,
+                           Map<String, Object> orchestratorState) {
             latestTraceId = UUID.randomUUID();
             return latestTraceId;
         }

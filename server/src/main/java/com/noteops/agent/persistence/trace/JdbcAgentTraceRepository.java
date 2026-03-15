@@ -20,7 +20,13 @@ public class JdbcAgentTraceRepository implements AgentTraceRepository {
     }
 
     @Override
-    public UUID create(UUID userId, String goal, UUID captureId, List<String> workerSequence) {
+    public UUID create(UUID userId,
+                       String entryType,
+                       String goal,
+                       String rootEntityType,
+                       UUID rootEntityId,
+                       List<String> workerSequence,
+                       Map<String, Object> orchestratorState) {
         UUID traceId = UUID.randomUUID();
         jdbcClient.sql("""
             insert into agent_traces (
@@ -33,12 +39,12 @@ public class JdbcAgentTraceRepository implements AgentTraceRepository {
             """)
             .param("id", traceId)
             .param("userId", userId)
-            .param("entryType", "CAPTURE")
+            .param("entryType", entryType)
             .param("goal", goal)
-            .param("rootEntityType", "CAPTURE_JOB")
-            .param("rootEntityId", captureId)
+            .param("rootEntityType", rootEntityType)
+            .param("rootEntityId", rootEntityId)
             .param("status", "RUNNING")
-            .param("orchestratorState", jsonSupport.write(Map.of("capture_job_id", captureId)))
+            .param("orchestratorState", jsonSupport.write(orchestratorState))
             .param("workerSequence", jsonSupport.write(workerSequence))
             .update();
         return traceId;
