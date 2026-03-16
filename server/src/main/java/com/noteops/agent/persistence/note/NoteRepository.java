@@ -23,6 +23,10 @@ public interface NoteRepository {
 
     List<NoteQueryService.NoteSummaryView> findAllByUserId(UUID userId);
 
+    default void updateInterpretation(UUID noteId, UUID userId, String currentSummary, List<String> currentKeyPoints) {
+        throw new UnsupportedOperationException("updateInterpretation is not implemented");
+    }
+
     record NoteCreationResult(UUID noteId, UUID contentId) {
     }
 }

@@ -201,7 +201,7 @@ docs/codex/
 
 如果仓库已经有部分代码，则先对照 `Plan.md` 确定当前停留在哪个里程碑，再继续下一个最小闭环。
 
-## 更新记录 2026-03-15
+## 更新记录 2026-03-16
 
 ### 已完成
 - M3 已完成并收口：`POST /api/v1/captures`、`GET /api/v1/captures/{id}`、`GET /api/v1/notes` 与 `GET /api/v1/notes/{id}` 已落地。
@@ -219,12 +219,20 @@ docs/codex/
 - Task 写操作现通过事务保护：Task 主记录与对应的 `agent_traces`、`user_action_events` 在同一提交内收口，避免“接口失败但任务已落库”的部分成功状态。
 - Today Task 当前返回 `TODO / IN_PROGRESS` 且 `due_at` 为空或不晚于“用户当天结束时间”的任务，并显式返回 `task_source`。接口支持可选 `timezone_offset` 参数；未传时默认按 UTC 兼容旧行为。
 - Review 现已接入一条最小 System Task 派生规则：未完成良好的 Review 会 upsert `REVIEW_FOLLOW_UP` 任务；后续完成 Recall 时会关闭该跟进任务。
+- M6 已完成最小后端闭环：`POST /api/v1/notes/{note_id}/change-proposals`、`GET /api/v1/notes/{note_id}/change-proposals`、`POST /api/v1/notes/{note_id}/change-proposals/{proposal_id}/apply` 与 `POST /api/v1/change-proposals/{id}/rollback` 已落地。
+- 当前 M6 只实现一种低风险 proposal：`proposal_type = REFRESH_INTERPRETATION`，作用层固定为 `INTERPRETATION`，仅更新 `notes.current_summary` 与 `notes.current_key_points`，不会改写 `note_contents` 原始内容。
+- Proposal 生成时会记录 `before_snapshot`、`after_snapshot`、`diff_summary` 与 `source_refs`；apply 时会补写 `rollback_token`，rollback 会基于 `before_snapshot` 恢复解释层。
+- Proposal generate / apply / rollback 已接入 `agent_traces`、`tool_invocation_logs` 与 `user_action_events`，并补充了最小结构化运行日志，便于通过 `trace_id` 关联请求链路与落库治理记录。
+- 为避免生成永远无差异的 proposal，当前实现会先使用最新 `note_contents` 的简化摘要逻辑生成候选解释；若与当前解释层完全一致，则退化为基于标题与关键点的确定性刷新摘要，仍保持低风险且可回滚。
 
 ### 验证
 - 已运行 `mvn -q test`（`server/`），通过。
 - 已补 Task 事务集成测试：使用真实 Spring 事务边界与 JDBC/H2 数据源，验证 `UserActionEventRepository` 抛错时 `tasks` 写入会整体回滚。
+- 已补 Proposal controller / service / transaction tests：覆盖 generate、list、apply、rollback 成功路径，以及重复 apply 冲突与 tool log 失败时的事务回滚。
 
 ### 风险
 - URL 抽取仍是 Phase 1 允许的占位实现，未做真实抓取与质量优化。
+- 当前仅实现了 `INTERPRETATION + LOW` proposal，`METADATA` / `RELATION` 与中高风险治理规则仍未落地。
+- 当前 proposal 生成是确定性刷新逻辑，未接入外部 evidence、人工 reject 流程或更复杂 diff 规则。
 - 当前仅实现了 Review 派生 System Task，尚未补 Proposal 派生任务。
-- 当前已补 Task 事务回滚集成测试，但其余数据库集成测试仍未覆盖。
+- 当前已补 Task / Proposal 的事务回滚集成测试，但其余数据库集成测试仍未覆盖。

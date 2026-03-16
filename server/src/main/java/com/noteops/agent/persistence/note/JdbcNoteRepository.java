@@ -166,6 +166,23 @@ public class JdbcNoteRepository implements NoteRepository {
             .list();
     }
 
+    @Override
+    public void updateInterpretation(UUID noteId, UUID userId, String currentSummary, List<String> currentKeyPoints) {
+        jdbcClient.sql("""
+            update notes
+            set current_summary = :currentSummary,
+                current_key_points = cast(:currentKeyPoints as jsonb),
+                version = version + 1,
+                updated_at = current_timestamp
+            where id = :noteId and user_id = :userId
+            """)
+            .param("currentSummary", currentSummary)
+            .param("currentKeyPoints", jsonSupport.write(currentKeyPoints))
+            .param("noteId", noteId)
+            .param("userId", userId)
+            .update();
+    }
+
     private Instant asInstant(Timestamp timestamp) {
         return timestamp.toInstant();
     }
