@@ -111,6 +111,8 @@ NoteOps 是一个以 Note 为第一公民的多 Agent Knowledge-to-Action 系统
 - `GET /api/v1/tasks/today`
 - `POST /api/v1/tasks/{task_id}/complete`
 - `POST /api/v1/tasks/{task_id}/skip`
+- `POST /api/v1/notes/{note_id}/change-proposals`
+- `GET /api/v1/notes/{note_id}/change-proposals`
 - `POST /api/v1/notes/{note_id}/change-proposals/{proposal_id}/apply`
 - `POST /api/v1/change-proposals/{id}/rollback`
 

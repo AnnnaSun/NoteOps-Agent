@@ -1,6 +1,7 @@
 package com.noteops.agent.application.capture;
 
 import com.noteops.agent.api.ApiException;
+import com.noteops.agent.application.note.NoteInterpretationSupport;
 import com.noteops.agent.domain.capture.CaptureInputType;
 import com.noteops.agent.domain.capture.CaptureJobStatus;
 import com.noteops.agent.persistence.capture.CaptureJobRepository;
@@ -208,27 +209,13 @@ public class CaptureApplicationService {
 
     private Map<String, Object> analyze(Map<String, Object> extraction, CaptureInputType inputType) {
         String cleanText = (String) extraction.get("clean_text");
-        List<String> keyPoints = extractKeyPoints(cleanText);
+        List<String> keyPoints = NoteInterpretationSupport.extractKeyPoints(cleanText);
         String title = deriveTitle(cleanText, inputType, (String) extraction.get("source_uri"));
         return Map.of(
             "title", title,
-            "summary", summarize(cleanText),
+            "summary", NoteInterpretationSupport.summarize(cleanText),
             "key_points", keyPoints
         );
-    }
-
-    private List<String> extractKeyPoints(String text) {
-        return List.of(text.split("(?<=[.!?。！？])\\s+"))
-            .stream()
-            .map(String::trim)
-            .filter(segment -> !segment.isBlank())
-            .limit(3)
-            .toList();
-    }
-
-    private String summarize(String text) {
-        String normalized = text.trim().replaceAll("\\s+", " ");
-        return normalized.length() <= 220 ? normalized : normalized.substring(0, 220) + "...";
     }
 
     private String deriveTitle(String cleanText, CaptureInputType inputType, String sourceUri) {

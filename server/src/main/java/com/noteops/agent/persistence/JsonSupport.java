@@ -17,6 +17,8 @@ public class JsonSupport {
     };
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
+    private static final TypeReference<List<Map<String, Object>>> MAP_LIST_TYPE = new TypeReference<>() {
+    };
 
     private final ObjectMapper objectMapper;
 
@@ -49,6 +51,17 @@ public class JsonSupport {
         }
         try {
             return objectMapper.readValue(rawJson, MAP_TYPE);
+        } catch (JsonProcessingException exception) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "JSON_DESERIALIZATION_ERROR", exception.getMessage());
+        }
+    }
+
+    public List<Map<String, Object>> readMapList(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(rawJson, MAP_LIST_TYPE);
         } catch (JsonProcessingException exception) {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "JSON_DESERIALIZATION_ERROR", exception.getMessage());
         }
