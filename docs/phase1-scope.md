@@ -1,7 +1,30 @@
 # Phase 1 Scope
 
-- Current state: Phase 1 M5 backend capture, note, review, and task minimal loops are in place.
-- Current backend scope: `POST /api/v1/captures`, `GET /api/v1/captures/{id}`, `GET /api/v1/notes`, `GET /api/v1/notes/{id}`, `GET /api/v1/reviews/today`, `POST /api/v1/reviews/{review_item_id}/complete`, `POST /api/v1/tasks`, `GET /api/v1/tasks/today`, `POST /api/v1/tasks/{task_id}/complete`, `POST /api/v1/tasks/{task_id}/skip`.
-- Task Today currently supports optional `timezone_offset`, and Review can derive `REVIEW_FOLLOW_UP` system tasks.
-- Next step: M6 Proposal / Trace / Event governance loop.
-- Not in scope yet: Search, Idea lifecycle, Trend Inbox, PWA or offline enhancements.
+- Current state: Phase 1 has completed the minimal M7 backend + web surface defined in `docs/codex/Plan.md`.
+- Current backend scope:
+  - `POST /api/v1/captures`
+  - `GET /api/v1/captures/{id}`
+  - `GET /api/v1/notes`
+  - `GET /api/v1/notes/{id}`
+  - `GET /api/v1/reviews/today`
+  - `POST /api/v1/reviews/{review_item_id}/complete`
+  - `POST /api/v1/tasks`
+  - `GET /api/v1/tasks/today`
+  - `POST /api/v1/tasks/{task_id}/complete`
+  - `POST /api/v1/tasks/{task_id}/skip`
+  - `POST /api/v1/notes/{note_id}/change-proposals`
+  - `GET /api/v1/notes/{note_id}/change-proposals`
+  - `POST /api/v1/notes/{note_id}/change-proposals/{proposal_id}/apply`
+  - `POST /api/v1/change-proposals/{id}/rollback`
+- Current web scope:
+  - explicit `user_id` selection
+  - `TEXT / URL` Capture submission
+  - Note list and detail browsing
+  - Today view for Review + Task
+  - Proposal list, generate, apply, and rollback in the minimal Note detail workspace
+- Current Phase 1 minimal governance details:
+  - Task Today supports optional `timezone_offset`
+  - Review can derive `REVIEW_FOLLOW_UP` system tasks
+  - Proposal currently supports only `REFRESH_INTERPRETATION` at `INTERPRETATION + LOW`
+- Current next step: M8 documentation alignment is being closed; Phase 1 implementation remains in manual verification and future risk-reduction mode rather than a new unfinished milestone.
+- Not in scope yet: Search, Idea lifecycle, Trend Inbox, full PWA/offline enhancements, mobile apps, and a complete account system.

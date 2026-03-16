@@ -224,11 +224,27 @@ docs/codex/
 - Proposal 生成时会记录 `before_snapshot`、`after_snapshot`、`diff_summary` 与 `source_refs`；apply 时会补写 `rollback_token`，rollback 会基于 `before_snapshot` 恢复解释层。
 - Proposal generate / apply / rollback 已接入 `agent_traces`、`tool_invocation_logs` 与 `user_action_events`，并补充了最小结构化运行日志，便于通过 `trace_id` 关联请求链路与落库治理记录。
 - 为避免生成永远无差异的 proposal，当前实现会先使用最新 `note_contents` 的简化摘要逻辑生成候选解释；若与当前解释层完全一致，则退化为基于标题与关键点的确定性刷新摘要，仍保持低风险且可回滚。
+- M7 已完成最小 Web 接入：`web/` 不再是静态占位页，现已接入真实后端 API，并提供单页最小工作台。
+- Web 当前已支持同一页内完成以下最小流程：填写 `user_id`、提交 `TEXT / URL` Capture、查看 Note 列表、查看 Note 详情、查看 Today（Review + Task）结果、查看 Proposal 列表。
+- Note 详情当前支持显式收起：可再次点击当前 Note 收起详情，也可使用详情面板内的关闭按钮退出右侧浏览占位。
+- Proposal 展示位已接入真实动作：在 Note 详情页可生成 interpretation proposal，并对 `PENDING` proposal 执行 apply、对 `APPLIED` proposal 执行 rollback；页面会同步刷新 Note 当前解释层。
+- 前端开发态已通过 Vite `proxy` 代理 `/api` 到 `http://localhost:8080`，避免 M7 联调被本地跨域配置阻塞。
+- 由于 Phase 1 仍未引入账号体系，Web 当前通过显式输入 `user_id` 选择上下文，并将最近一次输入缓存在浏览器本地存储中。
+- Web 已补一轮轻量交互与可读性优化：Today 区域按 Review / Task 语义分区，Proposal 默认先展示摘要并将快照折叠到可展开区，移动端按钮与工具栏布局已做紧凑化处理。
+- Web 当前视觉主题已进一步收口为“极简科技感”方向：减少装饰性渐变与纹理、将蓝色强调压低为更低饱和的浅蓝灰，同时保留柔和渐变层次，并将按钮与状态控件统一为方圆矩形风格，但未改变现有信息结构与交互范围。
+- Web 当前已补长连续文本展示兜底：Today / Note / Detail / Proposal 区域中的长 URI 或其他无空格长字符串会在正文区域内自动换行，不再溢出边框；Today 中的状态字段已调整为放在标题下方的单行语义标签行，并进一步拉开 Review / Task 的标签色差；右侧详情面板宽度也已收窄到更接近与左侧 Note 区域对半布局，同时背景渐变与纹理已小幅增强，以保留极简前提下的层次感。
+- Web 当前已修正详情面板滚动优先级：桌面端鼠标悬停在右侧详情面板时，会优先滚动详情面板自身；移动端则继续回退为页面级滚动。
+- Web 当前已补详情面板内部 sticky 头部：滚动右侧详情内容时，标题与关闭按钮会保留在可视区；同时详情页列表项、元信息与 proposal 元字段的长文本换行保护已加强，避免贴边或溢出。
+- M8 已完成最小文档收口：`README.md` 与 `docs/phase1-scope.md` 已从旧的 M5/M6 状态对齐到当前真实的 M3-M7 实现范围，不再保留过期“下一步是 M6”的描述。
+- README 当前已补齐最小运行与验证入口：保留 PostgreSQL / server / web 启动说明，并补充 `mvn -q test` 与 `npm run build` 作为当前最小验证命令。
+- `docs/phase1-scope.md` 当前已明确仓库现状为 “backend + minimal web surface”，并补齐 proposal 相关 API 与当前已知未覆盖项。
 
 ### 验证
 - 已运行 `mvn -q test`（`server/`），通过。
 - 已补 Task 事务集成测试：使用真实 Spring 事务边界与 JDBC/H2 数据源，验证 `UserActionEventRepository` 抛错时 `tasks` 写入会整体回滚。
 - 已补 Proposal controller / service / transaction tests：覆盖 generate、list、apply、rollback 成功路径，以及重复 apply 冲突与 tool log 失败时的事务回滚。
+- 已运行 `npm run build`（`web/`），通过。
+- 本次 M8 文档收口将重新执行 `mvn -q test`（`server/`）与 `npm run build`（`web/`），并以实际结果更新本轮验证结论。
 
 ### 风险
 - URL 抽取仍是 Phase 1 允许的占位实现，未做真实抓取与质量优化。
@@ -236,3 +252,5 @@ docs/codex/
 - 当前 proposal 生成是确定性刷新逻辑，未接入外部 evidence、人工 reject 流程或更复杂 diff 规则。
 - 当前仅实现了 Review 派生 System Task，尚未补 Proposal 派生任务。
 - 当前已补 Task / Proposal 的事务回滚集成测试，但其余数据库集成测试仍未覆盖。
+- Web 当前仍是单页最小骨架，未引入独立路由、完整表单校验、Review/Task 操作按钮或更细的空态/重试体验。
+- 本轮未做真实浏览器手工联调，仅完成前端构建与后端测试；Capture → Note → Proposal 的端到端 UI 行为仍需在本地启动前后端后手工确认。

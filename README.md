@@ -1,6 +1,6 @@
 # NoteOps Agent
 
-Phase 1 bootstrap monorepo for the NoteOps Agent project.
+Phase 1 monorepo for the NoteOps knowledge kernel. The current repository state has completed the minimal M3-M7 backend and web loops defined in `docs/codex/Plan.md`.
 
 ## Structure
 
@@ -48,10 +48,54 @@ npm run dev
 
 Web runs on `http://localhost:5173`.
 
+The Vite dev server proxies `/api` requests to `http://localhost:8080`.
+
+## Validation
+
+```bash
+cd server
+mvn -q test
+```
+
+```bash
+cd web
+npm run build
+```
+
 ## Current Scope
 
-- Phase 1 backend has progressed through M5 minimal loop completion.
-- Current implemented backend flows include Capture, Note query, Review, and Task minimal loops.
-- Task currently supports `SYSTEM` and `USER`, `GET /api/v1/tasks/today`, and Review-derived `REVIEW_FOLLOW_UP` tasks.
-- The next implementation step is M6 Proposal / Trace / Event governance loop.
-- Search, formal Idea lifecycle, Trend Inbox, and full PWA/offline features are still not implemented.
+- Phase 1 currently has M3-M7 minimal loops in place: Capture, Note query, Review, Task, Proposal governance, and a minimal Web workspace.
+- Current implemented backend API scope includes:
+  - `POST /api/v1/captures`
+  - `GET /api/v1/captures/{id}`
+  - `GET /api/v1/notes`
+  - `GET /api/v1/notes/{id}`
+  - `GET /api/v1/reviews/today`
+  - `POST /api/v1/reviews/{review_item_id}/complete`
+  - `POST /api/v1/tasks`
+  - `GET /api/v1/tasks/today`
+  - `POST /api/v1/tasks/{task_id}/complete`
+  - `POST /api/v1/tasks/{task_id}/skip`
+  - `POST /api/v1/notes/{note_id}/change-proposals`
+  - `GET /api/v1/notes/{note_id}/change-proposals`
+  - `POST /api/v1/notes/{note_id}/change-proposals/{proposal_id}/apply`
+  - `POST /api/v1/change-proposals/{id}/rollback`
+- Current web workspace supports:
+  - explicit `user_id` selection
+  - `TEXT / URL` Capture submission
+  - Note list and Note detail browsing
+  - Today view for Review + Task
+  - Proposal list, generate, apply, and rollback
+- Current implemented minimal governance details include:
+  - Task supports `SYSTEM` and `USER`
+  - Task Today supports optional `timezone_offset`
+  - Review can derive `REVIEW_FOLLOW_UP` system tasks
+  - Proposal currently supports only `INTERPRETATION + LOW` via `REFRESH_INTERPRETATION`
+
+## Known Gaps
+
+- URL extraction is still a Phase 1 placeholder implementation and is not a full fetch/extraction pipeline.
+- Proposal governance is still limited to `INTERPRETATION + LOW`; `METADATA`, `RELATION`, and higher-risk governance are not implemented.
+- There is no complete account system; the current web flow uses explicit `user_id`.
+- Search, formal Idea lifecycle, Trend Inbox, full PWA/offline support, and mobile apps are still out of scope.
+- Full manual end-to-end browser validation is still pending; current verification is based on backend tests and frontend build.
