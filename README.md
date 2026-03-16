@@ -50,6 +50,8 @@ Web runs on `http://localhost:5173`.
 
 ## Current Scope
 
-- This repository is only initialized for Phase 1 bootstrap.
-- The next implementation step is database migration setup.
-- Search, Idea lifecycle, Trend Inbox, and PWA/offline features are not implemented.
+- Phase 1 backend has progressed through M5 minimal loop completion.
+- Current implemented backend flows include Capture, Note query, Review, and Task minimal loops.
+- Task currently supports `SYSTEM` and `USER`, `GET /api/v1/tasks/today`, and Review-derived `REVIEW_FOLLOW_UP` tasks.
+- The next implementation step is M6 Proposal / Trace / Event governance loop.
+- Search, formal Idea lifecycle, Trend Inbox, and full PWA/offline features are still not implemented.
