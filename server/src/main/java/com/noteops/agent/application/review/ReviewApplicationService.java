@@ -5,13 +5,18 @@ import com.noteops.agent.application.note.NoteQueryService;
 import com.noteops.agent.domain.review.ReviewCompletionReason;
 import com.noteops.agent.domain.review.ReviewCompletionStatus;
 import com.noteops.agent.domain.review.ReviewQueueType;
+import com.noteops.agent.domain.task.TaskRelatedEntityType;
+import com.noteops.agent.domain.task.TaskSource;
+import com.noteops.agent.domain.task.TaskStatus;
 import com.noteops.agent.persistence.event.UserActionEventRepository;
 import com.noteops.agent.persistence.note.NoteRepository;
 import com.noteops.agent.persistence.review.ReviewStateRepository;
+import com.noteops.agent.persistence.task.TaskRepository;
 import com.noteops.agent.persistence.trace.AgentTraceRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -28,9 +33,11 @@ import java.util.stream.Collectors;
 public class ReviewApplicationService {
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
+    private static final String REVIEW_FOLLOW_UP_TASK_TYPE = "REVIEW_FOLLOW_UP";
 
     private final ReviewStateRepository reviewStateRepository;
     private final NoteRepository noteRepository;
+    private final TaskRepository taskRepository;
     private final AgentTraceRepository agentTraceRepository;
     private final UserActionEventRepository userActionEventRepository;
     private final Clock clock;
@@ -38,18 +45,21 @@ public class ReviewApplicationService {
     @Autowired
     public ReviewApplicationService(ReviewStateRepository reviewStateRepository,
                                     NoteRepository noteRepository,
+                                    TaskRepository taskRepository,
                                     AgentTraceRepository agentTraceRepository,
                                     UserActionEventRepository userActionEventRepository) {
-        this(reviewStateRepository, noteRepository, agentTraceRepository, userActionEventRepository, Clock.systemUTC());
+        this(reviewStateRepository, noteRepository, taskRepository, agentTraceRepository, userActionEventRepository, Clock.systemUTC());
     }
 
     ReviewApplicationService(ReviewStateRepository reviewStateRepository,
                              NoteRepository noteRepository,
+                             TaskRepository taskRepository,
                              AgentTraceRepository agentTraceRepository,
                              UserActionEventRepository userActionEventRepository,
                              Clock clock) {
         this.reviewStateRepository = reviewStateRepository;
         this.noteRepository = noteRepository;
+        this.taskRepository = taskRepository;
         this.agentTraceRepository = agentTraceRepository;
         this.userActionEventRepository = userActionEventRepository;
         this.clock = clock;
@@ -72,6 +82,7 @@ public class ReviewApplicationService {
             .toList();
     }
 
+    @Transactional
     public ReviewCompletionView complete(String reviewItemIdRaw, CompleteReviewCommand command) {
         UUID reviewItemId = parseUuid(reviewItemIdRaw, "INVALID_REVIEW_ITEM_ID", "review_item_id must be a valid UUID");
         UUID userId = parseUuid(command.userId(), "INVALID_USER_ID", "user_id must be a valid UUID");
@@ -102,26 +113,30 @@ public class ReviewApplicationService {
             )
         );
 
+        ReviewStateView updated = reviewStateRepository.findByIdAndUserId(reviewItemId, userId).orElseThrow();
+        UUID followUpTaskId = syncReviewFollowUpTask(updated, completionStatus, completionReason, traceId);
+
+        Map<String, Object> payload = completionPayload(target.noteId(), completionStatus, completionReason);
+        if (followUpTaskId != null) {
+            payload.put("follow_up_task_id", followUpTaskId);
+        }
         userActionEventRepository.append(
             userId,
             "REVIEW_COMPLETED",
             "REVIEW_STATE",
             reviewItemId,
             traceId,
-            completionPayload(target.noteId(), completionStatus, completionReason)
+            payload
         );
 
-        agentTraceRepository.markCompleted(
-            traceId,
-            "Completed review " + reviewItemId,
-            Map.of(
-                "review_item_id", reviewItemId,
-                "note_id", target.noteId(),
-                "completion_status", completionStatus.name()
-            )
-        );
-
-        ReviewStateView updated = reviewStateRepository.findByIdAndUserId(reviewItemId, userId).orElseThrow();
+        Map<String, Object> completionState = new LinkedHashMap<>();
+        completionState.put("review_item_id", reviewItemId);
+        completionState.put("note_id", target.noteId());
+        completionState.put("completion_status", completionStatus.name());
+        if (followUpTaskId != null) {
+            completionState.put("follow_up_task_id", followUpTaskId);
+        }
+        agentTraceRepository.markCompleted(traceId, "Completed review " + reviewItemId, completionState);
         return toCompletionView(updated);
     }
 
@@ -320,6 +335,120 @@ public class ReviewApplicationService {
         return payload;
     }
 
+    private UUID syncReviewFollowUpTask(ReviewStateView reviewState,
+                                        ReviewCompletionStatus completionStatus,
+                                        ReviewCompletionReason completionReason,
+                                        UUID traceId) {
+        return taskRepository.findOpenByUserIdAndSourceAndTaskTypeAndNoteId(
+                reviewState.userId(),
+                TaskSource.SYSTEM,
+                REVIEW_FOLLOW_UP_TASK_TYPE,
+                reviewState.noteId()
+            )
+            .map(existing -> resolveOpenTask(reviewState, completionStatus, completionReason, existing, traceId))
+            .orElseGet(() -> createFollowUpTask(reviewState, completionStatus, completionReason, traceId));
+    }
+
+    private UUID resolveOpenTask(ReviewStateView reviewState,
+                                 ReviewCompletionStatus completionStatus,
+                                 ReviewCompletionReason completionReason,
+                                 com.noteops.agent.application.task.TaskApplicationService.TaskView existing,
+                                 UUID traceId) {
+        if (completionStatus == ReviewCompletionStatus.COMPLETED) {
+            taskRepository.updateStatus(existing.id(), TaskStatus.DONE);
+            userActionEventRepository.append(
+                reviewState.userId(),
+                "SYSTEM_TASK_COMPLETED_FROM_REVIEW",
+                "TASK",
+                existing.id(),
+                traceId,
+                Map.of(
+                    "task_type", REVIEW_FOLLOW_UP_TASK_TYPE,
+                    "review_item_id", reviewState.id()
+                )
+            );
+            return existing.id();
+        }
+
+        FollowUpTaskSpec spec = buildFollowUpTaskSpec(reviewState, completionStatus, completionReason);
+        taskRepository.refreshOpenTask(
+            existing.id(),
+            spec.title(),
+            spec.description(),
+            spec.priority(),
+            spec.dueAt(),
+            TaskRelatedEntityType.REVIEW,
+            reviewState.id()
+        );
+        userActionEventRepository.append(
+            reviewState.userId(),
+            "SYSTEM_TASK_UPDATED_FROM_REVIEW",
+            "TASK",
+            existing.id(),
+            traceId,
+            Map.of(
+                "task_type", REVIEW_FOLLOW_UP_TASK_TYPE,
+                "review_item_id", reviewState.id(),
+                "completion_status", completionStatus.name()
+            )
+        );
+        return existing.id();
+    }
+
+    private UUID createFollowUpTask(ReviewStateView reviewState,
+                                    ReviewCompletionStatus completionStatus,
+                                    ReviewCompletionReason completionReason,
+                                    UUID traceId) {
+        if (completionStatus == ReviewCompletionStatus.COMPLETED) {
+            return null;
+        }
+        FollowUpTaskSpec spec = buildFollowUpTaskSpec(reviewState, completionStatus, completionReason);
+        com.noteops.agent.application.task.TaskApplicationService.TaskView task = taskRepository.create(
+            reviewState.userId(),
+            reviewState.noteId(),
+            TaskSource.SYSTEM,
+            REVIEW_FOLLOW_UP_TASK_TYPE,
+            spec.title(),
+            spec.description(),
+            TaskStatus.TODO,
+            spec.priority(),
+            spec.dueAt(),
+            TaskRelatedEntityType.REVIEW,
+            reviewState.id()
+        );
+        userActionEventRepository.append(
+            reviewState.userId(),
+            "SYSTEM_TASK_CREATED_FROM_REVIEW",
+            "TASK",
+            task.id(),
+            traceId,
+            Map.of(
+                "task_type", REVIEW_FOLLOW_UP_TASK_TYPE,
+                "review_item_id", reviewState.id(),
+                "completion_status", completionStatus.name()
+            )
+        );
+        return task.id();
+    }
+
+    private FollowUpTaskSpec buildFollowUpTaskSpec(ReviewStateView reviewState,
+                                                   ReviewCompletionStatus completionStatus,
+                                                   ReviewCompletionReason completionReason) {
+        String noteTitle = noteRepository.findByIdAndUserId(reviewState.noteId(), reviewState.userId())
+            .map(NoteQueryService.NoteDetailView::title)
+            .orElse("Note " + reviewState.noteId());
+        String reason = completionReason == null ? null : completionReason.name();
+        String description = reason == null
+            ? "Review needs follow-up on the current summary and key points."
+            : "Review needs follow-up because " + reason + ". Revisit the current summary and key points.";
+        return new FollowUpTaskSpec(
+            "Follow up review: " + noteTitle,
+            description,
+            reviewState.nextReviewAt(),
+            reviewState.queueType() == ReviewQueueType.RECALL ? 90 : 70
+        );
+    }
+
     private UUID parseUuid(String rawValue, String errorCode, String message) {
         try {
             return UUID.fromString(rawValue);
@@ -406,5 +535,8 @@ public class ReviewApplicationService {
         int unfinishedCount,
         BigDecimal masteryScore
     ) {
+    }
+
+    private record FollowUpTaskSpec(String title, String description, Instant dueAt, int priority) {
     }
 }

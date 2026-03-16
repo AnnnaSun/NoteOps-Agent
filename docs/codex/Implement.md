@@ -76,12 +76,37 @@
 2. 状态机语义准确
 3. API 契约与 envelope 一致
 4. trace / proposal / event 能打通最小治理链路
+5. 关键链路具备结构化日志，能够支持监控、排障与调用链定位
+
+关键日志默认必须覆盖：
+- controller 请求入口
+- service 核心命令入口与出口
+- 状态迁移
+- 外部调用开始 / 成功 / 失败
+- proposal apply / rollback
+- review complete / recall requeue
+- search external supplement 的 evidence / proposal 生成
+- task create / complete / skip / reschedule
+
+日志至少包含：
+- `trace_id`
+- `user_id`
+- `action`
+- 关键业务 id
+- `result`
+- `duration_ms`（如适用）
+- `error_code` / `error_message`（失败时）
 
 可以暂时简化：
 - 智能打分算法
 - 外部接入质量
 - UI 呈现细节
 - 高级优化
+
+不可以后置到未来阶段再补的内容：
+- 关键链路日志
+- 可关联的 trace 信息
+- 核心失败分支日志
 
 ### 5.2 前端偏好
 
@@ -239,6 +264,24 @@ Phase 1 已冻结要求必须支持 User Task 的最小能力：
 
 ### 验证结果
 - 列出命令 / 测试 / 构建结果
+
+## 验证与交付补充要求
+
+当本次改动涉及以下任一内容时，必须说明日志覆盖情况：
+- 新增或修改 API
+- 新增或修改状态迁移
+- 新增外部调用
+- 新增调度逻辑
+- 新增 proposal / review / task 核心流程
+
+输出结果中必须额外写明：
+1. 本次新增了哪些关键日志点
+2. 每个日志点对应的触发时机
+3. 关键日志字段是否带 `trace_id` 与业务主键
+4. 失败场景下是否能通过日志快速定位问题
+5. 哪些日志仍未补齐，后续在哪一步补
+
+如果代码改动已经进入核心链路，但没有补日志说明与最小验证，不得标记为“已完成最小闭环”。
 
 ### 风险与下一步
 - 写清尚未覆盖的边界

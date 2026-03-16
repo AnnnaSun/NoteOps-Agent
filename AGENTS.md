@@ -52,6 +52,35 @@ Do not change the language of existing repository files unless the task explicit
 5. **所有核心聚合预留 `user_id`**
    V1 可以是单用户运行，但模型、查询、索引、接口设计都必须保留未来多用户边界。
 
+6. **阶段性跳过 ≠ 永久删除**  
+   为了完成当前阶段最小闭环而暂时跳过的功能，必须记录到 deferred backlog / documentation 中，后续阶段必须补回，不允许因为“先不做”而永久遗漏。
+
+### 2.7 可观测性根原则
+
+7. **关键链路必须具备可监控、可定位、可关联的结构化日志**
+   - 任何核心业务链路，不允许只靠零散 `console.log` 或无法关联上下文的纯文本输出。
+   - 以下场景默认必须补充结构化日志：
+     - 请求入口与核心命令入口
+     - 状态迁移与状态机流转
+     - 外部调用开始 / 成功 / 失败
+     - proposal apply / rollback
+     - review complete / partial / recall requeue
+     - search external supplement 生成 evidence / proposal
+     - task 创建、完成、跳过、重排
+     - 任何会写入 `agent_traces`、`tool_invocation_logs`、`user_action_events` 的关键动作
+   - 日志字段至少应包含：
+     - `trace_id`
+     - `user_id`
+     - 模块名或 service / controller 名
+     - 接口路径或命令名
+     - 关键业务标识，如 `note_id`、`review_item_id`、`task_id`、`proposal_id`
+     - `action`
+     - `result`
+     - `duration_ms`（如适用）
+     - `error_code`、`error_message`（失败时）
+   - 同一条请求链路中的日志应可通过 `trace_id` 关联，保证问题可以从入口追到落库、外调和状态变更。
+   - 新增涉及核心状态变更、外部调用、调度决策的实现时，如未补日志，视为未完成最小闭环。
+
 ---
 
 ## 3. 当前阶段边界（Phase 1 冻结）
