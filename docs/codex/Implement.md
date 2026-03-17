@@ -6,6 +6,8 @@
 本文件定义 Codex 在 NoteOps 仓库内执行任务时的默认工作方式。  
 目标是减少发散、减少误改、减少“看起来做了很多但主线没推进”的情况。
 
+当前默认服务于 **Phase 2：Review / Search / Today Workspace**。
+
 ---
 
 ## 2. 默认执行流程
@@ -15,11 +17,12 @@
 1. 阅读 `AGENTS.md`
 2. 阅读 `docs/codex/Prompt.md`
 3. 阅读 `docs/codex/Plan.md`
-4. 确定当前任务所属里程碑
-5. 只实现该里程碑的最小闭环
-6. 跑最小验证
-7. 需要时更新 `docs/codex/Documentation.md`
-8. 输出变更摘要、验证结果、未覆盖风险
+4. 阅读 `docs/codex/Implement.md`
+5. 确定当前任务所属 Phase 2 子步骤
+6. 只实现该子步骤的最小闭环
+7. 跑最小验证
+8. 需要时更新 `docs/codex/Documentation.md`
+9. 输出变更摘要、验证结果、未覆盖风险与 deferred items
 
 ---
 
@@ -32,11 +35,12 @@
 3. 不依赖未来阶段大量未实现能力
 4. 修改文件数量可控
 5. 该任务能被明确验收
+6. 若跳过能力，已记录进 deferred backlog
 
 不符合以下情况：
 
 - 为了“以后可能会用”提前铺很多抽象层
-- 把 Phase 2/3/4 的逻辑塞进 Phase 1
+- 把 Phase 3/4 的逻辑塞进 Phase 2
 - 一次改 schema、API、页面、算法、移动端预研全部内容
 - 大量生成占位文件却没有跑通主链路
 
@@ -48,7 +52,7 @@
 
 在真正修改前，必须先检查：
 
-- 当前里程碑相关的已有代码
+- 当前子步骤相关的已有代码
 - 相关 DTO / entity / migration / controller / service
 - 相关文档
 - 是否已有测试
@@ -67,9 +71,22 @@
 
 ---
 
-## 5. Phase 1 期间的具体实现偏好
+## 5. 当前阶段的具体实现偏好
 
-### 5.1 后端偏好
+### 5.1 总优先级
+
+Phase 2 默认按以下顺序推进：
+
+1. schema / state machine / enum 正确性
+2. API contract 与 DTO 一致性
+3. Today / Upcoming 聚合可用
+4. Review 双池与 recall 反馈闭环可用
+5. Search 三分栏结果合同可用
+6. Proposal / Event / Trace 治理链路补齐
+7. Web 页面接真实接口
+8. 复杂算法、外部 provider、视觉细节后置
+
+### 5.2 后端偏好
 
 优先保证：
 1. 表结构准确
@@ -108,17 +125,19 @@
 - 可关联的 trace 信息
 - 核心失败分支日志
 
-### 5.2 前端偏好
+### 5.3 前端偏好
 
 优先：
 - 页面能连上真实接口
-- Today / Capture / Note 主路径能跑通
+- Today / Review / Search 主路径能跑通
 - 状态边界清楚（加载、空、错误、成功）
+- ReviewItem 与 Task 在工作台上分区展示
 
 不优先：
 - 复杂视觉效果
 - 完整组件系统
 - 动画、主题、多端适配细节
+- 周视图 / 月视图 calendar
 
 ---
 
@@ -145,8 +164,9 @@
 - 接口路径或字段改动
 - 状态机改动
 - 目录结构改动
-- 当前已完成里程碑变更
+- 当前已完成子步骤变更
 - 已知风险新增或消除
+- 新增 deferred item 或移除 deferred item
 
 最少更新：
 - `docs/codex/Documentation.md`
@@ -154,6 +174,7 @@
 必要时再更新：
 - README
 - schema / API 补充说明
+- `docs/codex/Plan.md`
 
 ---
 
@@ -200,9 +221,17 @@ Proposal 只允许作用于：
 
 禁止把 proposal 设计成“直接改写原始 note_contents 正文”。
 
+### 9.3 Search 特殊规则
+外部搜索结果：
+
+- 可以进入 `external_supplements`
+- 可以形成 evidence block
+- 可以生成 change proposal
+- 不能直接覆盖 `notes.current_summary/current_key_points/current_tags`
+
 ---
 
-## 10. Review / Task 特殊规则
+## 10. Review / Task / Workspace 特殊规则
 
 ### 10.1 Review
 不要把 Review 简化成：
@@ -214,15 +243,25 @@ Proposal 只允许作用于：
 - `queue_type`
 - `completion_status`
 - `completion_reason`
+- recall 用户反馈（自评 + 备注）
 
 ### 10.2 Task
 不要只做 System Task。  
-Phase 1 已冻结要求必须支持 User Task 的最小能力：
+Phase 2 需要支持 User Task 的最小能力：
 
 - 创建
-- 查看 Today
+- 查看 Today / Upcoming
 - 完成
 - 跳过
+- 基于 `due_at` 排序
+
+### 10.3 Workspace
+Today / Upcoming 不是简单列表拼接。至少要保证：
+
+- ReviewItem 与 Task 可同时展示
+- 两类对象边界清晰
+- `task_source` 可见或可推断
+- 排序规则可解释
 
 ---
 
@@ -232,23 +271,31 @@ Phase 1 已冻结要求必须支持 User Task 的最小能力：
 
 1. 文档之间有轻微冲突
 2. 当前仓库代码与冻结文档不一致
-3. 一个任务需要跨多个里程碑
+3. 一个任务需要跨多个子步骤
 
 则采用以下策略：
 
 ### 11.1 文档冲突
-优先采用“补丁整合版”的冻结结论，尤其是：
-- 多用户预留
+优先采用当前 Phase 2 基线中的冻结结论，尤其是：
 - Review 双池
-- User Task
-- 原始内容只追加
-- Proposal 作用层
+- Recall 自评 + 备注
+- User Task + `due_at`
+- Search 三分栏
+- 外部证据不得静默覆盖解释层
+- Proposal 治理链路
 
 ### 11.2 代码与文档不一致
-优先保护冻结文档中的主边界，不要盲从现有草稿代码。
+优先保护当前冻结文档中的主边界，不要盲从现有草稿代码。
 
 ### 11.3 任务过大
 只落一个最小可验收子切片，并在输出中说明下一步，而不是一次把所有东西做完。
+
+### 11.4 为最小闭环跳过能力
+允许跳过，但必须：
+1. 明确说明跳过了什么
+2. 说明为什么现在不做
+3. 写入 deferred backlog
+4. 标注未来补回阶段
 
 ---
 
@@ -285,4 +332,5 @@ Phase 1 已冻结要求必须支持 User Task 的最小能力：
 
 ### 风险与下一步
 - 写清尚未覆盖的边界
-- 给出最合理的下一个里程碑或子步骤
+- 标出 deferred items
+- 给出最合理的下一个子步骤

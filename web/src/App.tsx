@@ -67,6 +67,24 @@ function getTaskMetaTone(value: string): string {
   }
 }
 
+function getProposalStatusClass(value: string): string {
+  switch (value) {
+    case "PENDING":
+    case "PENDING_REVIEW":
+      return "status-pending";
+    case "APPLIED":
+      return "status-applied";
+    case "ROLLED_BACK":
+      return "status-rolled_back";
+    default:
+      return `status-${value.toLowerCase()}`;
+  }
+}
+
+function canApplyProposal(status: string): boolean {
+  return status === "PENDING" || status === "PENDING_REVIEW";
+}
+
 function readStoredUserId(): string {
   if (typeof window === "undefined") {
     return DEFAULT_USER_ID;
@@ -624,7 +642,7 @@ export default function App() {
                               <strong>{proposal.proposal_type}</strong>
                               <p>{proposal.diff_summary}</p>
                             </div>
-                            <span className={`status-pill status-${proposal.status.toLowerCase()}`}>{proposal.status}</span>
+                            <span className={`status-pill ${getProposalStatusClass(proposal.status)}`}>{proposal.status}</span>
                           </div>
                           <div className="proposal-meta">
                             <span>{proposal.target_layer}</span>
@@ -642,7 +660,7 @@ export default function App() {
                             </div>
                           </div>
                           <div className="form-actions">
-                            {proposal.status === "PENDING" ? (
+                            {canApplyProposal(proposal.status) ? (
                               <button
                                 type="button"
                                 onClick={() => handleProposalApply(proposal.id)}

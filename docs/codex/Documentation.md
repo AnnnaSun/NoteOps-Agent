@@ -1,256 +1,194 @@
-# Documentation
-# docs/codex/Documentation.md
+# Documentation.md
 
-## 1. 文档用途
+## 1. 当前仓库状态
 
-本文件用于记录当前 NoteOps 仓库在 Codex 视角下的工程状态、已冻结边界、当前阶段目标、已知风险与文档同步说明。
+当前仓库状态定义为：
 
-它不是 PRD 的替代品，而是 **“当前仓库应该按什么边界实现”** 的运行记录。
+- **Phase 1：最小闭环已完成**
+- **Phase 2：开始进入 Review / Search / Today 工作台增强阶段**
 
----
+这表示仓库已经不再是纯骨架或纯占位状态，而是要围绕以下三个产品化增量继续收口：
 
-## 2. 当前状态快照
+1. Review 双池与完成质量语义
+2. Search 三分栏与 external evidence 治理
+3. Today / Calendar 工作台
 
-### 2.1 当前阶段
-
-- 当前阶段：**Phase 1 重启基线**
-- 当前目标：交付可运行的知识内核
-- 当前优先：后端主链路优先，Web 最小接入次之
-- 当前原则：先可运行、再可治理、后做扩展
-
-### 2.2 当前状态说明
-
-基于现有来源文档，产品、架构、表结构、API、状态机边界已经足够支撑 Phase 1 开发。  
-本文件默认假设：**仓库正处于 Phase 1 开发前或开发初期，需要用 Codex 文档防止实现发散。**
-
-如果实际仓库已经有部分代码，则后续应在每个里程碑完成后补写本文件中的“实现进度”和“已验证项”。
+路线图依据来自 PRD：Phase 2 为 `Review / Search`，Phase 3 才是 `Idea`。fileciteturn1file0
 
 ---
 
-## 3. 已冻结的核心结论
+## 2. Phase 2 范围冻结
 
-### 3.1 产品层
+### 2.1 本阶段包含
 
-1. Note 是第一公民
-2. 系统主线是 Knowledge-to-Action
-3. 服务端 PostgreSQL 是唯一真相源
-4. Web 优先，PWA 和移动端后置
-5. 自动化必须具备建议、确认、应用、撤销、追溯链路
+#### Review
 
-### 3.2 架构层
+- 双池：`SCHEDULE / RECALL`
+- 完成状态：`COMPLETED / PARTIAL / NOT_STARTED / ABANDONED`
+- 完成原因：`TIME_LIMIT / TOO_HARD / VAGUE_MEMORY / DEFERRED`
+- 用户 recall 自评：`GOOD / VAGUE / FAILED`
+- Review 默认展示载体：`current_summary + current_key_points + necessary extensions`
 
-1. 主编排 Agent + Worker Agents
-2. Orchestrator 只做路由、状态推进、治理、trace
-3. 原始内容与当前解释层分离
-4. 核心字段固定，扩展属性 JSONB
-5. 外部证据只形成 evidence / proposal / conflict，不直接覆盖内部知识
+相关冻结依据见补丁文档与表结构。fileciteturn1file4turn1file5turn1file7
 
-### 3.3 Phase 1 关键补丁
+#### Search
 
-1. 所有核心表保留 `user_id`
-2. Review 采用双池机制
-3. Review 支持 completion_status / completion_reason
-4. Task 同时支持 System Task 与 User Task
-5. 原始正文只追加，不覆盖
-6. Proposal 作用于解释层/元数据层/关系层
-7. 离线动作仅限 review、轻量备注、tag 修改
+- 三分栏：`exact_matches / related_matches / external_supplements`
+- `related_matches` 要返回 `relation_reason`
+- `external_supplements` 要返回来源、摘要、关键词、关系标签
+- 外部结果只进入 evidence / proposal / conflict flow
 
----
+相关冻结依据见 PRD、架构文档与 AGENTS。fileciteturn1file0turn1file3turn1file8
 
-## 4. Phase 1 目标对象
+#### Today / Calendar
 
-### 4.1 Phase 1 应落地的核心表
+- Today 同时展示 Review 与 Task
+- Task 同时包含 `SYSTEM / USER`
+- 返回必须携带 `task_source`
+- 本阶段 Calendar 仅做 `Today + Upcoming` 列表，不做周/月视图
 
-- `notes`
-- `note_contents`
-- `review_states`
-- `tasks`
-- `change_proposals`
-- `capture_jobs`
-- `agent_traces`
-- `tool_invocation_logs`
-- `user_action_events`
+#### Proposal / Event / Trace
 
-### 4.2 Phase 1 应优先跑通的主链路
+- Proposal apply / rollback 需要返回回退信息
+- Review / Task / proposal / external evidence 的关键动作需要写入事件
+- 核心链路需要可追溯 trace
 
-1. Capture(TEXT/URL) → CaptureJob → Note
-2. Note 详情查询
-3. Today Review → complete → ReviewState 更新
-4. User Task 创建 / Today 查询 / 完成 / 跳过
-5. Proposal apply / rollback 最小治理链路
+#### Preference 采集层
+
+- 本阶段允许继续补强 `user_action_events`
+- 允许为 `user_preference_profiles` 做输入准备
+- 不做完整画像计算与自动注入
 
 ---
 
-## 5. Deferred / 后置能力
+## 3. Phase 2 不包含
 
-以下能力允许预留，但当前默认不做正式闭环：
+以下能力明确不在当前阶段正式闭环内：
 
-### Phase 2 以后
-- `user_preference_profiles`
-- `ideas`
-- `tag_definitions`
+### 3.1 Idea 正式生命周期
 
-### Phase 3 以后
-- `trend_items`
-- Trend Inbox
-- 来源注册与权重系统
+- `ideas` 表可预留
+- 允许保留最小 DTO / service 扩展点
+- 不交付正式 Idea Card / assess / lifecycle 页面
 
-### 更后阶段
-- PWA 完整离线
-- Android / iOS
-- transcript-first 多媒体输入
-- 导出中心
-- 更强外部 evidence 接入
+### 3.2 Preference Learning 正式闭环
 
----
+`user_preference_profiles` 中文定义：
 
-## 6. 当前推荐的仓库落地方向
+> 用户长期偏好画像。
 
-若仓库还是早期状态，建议维持以下结构：
+它的职责不是保存一次性的 UI 选项，而是沉淀用户长期行为后形成的结构化偏好，例如：
 
-```text
-server/
-web/
-docs/
-docs/codex/
-```
+- `interest_profile`：用户关心什么，例如关注主题、来源偏好、任务偏好
+- `output_style_profile`：用户偏好的输出风格，例如标签风格、摘要长度、表达偏好
 
-后端优先沉淀：
-- migration
-- entity/model
-- repository
-- service
-- controller
-- trace/event/proposal 支撑
+架构文档还明确了一个更重要的产品原则：
 
-前端优先沉淀：
-- Capture 页面
-- Note 列表 / 详情
-- Today 页面（Review + Task）
+> 系统先学习用户关心什么，再学习用户怎么表达。
+
+这意味着 `user_preference_profiles` 本质上是未来的“偏好记忆层 / 个性化画像层”，而不是简单配置表。fileciteturn1file3turn1file7
+
+本阶段只预留，不做正式重算闭环。
+
+### 3.3 Trend 正式闭环
+
+Trend Inbox、source registry、趋势转 Note/Idea 留到更后阶段。fileciteturn1file0
+
+### 3.4 Calendar 高级视图
+
+本阶段不做周视图、月历视图、拖拽排期。
 
 ---
 
-## 7. 已知高风险误实现点
+## 4. 当前核心契约
 
-以下是当前最容易被错误实现的部分，必须持续检查：
+### 4.1 数据层契约
 
-1. 把 proposal 设计成原始正文覆盖器
-2. 把 Review 简化成单池 + 单布尔完成状态
-3. 只做 System Task，漏掉 User Task
-4. 忽略 `user_id`
-5. 把外部 evidence 直接写进 `current_summary`
-6. 一开始就过早实现 Trend / Idea / Preference Learning 正式闭环
-7. 先堆大量页面和组件，主链路却没跑通
+- PostgreSQL 仍是唯一真相源
+- 所有核心表继续保留 `user_id`
+- `notes` 保存当前解释层
+- `note_contents` 保存原始内容、更新块、证据块
+- 原始内容只追加，不静默覆盖
 
----
+### 4.2 Proposal 契约
 
-## 8. 文档维护约定
+- 只作用于 `INTERPRETATION / METADATA / RELATION`
+- 不直接改写原始正文
+- apply / rollback 需要留痕
 
-每完成一个里程碑后，应补充：
+### 4.3 Review 契约
 
-1. 已完成里程碑
-2. 实际落地文件
-3. 已跑验证
-4. 未覆盖风险
-5. 与冻结文档的差异（如果有）
+- 不能退化成单池 + 单布尔完成状态
+- Review complete 请求 / 响应需要反映完成质量与后续调度结果
 
-推荐追加格式：
+### 4.4 Task 契约
 
-```md
-## 更新记录 YYYY-MM-DD
+- 同时支持 `SYSTEM / USER`
+- 支持 `NOTE / IDEA / REVIEW / NONE`
+- 本阶段重点是 Today / Upcoming 工作台消费能力
 
-### 已完成
-- ...
+### 4.5 Search 契约
 
-### 验证
-- ...
-
-### 风险
-- ...
-```
+- 外部补充只做 evidence / proposal / conflict hint
+- 不得直接覆盖本地 Note 当前摘要
 
 ---
 
-## 9. 当前这套 Codex 文档的作用范围
+## 5. 推荐的 Phase 2 实现顺序
 
-本目录中的 Codex 文档只解决两件事：
-
-1. 把冻结文档转换成 Codex 可执行约束
-2. 让 Phase 1 实现不再因 prompt 漂移而偏离主线
-
-它不替代：
-- PRD
-- 完整架构文档
-- 对外 API 文档
-- 数据库正式说明书
+1. 对齐 Phase 2 文档与仓库级约束
+2. 对齐 Review schema / API / 状态机
+3. 建立 Today / Upcoming 聚合接口
+4. 扩展 User Task 到 Calendar 列表能力
+5. 实现 Search 三分栏后端契约
+6. 补强 proposal / event / trace
+7. 接入 Web 页面
+8. 更新文档与阶段状态
 
 ---
 
-## 10. 下一个推荐动作
+## 6. Deferred Backlog（后期必须补回）
 
-若当前仓库尚未完成骨架，建议从以下顺序启动：
+以下是为了完成 Phase 2 最小闭环而暂时延后的功能，后续必须补回：
 
-1. M1 仓库骨架
-2. M2 PostgreSQL 迁移与核心表
-3. M3 Capture → Note 主链路
-4. M4 Review
-5. M5 Task
-6. M6 Proposal / Trace / Event
-7. M7 最小 Web 接入
-8. M8 文档收口
+1. 正式 Idea 生命周期闭环
+2. 正式 UserPreferenceProfile 画像重算与个性化注入
+3. Trend 正式闭环
+4. 更真实的 external provider 接入
+5. 周 / 月 Calendar 视图
+6. User Task 编辑、重排、批量能力
+7. recall question / recall scoring 增强
+8. tag_definitions 与标签治理
+9. PWA 离线 review / sync 完整链路
+10. 更完整的 Proposal 治理体验
 
-如果仓库已经有部分代码，则先对照 `Plan.md` 确定当前停留在哪个里程碑，再继续下一个最小闭环。
+本清单不得因为“当前没做”而删除。
 
-## 更新记录 2026-03-16
+---
 
-### 已完成
-- M3 已完成并收口：`POST /api/v1/captures`、`GET /api/v1/captures/{id}`、`GET /api/v1/notes` 与 `GET /api/v1/notes/{id}` 已落地。
-- Capture 现支持 `TEXT` 真实落 Note，以及 `URL` 的占位提取流程；两者都会真实写入 `capture_jobs`、`notes`、`note_contents`、`agent_traces`、`tool_invocation_logs`、`user_action_events`。
-- Note 现支持按 `user_id` 回查列表与详情，列表按 `updated_at desc` 返回当前解释层摘要和关键点。
-- 所有新增 REST 响应统一返回 envelope：`success`、`trace_id`、`data/error`、`meta.server_time`；无 trace 的响应也显式返回 `trace_id: null`。
-- 缺少 `user_id` 等请求参数时，接口会返回 `400` 和统一 envelope 错误结构。
-- `NoteContentType` 代码枚举已与 migration 的取值范围对齐。
-- M4 已完成最小后端闭环：`GET /api/v1/reviews/today` 和 `POST /api/v1/reviews/{review_item_id}/complete` 已落地。
-- Today Review 采用懒创建策略：已有 Note 若缺少 `SCHEDULE` 记录，会在 Today 查询时自动补建。
-- `review_states` 采用双记录保留：同一 Note 可分别保留 `SCHEDULE` 和 `RECALL` 两条状态。
-- Review Today 只返回 `title`、`current_summary`、`current_key_points` 等当前解释层数据，不返回原始正文。
-- M5 已完成最小后端闭环：`POST /api/v1/tasks`、`GET /api/v1/tasks/today`、`POST /api/v1/tasks/{task_id}/complete` 与 `POST /api/v1/tasks/{task_id}/skip` 已落地。
-- User Task 现支持独立任务与绑定任务：可绑定 `NOTE / IDEA / REVIEW / NONE`，其中传入 `note_id` 时会默认按 `NOTE` 绑定。
-- Task 写操作现通过事务保护：Task 主记录与对应的 `agent_traces`、`user_action_events` 在同一提交内收口，避免“接口失败但任务已落库”的部分成功状态。
-- Today Task 当前返回 `TODO / IN_PROGRESS` 且 `due_at` 为空或不晚于“用户当天结束时间”的任务，并显式返回 `task_source`。接口支持可选 `timezone_offset` 参数；未传时默认按 UTC 兼容旧行为。
-- Review 现已接入一条最小 System Task 派生规则：未完成良好的 Review 会 upsert `REVIEW_FOLLOW_UP` 任务；后续完成 Recall 时会关闭该跟进任务。
-- M6 已完成最小后端闭环：`POST /api/v1/notes/{note_id}/change-proposals`、`GET /api/v1/notes/{note_id}/change-proposals`、`POST /api/v1/notes/{note_id}/change-proposals/{proposal_id}/apply` 与 `POST /api/v1/change-proposals/{id}/rollback` 已落地。
-- 当前 M6 只实现一种低风险 proposal：`proposal_type = REFRESH_INTERPRETATION`，作用层固定为 `INTERPRETATION`，仅更新 `notes.current_summary` 与 `notes.current_key_points`，不会改写 `note_contents` 原始内容。
-- Proposal 生成时会记录 `before_snapshot`、`after_snapshot`、`diff_summary` 与 `source_refs`；apply 时会补写 `rollback_token`，rollback 会基于 `before_snapshot` 恢复解释层。
-- Proposal generate / apply / rollback 已接入 `agent_traces`、`tool_invocation_logs` 与 `user_action_events`，并补充了最小结构化运行日志，便于通过 `trace_id` 关联请求链路与落库治理记录。
-- 为避免生成永远无差异的 proposal，当前实现会先使用最新 `note_contents` 的简化摘要逻辑生成候选解释；若与当前解释层完全一致，则退化为基于标题与关键点的确定性刷新摘要，仍保持低风险且可回滚。
-- M7 已完成最小 Web 接入：`web/` 不再是静态占位页，现已接入真实后端 API，并提供单页最小工作台。
-- Web 当前已支持同一页内完成以下最小流程：填写 `user_id`、提交 `TEXT / URL` Capture、查看 Note 列表、查看 Note 详情、查看 Today（Review + Task）结果、查看 Proposal 列表。
-- Note 详情当前支持显式收起：可再次点击当前 Note 收起详情，也可使用详情面板内的关闭按钮退出右侧浏览占位。
-- Proposal 展示位已接入真实动作：在 Note 详情页可生成 interpretation proposal，并对 `PENDING` proposal 执行 apply、对 `APPLIED` proposal 执行 rollback；页面会同步刷新 Note 当前解释层。
-- 前端开发态已通过 Vite `proxy` 代理 `/api` 到 `http://localhost:8080`，避免 M7 联调被本地跨域配置阻塞。
-- 由于 Phase 1 仍未引入账号体系，Web 当前通过显式输入 `user_id` 选择上下文，并将最近一次输入缓存在浏览器本地存储中。
-- Web 已补一轮轻量交互与可读性优化：Today 区域按 Review / Task 语义分区，Proposal 默认先展示摘要并将快照折叠到可展开区，移动端按钮与工具栏布局已做紧凑化处理。
-- Web 当前视觉主题已进一步收口为“极简科技感”方向：减少装饰性渐变与纹理、将蓝色强调压低为更低饱和的浅蓝灰，同时保留柔和渐变层次，并将按钮与状态控件统一为方圆矩形风格，但未改变现有信息结构与交互范围。
-- Web 当前已补长连续文本展示兜底：Today / Note / Detail / Proposal 区域中的长 URI 或其他无空格长字符串会在正文区域内自动换行，不再溢出边框；Today 中的状态字段已调整为放在标题下方的单行语义标签行，并进一步拉开 Review / Task 的标签色差；右侧详情面板宽度也已收窄到更接近与左侧 Note 区域对半布局，同时背景渐变与纹理已小幅增强，以保留极简前提下的层次感。
-- Web 当前已修正详情面板滚动优先级：桌面端鼠标悬停在右侧详情面板时，会优先滚动详情面板自身；移动端则继续回退为页面级滚动。
-- Web 当前已补详情面板内部 sticky 头部：滚动右侧详情内容时，标题与关闭按钮会保留在可视区；同时详情页列表项、元信息与 proposal 元字段的长文本换行保护已加强，避免贴边或溢出。
-- M8 已完成最小文档收口：`README.md` 与 `docs/phase1-scope.md` 已从旧的 M5/M6 状态对齐到当前真实的 M3-M7 实现范围，不再保留过期“下一步是 M6”的描述。
-- README 当前已补齐最小运行与验证入口：保留 PostgreSQL / server / web 启动说明，并补充 `mvn -q test` 与 `npm run build` 作为当前最小验证命令。
-- `docs/phase1-scope.md` 当前已明确仓库现状为 “backend + minimal web surface”，并补齐 proposal 相关 API 与当前已知未覆盖项。
+## 7. 当前文档使用方式
 
-### 验证
-- 已运行 `mvn -q test`（`server/`），通过。
-- 已补 Task 事务集成测试：使用真实 Spring 事务边界与 JDBC/H2 数据源，验证 `UserActionEventRepository` 抛错时 `tasks` 写入会整体回滚。
-- 已补 Proposal controller / service / transaction tests：覆盖 generate、list、apply、rollback 成功路径，以及重复 apply 冲突与 tool log 失败时的事务回滚。
-- 已运行 `npm run build`（`web/`），通过。
-- 本次 M8 文档收口将重新执行 `mvn -q test`（`server/`）与 `npm run build`（`web/`），并以实际结果更新本轮验证结论。
+### Prompt.md
 
-### 风险
-- URL 抽取仍是 Phase 1 允许的占位实现，未做真实抓取与质量优化。
-- 当前仅实现了 `INTERPRETATION + LOW` proposal，`METADATA` / `RELATION` 与中高风险治理规则仍未落地。
-- 当前 proposal 生成是确定性刷新逻辑，未接入外部 evidence、人工 reject 流程或更复杂 diff 规则。
-- 当前仅实现了 Review 派生 System Task，尚未补 Proposal 派生任务。
-- 当前已补 Task / Proposal 的事务回滚集成测试，但其余数据库集成测试仍未覆盖。
-- Web 当前仍是单页最小骨架，未引入独立路由、完整表单校验、Review/Task 操作按钮或更细的空态/重试体验。
-- 本轮未做真实浏览器手工联调，仅完成前端构建与后端测试；Capture → Note → Proposal 的端到端 UI 行为仍需在本地启动前后端后手工确认。
+定义当前阶段的执行边界、做与不做、Deferred Backlog、输出要求。
+
+### Plan.md
+
+定义 Phase 2 的子步骤拆分、依赖关系与验收点。
+
+### Documentation.md
+
+记录当前仓库已经进入到什么阶段、当前语义如何冻结、哪些内容仍 deferred。
+
+---
+
+## 8. 与仓库级文件的同步要求
+
+当 Phase 2 继续推进时，以下情况必须同步更新本文档：
+
+- schema 改动
+- Review / Task / Search API 字段改动
+- 状态机改动
+- Today / Upcoming 页面实际行为变化
+- Proposal / Event / Trace 语义变化
+- 当前完成状态发生变化
