@@ -39,7 +39,9 @@ public class ReviewController {
             new ReviewApplicationService.CompleteReviewCommand(
                 request.userId(),
                 request.completionStatus(),
-                request.completionReason()
+                request.completionReason(),
+                request.selfRecallResult(),
+                request.note()
             )
         );
         return ApiEnvelope.success(null, ReviewCompletionResponse.from(review));

@@ -16,6 +16,10 @@ public record ReviewCompletionResponse(
     String completionStatus,
     @JsonProperty("completion_reason")
     String completionReason,
+    @JsonProperty("self_recall_result")
+    String selfRecallResult,
+    @JsonProperty("note")
+    String note,
     @JsonProperty("next_review_at")
     Instant nextReviewAt,
     @JsonProperty("retry_after_hours")
@@ -33,6 +37,8 @@ public record ReviewCompletionResponse(
             view.queueType().name(),
             view.completionStatus().name(),
             view.completionReason() == null ? null : view.completionReason().name(),
+            view.selfRecallResult() == null ? null : view.selfRecallResult().name(),
+            view.note(),
             view.nextReviewAt(),
             view.retryAfterHours(),
             view.unfinishedCount(),

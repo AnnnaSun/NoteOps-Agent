@@ -8,6 +8,10 @@ public record CompleteReviewRequest(
     @JsonProperty("completion_status")
     String completionStatus,
     @JsonProperty("completion_reason")
-    String completionReason
+    String completionReason,
+    @JsonProperty("self_recall_result")
+    String selfRecallResult,
+    @JsonProperty("note")
+    String note
 ) {
 }

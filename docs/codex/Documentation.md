@@ -27,6 +27,7 @@
 - 完成状态：`COMPLETED / PARTIAL / NOT_STARTED / ABANDONED`
 - 完成原因：`TIME_LIMIT / TOO_HARD / VAGUE_MEMORY / DEFERRED`
 - 用户 recall 自评：`GOOD / VAGUE / FAILED`
+- Review complete 合同回传并持久化 `self_recall_result` 与简短 `note`
 - Review 默认展示载体：`current_summary + current_key_points + necessary extensions`
 
 相关冻结依据见补丁文档与表结构。fileciteturn1file4turn1file5turn1file7
