@@ -26,6 +26,8 @@ public interface TaskRepository {
 
     List<TaskApplicationService.TaskView> findTodayByUserId(UUID userId, Instant dueAtInclusive);
 
+    List<TaskApplicationService.TaskView> findUpcomingByUserId(UUID userId, Instant dueAfterExclusive);
+
     Optional<TaskApplicationService.TaskView> findByIdAndUserId(UUID taskId, UUID userId);
 
     Optional<TaskApplicationService.TaskView> findOpenByUserIdAndSourceAndTaskTypeAndNoteId(UUID userId,

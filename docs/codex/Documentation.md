@@ -27,6 +27,7 @@
 - 完成状态：`COMPLETED / PARTIAL / NOT_STARTED / ABANDONED`
 - 完成原因：`TIME_LIMIT / TOO_HARD / VAGUE_MEMORY / DEFERRED`
 - 用户 recall 自评：`GOOD / VAGUE / FAILED`
+- Review complete 合同回传并持久化 `self_recall_result` 与简短 `note`
 - Review 默认展示载体：`current_summary + current_key_points + necessary extensions`
 
 相关冻结依据见补丁文档与表结构。fileciteturn1file4turn1file5turn1file7
@@ -45,6 +46,10 @@
 - Today 同时展示 Review 与 Task
 - Task 同时包含 `SYSTEM / USER`
 - 返回必须携带 `task_source`
+- 后端提供聚合型 workspace 查询：
+  - `GET /api/v1/workspace/today` 返回 `today_reviews` 与 `today_tasks`
+  - `GET /api/v1/workspace/upcoming` 返回 `upcoming_reviews` 与 `upcoming_tasks`
+- `Upcoming` 目前是后端 API 能力，Web 页面尚未切到该聚合接口
 - 本阶段 Calendar 仅做 `Today + Upcoming` 列表，不做周/月视图
 
 #### Proposal / Event / Trace

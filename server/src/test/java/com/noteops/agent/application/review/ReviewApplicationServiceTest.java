@@ -5,6 +5,7 @@ import com.noteops.agent.application.note.NoteQueryService;
 import com.noteops.agent.domain.review.ReviewCompletionReason;
 import com.noteops.agent.domain.review.ReviewCompletionStatus;
 import com.noteops.agent.domain.review.ReviewQueueType;
+import com.noteops.agent.domain.review.ReviewSelfRecallResult;
 import com.noteops.agent.domain.task.TaskRelatedEntityType;
 import com.noteops.agent.domain.task.TaskSource;
 import com.noteops.agent.domain.task.TaskStatus;
@@ -61,9 +62,9 @@ class ReviewApplicationServiceTest {
         noteRepository.notes.add(noteSummary(userId, noteB, "Recall note"));
         InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
         reviewStateRepository.create(userId, noteA, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
-            BigDecimal.ZERO, null, NOW, 0, 0);
+            null, null, BigDecimal.ZERO, null, NOW, 0, 0);
         reviewStateRepository.create(userId, noteB, ReviewQueueType.RECALL, ReviewCompletionStatus.PARTIAL, ReviewCompletionReason.TIME_LIMIT,
-            BigDecimal.ZERO, null, NOW, 1, 24);
+            null, null, BigDecimal.ZERO, null, NOW, 1, 24);
 
         ReviewApplicationService service = newService(reviewStateRepository, noteRepository);
 
@@ -74,20 +75,46 @@ class ReviewApplicationServiceTest {
     }
 
     @Test
+    void returnsUpcomingReviewsAfterTodayBoundary() {
+        UUID userId = UUID.randomUUID();
+        UUID todayNoteId = UUID.randomUUID();
+        UUID tomorrowNoteId = UUID.randomUUID();
+        UUID tomorrowRecallNoteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.notes.add(noteSummary(userId, todayNoteId, "Today"));
+        noteRepository.notes.add(noteSummary(userId, tomorrowNoteId, "Tomorrow schedule"));
+        noteRepository.notes.add(noteSummary(userId, tomorrowRecallNoteId, "Tomorrow recall"));
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        reviewStateRepository.create(userId, todayNoteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.ZERO, null, Instant.parse("2026-03-16T08:00:00Z"), 0, 0);
+        reviewStateRepository.create(userId, tomorrowNoteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.ZERO, null, Instant.parse("2026-03-17T02:00:00Z"), 0, 0);
+        reviewStateRepository.create(userId, tomorrowRecallNoteId, ReviewQueueType.RECALL, ReviewCompletionStatus.PARTIAL, ReviewCompletionReason.TIME_LIMIT,
+            null, null, BigDecimal.ZERO, null, Instant.parse("2026-03-17T02:00:00Z"), 1, 24);
+
+        ReviewApplicationService service = newService(reviewStateRepository, noteRepository);
+
+        List<ReviewApplicationService.ReviewTodayItemView> items = service.listUpcoming(userId.toString(), "+08:00");
+
+        assertThat(items).extracting(ReviewApplicationService.ReviewTodayItemView::title)
+            .containsExactly("Tomorrow recall", "Tomorrow schedule");
+    }
+
+    @Test
     void completesScheduleAndKeepsNormalSchedulingPath() {
         UUID userId = UUID.randomUUID();
         UUID noteId = UUID.randomUUID();
         InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
         ReviewApplicationService.ReviewStateView schedule = reviewStateRepository.create(
             userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
-            BigDecimal.valueOf(10), null, NOW, 0, 0
+            null, null, BigDecimal.valueOf(10), null, NOW, 0, 0
         );
 
         ReviewApplicationService service = newService(reviewStateRepository, new InMemoryNoteRepository());
 
         ReviewApplicationService.ReviewCompletionView result = service.complete(
             schedule.id().toString(),
-            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "COMPLETED", null)
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "COMPLETED", null, null, null)
         );
 
         assertThat(result.completionStatus()).isEqualTo(ReviewCompletionStatus.COMPLETED);
@@ -106,14 +133,14 @@ class ReviewApplicationServiceTest {
         InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
         ReviewApplicationService.ReviewStateView schedule = reviewStateRepository.create(
             userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
-            BigDecimal.valueOf(50), null, NOW, 0, 0
+            null, null, BigDecimal.valueOf(50), null, NOW, 0, 0
         );
 
         ReviewApplicationService service = newService(reviewStateRepository, noteRepository, taskRepository);
 
         ReviewApplicationService.ReviewCompletionView result = service.complete(
             schedule.id().toString(),
-            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "PARTIAL", "TIME_LIMIT")
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "PARTIAL", "TIME_LIMIT", null, null)
         );
 
         assertThat(result.completionStatus()).isEqualTo(ReviewCompletionStatus.PARTIAL);
@@ -137,10 +164,10 @@ class ReviewApplicationServiceTest {
         InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
         InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
         reviewStateRepository.create(userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.PARTIAL, ReviewCompletionReason.TIME_LIMIT,
-            BigDecimal.valueOf(20), NOW.minusSeconds(3600), NOW.plusSeconds(3600), 0, 0);
+            null, null, BigDecimal.valueOf(20), NOW.minusSeconds(3600), NOW.plusSeconds(3600), 0, 0);
         ReviewApplicationService.ReviewStateView recall = reviewStateRepository.create(
             userId, noteId, ReviewQueueType.RECALL, ReviewCompletionStatus.PARTIAL, ReviewCompletionReason.TIME_LIMIT,
-            BigDecimal.valueOf(20), NOW.minusSeconds(3600), NOW, 1, 24
+            null, null, BigDecimal.valueOf(20), NOW.minusSeconds(3600), NOW, 1, 24
         );
         taskRepository.create(userId, noteId, TaskSource.SYSTEM, "REVIEW_FOLLOW_UP", "Existing follow-up", null,
             TaskStatus.TODO, 90, NOW.plusSeconds(24 * 3600L), TaskRelatedEntityType.REVIEW, recall.id());
@@ -149,14 +176,17 @@ class ReviewApplicationServiceTest {
 
         ReviewApplicationService.ReviewCompletionView result = service.complete(
             recall.id().toString(),
-            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "COMPLETED", null)
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "COMPLETED", null, "GOOD", "Recovered after a second pass")
         );
 
         assertThat(result.nextReviewAt()).isEqualTo(NOW.plusSeconds(7 * 24 * 3600));
+        assertThat(result.selfRecallResult()).isEqualTo(ReviewSelfRecallResult.GOOD);
+        assertThat(result.note()).isEqualTo("Recovered after a second pass");
         ReviewApplicationService.ReviewStateView schedule = reviewStateRepository.findByUserIdAndNoteIdAndQueueType(userId, noteId, ReviewQueueType.SCHEDULE)
             .orElseThrow();
         assertThat(schedule.nextReviewAt()).isEqualTo(NOW.plusSeconds(3 * 24 * 3600));
         assertThat(schedule.completionStatus()).isEqualTo(ReviewCompletionStatus.COMPLETED);
+        assertThat(schedule.selfRecallResult()).isNull();
         assertThat(taskRepository.findByIdAndUserId(taskRepository.lastTaskId, userId)).get()
             .extracting(ReviewApplicationServiceTest::taskStatus)
             .isEqualTo(TaskStatus.DONE);
@@ -169,17 +199,81 @@ class ReviewApplicationServiceTest {
         InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
         ReviewApplicationService.ReviewStateView schedule = reviewStateRepository.create(
             userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
-            BigDecimal.ZERO, null, NOW, 0, 0
+            null, null, BigDecimal.ZERO, null, NOW, 0, 0
         );
 
         ReviewApplicationService service = newService(reviewStateRepository, new InMemoryNoteRepository());
 
         assertThatThrownBy(() -> service.complete(
             schedule.id().toString(),
-            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "PARTIAL", null)
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "PARTIAL", null, null, null)
         ))
             .isInstanceOf(ApiException.class)
             .hasMessage("completion_reason is required");
+    }
+
+    @Test
+    void recallRequiresSelfRecallResult() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        ReviewApplicationService.ReviewStateView recall = reviewStateRepository.create(
+            userId, noteId, ReviewQueueType.RECALL, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.ZERO, null, NOW, 0, 0
+        );
+
+        ReviewApplicationService service = newService(reviewStateRepository, new InMemoryNoteRepository());
+
+        assertThatThrownBy(() -> service.complete(
+            recall.id().toString(),
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "COMPLETED", null, null, "Need more time")
+        ))
+            .isInstanceOf(ApiException.class)
+            .hasMessage("self_recall_result is required for RECALL queue");
+    }
+
+    @Test
+    void scheduleRejectsRecallFeedbackFields() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        ReviewApplicationService.ReviewStateView schedule = reviewStateRepository.create(
+            userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.ZERO, null, NOW, 0, 0
+        );
+
+        ReviewApplicationService service = newService(reviewStateRepository, new InMemoryNoteRepository());
+
+        assertThatThrownBy(() -> service.complete(
+            schedule.id().toString(),
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "COMPLETED", null, "GOOD", "Should be rejected")
+        ))
+            .isInstanceOf(ApiException.class)
+            .hasMessage("self_recall_result and note are only supported for RECALL queue");
+    }
+
+    @Test
+    void blankRecallNoteIsNormalizedToNull() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        ReviewApplicationService.ReviewStateView recall = reviewStateRepository.create(
+            userId, noteId, ReviewQueueType.RECALL, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.valueOf(25), null, NOW, 0, 0
+        );
+
+        ReviewApplicationService service = newService(reviewStateRepository, new InMemoryNoteRepository());
+
+        ReviewApplicationService.ReviewCompletionView result = service.complete(
+            recall.id().toString(),
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "PARTIAL", "TIME_LIMIT", "VAGUE", "   ")
+        );
+
+        assertThat(result.selfRecallResult()).isEqualTo(ReviewSelfRecallResult.VAGUE);
+        assertThat(result.note()).isNull();
+        assertThat(reviewStateRepository.findByIdAndUserId(recall.id(), userId)).get()
+            .extracting(ReviewApplicationService.ReviewStateView::note)
+            .isNull();
     }
 
     private ReviewApplicationService newService(InMemoryReviewStateRepository reviewStateRepository,
@@ -228,7 +322,7 @@ class ReviewApplicationServiceTest {
                     && view.queueType() == ReviewQueueType.SCHEDULE);
             if (!exists) {
                 create(userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
-                    BigDecimal.ZERO, null, now, 0, 0);
+                    null, null, BigDecimal.ZERO, null, now, 0, 0);
             }
         }
 
@@ -245,6 +339,25 @@ class ReviewApplicationServiceTest {
                     int nextReviewCompare = left.nextReviewAt().compareTo(right.nextReviewAt());
                     if (nextReviewCompare != 0) {
                         return nextReviewCompare;
+                    }
+                    return left.createdAt().compareTo(right.createdAt());
+                })
+                .toList();
+        }
+
+        @Override
+        public List<ReviewApplicationService.ReviewStateView> findUpcomingByUserId(UUID userId, Instant nextReviewAfterExclusive) {
+            return states.values().stream()
+                .filter(view -> view.userId().equals(userId))
+                .filter(view -> view.nextReviewAt() != null && view.nextReviewAt().isAfter(nextReviewAfterExclusive))
+                .sorted((left, right) -> {
+                    int nextReviewCompare = left.nextReviewAt().compareTo(right.nextReviewAt());
+                    if (nextReviewCompare != 0) {
+                        return nextReviewCompare;
+                    }
+                    int queueCompare = left.queueType() == right.queueType() ? 0 : (left.queueType() == ReviewQueueType.RECALL ? -1 : 1);
+                    if (queueCompare != 0) {
+                        return queueCompare;
                     }
                     return left.createdAt().compareTo(right.createdAt());
                 })
@@ -272,6 +385,8 @@ class ReviewApplicationServiceTest {
                                                                ReviewQueueType queueType,
                                                                ReviewCompletionStatus completionStatus,
                                                                ReviewCompletionReason completionReason,
+                                                               ReviewSelfRecallResult selfRecallResult,
+                                                               String note,
                                                                BigDecimal masteryScore,
                                                                Instant lastReviewedAt,
                                                                Instant nextReviewAt,
@@ -289,6 +404,8 @@ class ReviewApplicationServiceTest {
                 nextReviewAt,
                 completionStatus,
                 completionReason,
+                selfRecallResult,
+                note,
                 unfinishedCount,
                 retryAfterHours,
                 createdAt,
@@ -302,6 +419,8 @@ class ReviewApplicationServiceTest {
         public void update(UUID reviewStateId,
                            ReviewCompletionStatus completionStatus,
                            ReviewCompletionReason completionReason,
+                           ReviewSelfRecallResult selfRecallResult,
+                           String note,
                            BigDecimal masteryScore,
                            Instant lastReviewedAt,
                            Instant nextReviewAt,
@@ -318,6 +437,8 @@ class ReviewApplicationServiceTest {
                 nextReviewAt,
                 completionStatus,
                 completionReason,
+                selfRecallResult,
+                note,
                 unfinishedCount,
                 retryAfterHours,
                 current.createdAt(),
@@ -368,6 +489,11 @@ class ReviewApplicationServiceTest {
 
         @Override
         public List<com.noteops.agent.application.task.TaskApplicationService.TaskView> findTodayByUserId(UUID userId, Instant dueAtInclusive) {
+            return List.of();
+        }
+
+        @Override
+        public List<com.noteops.agent.application.task.TaskApplicationService.TaskView> findUpcomingByUserId(UUID userId, Instant dueAfterExclusive) {
             return List.of();
         }
 

@@ -74,6 +74,8 @@ npm run build
   - `POST /api/v1/reviews/{review_item_id}/complete`
   - `POST /api/v1/tasks`
   - `GET /api/v1/tasks/today`
+  - `GET /api/v1/workspace/today`
+  - `GET /api/v1/workspace/upcoming`
   - `POST /api/v1/tasks/{task_id}/complete`
   - `POST /api/v1/tasks/{task_id}/skip`
   - `POST /api/v1/notes/{note_id}/change-proposals`
@@ -86,6 +88,7 @@ npm run build
   - Note list and Note detail browsing
   - Today view for Review + Task
   - Proposal list, generate, apply, and rollback
+- Backend workspace aggregation now supports `Today + Upcoming`, but the current web UI is still using the existing Today path and does not yet expose an Upcoming page.
 - Current implemented minimal governance details include:
   - Task supports `SYSTEM` and `USER`
   - Task Today supports optional `timezone_offset`

@@ -124,6 +124,12 @@ public class TaskApplicationService {
         return taskRepository.findTodayByUserId(userId, endOfDay(Instant.now(clock), timezoneOffset));
     }
 
+    public List<TaskView> listUpcoming(String userIdRaw, String timezoneOffsetRaw) {
+        UUID userId = parseUuid(userIdRaw, "INVALID_USER_ID", "user_id must be a valid UUID");
+        ZoneOffset timezoneOffset = parseTimezoneOffset(timezoneOffsetRaw);
+        return taskRepository.findUpcomingByUserId(userId, endOfDay(Instant.now(clock), timezoneOffset));
+    }
+
     @Transactional
     public TaskCommandResult complete(String taskIdRaw, String userIdRaw) {
         return changeStatus(taskIdRaw, userIdRaw, TaskStatus.DONE, "TASK_COMPLETE", "TASK_COMPLETED");
