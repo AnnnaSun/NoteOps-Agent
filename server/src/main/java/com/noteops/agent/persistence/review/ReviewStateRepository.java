@@ -18,6 +18,8 @@ public interface ReviewStateRepository {
 
     List<ReviewApplicationService.ReviewStateView> findDueByUserId(UUID userId, Instant now);
 
+    List<ReviewApplicationService.ReviewStateView> findUpcomingByUserId(UUID userId, Instant nextReviewAfterExclusive);
+
     Optional<ReviewApplicationService.ReviewStateView> findByIdAndUserId(UUID reviewStateId, UUID userId);
 
     Optional<ReviewApplicationService.ReviewStateView> findByUserIdAndNoteIdAndQueueType(UUID userId, UUID noteId, ReviewQueueType queueType);

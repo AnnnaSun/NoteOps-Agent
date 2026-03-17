@@ -75,6 +75,32 @@ class ReviewApplicationServiceTest {
     }
 
     @Test
+    void returnsUpcomingReviewsAfterTodayBoundary() {
+        UUID userId = UUID.randomUUID();
+        UUID todayNoteId = UUID.randomUUID();
+        UUID tomorrowNoteId = UUID.randomUUID();
+        UUID tomorrowRecallNoteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.notes.add(noteSummary(userId, todayNoteId, "Today"));
+        noteRepository.notes.add(noteSummary(userId, tomorrowNoteId, "Tomorrow schedule"));
+        noteRepository.notes.add(noteSummary(userId, tomorrowRecallNoteId, "Tomorrow recall"));
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        reviewStateRepository.create(userId, todayNoteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.ZERO, null, Instant.parse("2026-03-16T08:00:00Z"), 0, 0);
+        reviewStateRepository.create(userId, tomorrowNoteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.ZERO, null, Instant.parse("2026-03-17T02:00:00Z"), 0, 0);
+        reviewStateRepository.create(userId, tomorrowRecallNoteId, ReviewQueueType.RECALL, ReviewCompletionStatus.PARTIAL, ReviewCompletionReason.TIME_LIMIT,
+            null, null, BigDecimal.ZERO, null, Instant.parse("2026-03-17T02:00:00Z"), 1, 24);
+
+        ReviewApplicationService service = newService(reviewStateRepository, noteRepository);
+
+        List<ReviewApplicationService.ReviewTodayItemView> items = service.listUpcoming(userId.toString(), "+08:00");
+
+        assertThat(items).extracting(ReviewApplicationService.ReviewTodayItemView::title)
+            .containsExactly("Tomorrow recall", "Tomorrow schedule");
+    }
+
+    @Test
     void completesScheduleAndKeepsNormalSchedulingPath() {
         UUID userId = UUID.randomUUID();
         UUID noteId = UUID.randomUUID();
@@ -320,6 +346,25 @@ class ReviewApplicationServiceTest {
         }
 
         @Override
+        public List<ReviewApplicationService.ReviewStateView> findUpcomingByUserId(UUID userId, Instant nextReviewAfterExclusive) {
+            return states.values().stream()
+                .filter(view -> view.userId().equals(userId))
+                .filter(view -> view.nextReviewAt() != null && view.nextReviewAt().isAfter(nextReviewAfterExclusive))
+                .sorted((left, right) -> {
+                    int nextReviewCompare = left.nextReviewAt().compareTo(right.nextReviewAt());
+                    if (nextReviewCompare != 0) {
+                        return nextReviewCompare;
+                    }
+                    int queueCompare = left.queueType() == right.queueType() ? 0 : (left.queueType() == ReviewQueueType.RECALL ? -1 : 1);
+                    if (queueCompare != 0) {
+                        return queueCompare;
+                    }
+                    return left.createdAt().compareTo(right.createdAt());
+                })
+                .toList();
+        }
+
+        @Override
         public Optional<ReviewApplicationService.ReviewStateView> findByIdAndUserId(UUID reviewStateId, UUID userId) {
             return Optional.ofNullable(states.get(reviewStateId))
                 .filter(view -> view.userId().equals(userId));
@@ -444,6 +489,11 @@ class ReviewApplicationServiceTest {
 
         @Override
         public List<com.noteops.agent.application.task.TaskApplicationService.TaskView> findTodayByUserId(UUID userId, Instant dueAtInclusive) {
+            return List.of();
+        }
+
+        @Override
+        public List<com.noteops.agent.application.task.TaskApplicationService.TaskView> findUpcomingByUserId(UUID userId, Instant dueAfterExclusive) {
             return List.of();
         }
 

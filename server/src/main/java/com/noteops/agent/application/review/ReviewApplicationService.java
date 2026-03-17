@@ -24,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -82,6 +84,25 @@ public class ReviewApplicationService {
             .collect(Collectors.toMap(NoteQueryService.NoteSummaryView::id, Function.identity()));
 
         return reviewStateRepository.findDueByUserId(userId, now).stream()
+            .map(reviewState -> toTodayItem(reviewState, noteById))
+            .toList();
+    }
+
+    public List<ReviewTodayItemView> listUpcoming(String userIdRaw, String timezoneOffsetRaw) {
+        UUID userId = parseUuid(userIdRaw, "INVALID_USER_ID", "user_id must be a valid UUID");
+        ZoneOffset timezoneOffset = parseTimezoneOffset(timezoneOffsetRaw);
+        Instant now = Instant.now(clock);
+        Instant afterExclusive = endOfDay(now, timezoneOffset);
+
+        List<NoteQueryService.NoteSummaryView> notes = noteRepository.findAllByUserId(userId);
+        for (NoteQueryService.NoteSummaryView note : notes) {
+            reviewStateRepository.createInitialScheduleIfMissing(userId, note.id(), now);
+        }
+
+        Map<UUID, NoteQueryService.NoteSummaryView> noteById = notes.stream()
+            .collect(Collectors.toMap(NoteQueryService.NoteSummaryView::id, Function.identity()));
+
+        return reviewStateRepository.findUpcomingByUserId(userId, afterExclusive).stream()
             .map(reviewState -> toTodayItem(reviewState, noteById))
             .toList();
     }
@@ -581,6 +602,25 @@ public class ReviewApplicationService {
             return null;
         }
         return rawValue.trim();
+    }
+
+    private ZoneOffset parseTimezoneOffset(String rawValue) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return ZoneOffset.UTC;
+        }
+        try {
+            return ZoneOffset.of(rawValue.trim());
+        } catch (Exception exception) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TIMEZONE_OFFSET", "timezone_offset must be a valid UTC offset");
+        }
+    }
+
+    private Instant endOfDay(Instant now, ZoneOffset timezoneOffset) {
+        return LocalDate.ofInstant(now, timezoneOffset)
+            .plusDays(1)
+            .atStartOfDay()
+            .minusNanos(1)
+            .toInstant(timezoneOffset);
     }
 
     private BigDecimal increase(BigDecimal current, int delta) {

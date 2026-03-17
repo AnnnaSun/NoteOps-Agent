@@ -122,6 +122,25 @@ class TaskApplicationServiceTest {
     }
 
     @Test
+    void returnsUpcomingTasksAfterTodayBoundary() {
+        UUID userId = UUID.randomUUID();
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
+        taskRepository.create(userId, null, TaskSource.USER, "GENERAL", "Later today", null,
+            TaskStatus.TODO, 1, Instant.parse("2026-03-16T08:00:00Z"), TaskRelatedEntityType.NONE, null);
+        taskRepository.create(userId, null, TaskSource.SYSTEM, "REVIEW_FOLLOW_UP", "Tomorrow system", null,
+            TaskStatus.TODO, 90, Instant.parse("2026-03-17T02:00:00Z"), TaskRelatedEntityType.REVIEW, UUID.randomUUID());
+        taskRepository.create(userId, null, TaskSource.USER, "GENERAL", "Tomorrow user", null,
+            TaskStatus.TODO, 1, Instant.parse("2026-03-17T03:00:00Z"), TaskRelatedEntityType.NONE, null);
+
+        TaskApplicationService service = newService(taskRepository, new InMemoryNoteRepository(), LATE_DAY);
+
+        List<TaskApplicationService.TaskView> tasks = service.listUpcoming(userId.toString(), "+08:00");
+
+        assertThat(tasks).extracting(TaskApplicationService.TaskView::title)
+            .containsExactly("Tomorrow system", "Tomorrow user");
+    }
+
+    @Test
     void rejectsInvalidTimezoneOffset() {
         UUID userId = UUID.randomUUID();
         TaskApplicationService service = newService(new InMemoryTaskRepository(), new InMemoryNoteRepository());
@@ -244,6 +263,20 @@ class TaskApplicationServiceTest {
                 .sorted(Comparator
                     .comparing((TaskApplicationService.TaskView task) -> task.taskSource() == TaskSource.SYSTEM ? 0 : 1)
                     .thenComparing(task -> task.dueAt() == null ? Instant.MAX : task.dueAt())
+                    .thenComparing(TaskApplicationService.TaskView::priority, Comparator.reverseOrder())
+                    .thenComparing(TaskApplicationService.TaskView::createdAt))
+                .toList();
+        }
+
+        @Override
+        public List<TaskApplicationService.TaskView> findUpcomingByUserId(UUID userId, Instant dueAfterExclusive) {
+            return tasks.values().stream()
+                .filter(task -> task.userId().equals(userId))
+                .filter(task -> task.status() == TaskStatus.TODO || task.status() == TaskStatus.IN_PROGRESS)
+                .filter(task -> task.dueAt() != null && task.dueAt().isAfter(dueAfterExclusive))
+                .sorted(Comparator
+                    .comparing(TaskApplicationService.TaskView::dueAt)
+                    .thenComparing((TaskApplicationService.TaskView task) -> task.taskSource() == TaskSource.SYSTEM ? 0 : 1)
                     .thenComparing(TaskApplicationService.TaskView::priority, Comparator.reverseOrder())
                     .thenComparing(TaskApplicationService.TaskView::createdAt))
                 .toList();

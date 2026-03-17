@@ -73,6 +73,25 @@ public class JdbcReviewStateRepository implements ReviewStateRepository {
     }
 
     @Override
+    public List<ReviewApplicationService.ReviewStateView> findUpcomingByUserId(UUID userId, Instant nextReviewAfterExclusive) {
+        return jdbcClient.sql("""
+            select id, user_id, note_id, queue_type, mastery_score, last_reviewed_at, next_review_at,
+                   completion_status, completion_reason, unfinished_count, retry_after_hours, review_meta, created_at, updated_at
+            from review_states
+            where user_id = :userId
+              and next_review_at is not null
+              and next_review_at > :nextReviewAfterExclusive
+            order by next_review_at asc,
+                     case when queue_type = 'RECALL' then 0 else 1 end,
+                     created_at asc
+            """)
+            .param("userId", userId)
+            .param("nextReviewAfterExclusive", Timestamp.from(nextReviewAfterExclusive))
+            .query((rs, rowNum) -> mapView(rs))
+            .list();
+    }
+
+    @Override
     public Optional<ReviewApplicationService.ReviewStateView> findByIdAndUserId(UUID reviewStateId, UUID userId) {
         return jdbcClient.sql("""
             select id, user_id, note_id, queue_type, mastery_score, last_reviewed_at, next_review_at,

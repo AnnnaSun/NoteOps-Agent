@@ -82,6 +82,27 @@ public class JdbcTaskRepository implements TaskRepository {
     }
 
     @Override
+    public List<TaskApplicationService.TaskView> findUpcomingByUserId(UUID userId, Instant dueAfterExclusive) {
+        return jdbcClient.sql("""
+            select id, user_id, note_id, task_source, task_type, title, description, status,
+                   priority, due_at, related_entity_type, related_entity_id, created_at, updated_at
+            from tasks
+            where user_id = :userId
+              and status in ('TODO', 'IN_PROGRESS')
+              and due_at is not null
+              and due_at > :dueAfterExclusive
+            order by due_at asc,
+                     case when task_source = 'SYSTEM' then 0 else 1 end,
+                     priority desc,
+                     created_at asc
+            """)
+            .param("userId", userId)
+            .param("dueAfterExclusive", Timestamp.from(dueAfterExclusive))
+            .query((rs, rowNum) -> mapView(rs))
+            .list();
+    }
+
+    @Override
     public Optional<TaskApplicationService.TaskView> findByIdAndUserId(UUID taskId, UUID userId) {
         return jdbcClient.sql("""
             select id, user_id, note_id, task_source, task_type, title, description, status,
