@@ -48,7 +48,8 @@ body::before {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -111,7 +112,10 @@ button {
 }
 
 .user-form,
-.capture-form {
+.capture-form,
+.search-form,
+.review-form,
+.field-stack {
   display: grid;
   gap: 12px;
 }
@@ -234,7 +238,8 @@ button {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.32);
@@ -245,7 +250,8 @@ textarea {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   outline: none;
   border-color: rgba(79, 121, 163, 0.4);
   box-shadow:
@@ -256,6 +262,10 @@ textarea:focus {
 textarea {
   min-height: 132px;
   resize: vertical;
+}
+
+select {
+  appearance: none;
 }
 
 button {
@@ -456,6 +466,7 @@ button:disabled {
 }
 
 .today-grid,
+.search-grid,
 .content-grid,
 .proposal-snapshots,
 .detail-meta-grid {
@@ -463,11 +474,38 @@ button:disabled {
   gap: 16px;
 }
 
+.workspace-sections {
+  display: grid;
+  gap: 22px;
+}
+
+.workspace-cluster {
+  display: grid;
+  gap: 14px;
+}
+
+.workspace-cluster + .workspace-cluster {
+  padding-top: 20px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.workspace-cluster-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .today-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.search-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .today-grid > .subpanel,
+.search-grid > .subpanel,
 .list-row > div,
 .detail-meta-grid > div,
 .proposal-summary-card {
@@ -487,12 +525,30 @@ button:disabled {
   background: linear-gradient(180deg, rgba(245, 243, 255, 0.98), rgba(255, 255, 255, 0.98));
 }
 
+.search-panel-exact {
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.98));
+}
+
+.search-panel-related {
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.98));
+}
+
+.search-panel-external {
+  background: linear-gradient(180deg, rgba(240, 253, 250, 0.98), rgba(255, 255, 255, 0.98));
+}
+
 .subpanel-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.meta-chip-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .subpanel-description {
@@ -528,6 +584,75 @@ button:disabled {
   margin-top: 10px;
 }
 
+.review-list-row {
+  align-items: stretch;
+}
+
+.review-group {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.subpanel .review-group + .review-group {
+  margin-top: 12px;
+}
+
+.review-group-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-group-summary {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.review-group-summary p {
+  margin: 0;
+}
+
+.review-group-id {
+  font-size: 0.8rem;
+  color: var(--ink-500);
+}
+
+.review-group-list {
+  display: grid;
+  gap: 10px;
+}
+
+.review-group-item {
+  padding: 12px;
+  background: rgba(248, 250, 252, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.review-form {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(148, 163, 184, 0.3);
+}
+
+.field-stack {
+  gap: 8px;
+}
+
+.compact-textarea {
+  min-height: 88px;
+}
+
+.search-result-detail {
+  font-size: 0.88rem;
+  color: var(--ink-500);
+}
+
 .row-meta {
   display: grid;
   gap: 8px;
@@ -553,6 +678,11 @@ button:disabled {
   flex-wrap: wrap;
   gap: 8px;
   justify-items: unset;
+}
+
+.compact-button {
+  padding: 8px 12px;
+  white-space: nowrap;
 }
 
 .tone-slate {
@@ -718,6 +848,7 @@ pre {
   .workspace-overview,
   .hero-panel,
   .today-grid,
+  .search-grid,
   .content-grid,
   .proposal-snapshots,
   .proposal-summary-grid {

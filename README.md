@@ -1,6 +1,6 @@
 # NoteOps Agent
 
-Phase 1 monorepo for the NoteOps knowledge kernel. The current repository state has completed the minimal M3-M7 backend and web loops defined in `docs/codex/Plan.md`.
+Phase 2 monorepo for the NoteOps Review / Search / Today Workspace milestone. The current repository state has completed the minimal Phase 2 backend and web loops defined in `docs/codex/Plan.md`.
 
 ## Structure
 
@@ -64,7 +64,7 @@ npm run build
 
 ## Current Scope
 
-- Phase 1 currently has M3-M7 minimal loops in place: Capture, Note query, Review, Task, Proposal governance, and a minimal Web workspace.
+- Phase 1 minimal kernel is complete, and the repository is now aligned to the Phase 2 workspace milestone.
 - Current implemented backend API scope includes:
   - `POST /api/v1/captures`
   - `GET /api/v1/captures/{id}`
@@ -76,6 +76,7 @@ npm run build
   - `GET /api/v1/tasks/today`
   - `GET /api/v1/workspace/today`
   - `GET /api/v1/workspace/upcoming`
+  - `GET /api/v1/search`
   - `POST /api/v1/tasks/{task_id}/complete`
   - `POST /api/v1/tasks/{task_id}/skip`
   - `POST /api/v1/notes/{note_id}/change-proposals`
@@ -86,13 +87,15 @@ npm run build
   - explicit `user_id` selection
   - `TEXT / URL` Capture submission
   - Note list and Note detail browsing
+  - Search three-bucket results
   - Today view for Review + Task
+  - Upcoming view for Review + Task
   - Proposal list, generate, apply, and rollback
-- Backend workspace aggregation now supports `Today + Upcoming`, but the current web UI is still using the existing Today path and does not yet expose an Upcoming page.
 - Current implemented minimal governance details include:
   - Task supports `SYSTEM` and `USER`
   - Task Today supports optional `timezone_offset`
   - Review can derive `REVIEW_FOLLOW_UP` system tasks
+  - duplicate open user task creation is rejected with `409 OPEN_TASK_ALREADY_EXISTS`
   - Proposal currently supports only `INTERPRETATION + LOW` via `REFRESH_INTERPRETATION`
 
 ## Known Gaps
@@ -100,5 +103,6 @@ npm run build
 - URL extraction is still a Phase 1 placeholder implementation and is not a full fetch/extraction pipeline.
 - Proposal governance is still limited to `INTERPRETATION + LOW`; `METADATA`, `RELATION`, and higher-risk governance are not implemented.
 - There is no complete account system; the current web flow uses explicit `user_id`.
-- Search, formal Idea lifecycle, Trend Inbox, full PWA/offline support, and mobile apps are still out of scope.
-- Full manual end-to-end browser validation is still pending; current verification is based on backend tests and frontend build.
+- Formal Idea lifecycle, Trend Inbox, full PWA/offline support, and mobile apps are still out of scope.
+- External search provider integration is still stubbed; `external_supplements` is not backed by a real provider yet.
+- Full browser end-to-end regression is not yet complete; current verification is based on targeted backend tests, manual issue reproduction, and frontend build.

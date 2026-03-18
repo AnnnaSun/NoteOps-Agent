@@ -82,6 +82,72 @@ export type TaskItem = {
   updated_at: string;
 };
 
+export type WorkspaceToday = {
+  today_reviews: ReviewTodayItem[];
+  today_tasks: TaskItem[];
+};
+
+export type WorkspaceUpcoming = {
+  upcoming_reviews: ReviewTodayItem[];
+  upcoming_tasks: TaskItem[];
+};
+
+export type SearchExactMatch = {
+  note_id: string;
+  title: string;
+  current_summary: string;
+  current_key_points: string[];
+  latest_content: string;
+  updated_at: string;
+};
+
+export type SearchRelatedMatch = {
+  note_id: string;
+  title: string;
+  current_summary: string;
+  current_key_points: string[];
+  latest_content: string;
+  relation_reason: string;
+  updated_at: string;
+};
+
+export type SearchExternalSupplement = {
+  source_name: string;
+  source_uri: string;
+  summary: string;
+  keywords: string[];
+  relation_tags: string[];
+};
+
+export type SearchResult = {
+  query: string;
+  exact_matches: SearchExactMatch[];
+  related_matches: SearchRelatedMatch[];
+  external_supplements: SearchExternalSupplement[];
+};
+
+export type ReviewCompletionPayload = {
+  user_id: string;
+  completion_status: string;
+  completion_reason?: string;
+  self_recall_result?: string;
+  note?: string;
+};
+
+export type ReviewCompletionResult = {
+  id: string;
+  note_id: string;
+  queue_type: string;
+  completion_status: string;
+  completion_reason: string | null;
+  self_recall_result: string | null;
+  note: string | null;
+  next_review_at: string | null;
+  retry_after_hours: number;
+  unfinished_count: number;
+  mastery_score: number | null;
+};
+
 export type ChangeProposal = {
   id: string;
   user_id: string;

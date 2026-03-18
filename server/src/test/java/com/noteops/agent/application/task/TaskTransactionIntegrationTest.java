@@ -1,5 +1,6 @@
 package com.noteops.agent.application.task;
 
+import com.noteops.agent.api.ApiException;
 import com.noteops.agent.persistence.event.UserActionEventRepository;
 import com.noteops.agent.persistence.note.NoteRepository;
 import com.noteops.agent.persistence.trace.AgentTraceRepository;
@@ -101,6 +102,49 @@ class TaskTransactionIntegrationTest {
             .single();
 
         assertThat(taskCount).isZero();
+    }
+
+    @Test
+    void rejectsDuplicateOpenUserTaskWithoutWritingSecondRow() {
+        UUID userId = UUID.randomUUID();
+        failingUserActionEventRepository.fail = false;
+
+        taskApplicationService.create(
+            new TaskApplicationService.CreateTaskCommand(
+                userId.toString(),
+                "Transactional task",
+                "Should stay unique",
+                "GENERAL",
+                1,
+                null,
+                null,
+                null,
+                null
+            )
+        );
+
+        assertThatThrownBy(() -> taskApplicationService.create(
+            new TaskApplicationService.CreateTaskCommand(
+                userId.toString(),
+                "Transactional task",
+                "Should stay unique",
+                "GENERAL",
+                1,
+                null,
+                null,
+                null,
+                null
+            )
+        ))
+            .isInstanceOf(ApiException.class)
+            .hasMessage("an open user task with the same title and binding already exists");
+
+        Integer taskCount = jdbcClient.sql("select count(*) from tasks where user_id = :userId")
+            .param("userId", userId)
+            .query(Integer.class)
+            .single();
+
+        assertThat(taskCount).isEqualTo(1);
     }
 
     @TestConfiguration

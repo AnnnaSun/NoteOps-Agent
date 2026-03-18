@@ -85,6 +85,35 @@ class TaskApplicationServiceTest {
     }
 
     @Test
+    void rejectsDuplicateOpenUserTaskForSameBinding() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.store(noteSummary(userId, noteId, "Bound note"));
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
+        TaskApplicationService service = newService(taskRepository, noteRepository);
+
+        TaskApplicationService.CreateTaskCommand command = new TaskApplicationService.CreateTaskCommand(
+            userId.toString(),
+            "跟进这次 review",
+            null,
+            "REVIEW_ACTION",
+            null,
+            null,
+            noteId.toString(),
+            "NOTE",
+            noteId.toString()
+        );
+
+        service.create(command);
+
+        assertThatThrownBy(() -> service.create(command))
+            .isInstanceOf(ApiException.class)
+            .hasMessage("an open user task with the same title and binding already exists");
+        assertThat(taskRepository.tasks).hasSize(1);
+    }
+
+    @Test
     void returnsTodayTasksUsingProvidedTimezoneOffset() {
         UUID userId = UUID.randomUUID();
         UUID noteId = UUID.randomUUID();
@@ -298,6 +327,25 @@ class TaskApplicationServiceTest {
                 .filter(task -> task.taskSource() == taskSource)
                 .filter(task -> task.taskType().equals(taskType))
                 .filter(task -> noteId.equals(task.noteId()))
+                .filter(task -> task.status() == TaskStatus.TODO || task.status() == TaskStatus.IN_PROGRESS)
+                .findFirst();
+        }
+
+        @Override
+        public Optional<TaskApplicationService.TaskView> findOpenDuplicateUserTask(UUID userId,
+                                                                                   String title,
+                                                                                   String taskType,
+                                                                                   UUID noteId,
+                                                                                   TaskRelatedEntityType relatedEntityType,
+                                                                                   UUID relatedEntityId) {
+            return tasks.values().stream()
+                .filter(task -> task.userId().equals(userId))
+                .filter(task -> task.taskSource() == TaskSource.USER)
+                .filter(task -> task.title().equals(title))
+                .filter(task -> task.taskType().equals(taskType))
+                .filter(task -> task.relatedEntityType() == relatedEntityType)
+                .filter(task -> java.util.Objects.equals(task.noteId(), noteId))
+                .filter(task -> java.util.Objects.equals(task.relatedEntityId(), relatedEntityId))
                 .filter(task -> task.status() == TaskStatus.TODO || task.status() == TaskStatus.IN_PROGRESS)
                 .findFirst();
         }

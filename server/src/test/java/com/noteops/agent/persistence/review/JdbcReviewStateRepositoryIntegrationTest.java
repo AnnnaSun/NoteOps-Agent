@@ -52,9 +52,32 @@ class JdbcReviewStateRepositoryIntegrationTest {
                 retry_after_hours integer not null default 0,
                 review_meta jsonb not null default '{}',
                 created_at timestamp with time zone not null default current_timestamp,
-                updated_at timestamp with time zone not null default current_timestamp
+                updated_at timestamp with time zone not null default current_timestamp,
+                constraint uq_review_states_user_note_queue unique (user_id, note_id, queue_type)
             )
             """).update();
+    }
+
+    @Test
+    void createInitialScheduleIfMissingIsConflictSafe() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+
+        reviewStateRepository.createInitialScheduleIfMissing(userId, noteId, Instant.parse("2026-03-18T01:00:00Z"));
+        reviewStateRepository.createInitialScheduleIfMissing(userId, noteId, Instant.parse("2026-03-18T02:00:00Z"));
+
+        Integer count = jdbcClient.sql("""
+            select count(*)
+            from review_states
+            where user_id = :userId and note_id = :noteId and queue_type = :queueType
+            """)
+            .param("userId", userId)
+            .param("noteId", noteId)
+            .param("queueType", ReviewQueueType.SCHEDULE.name())
+            .query(Integer.class)
+            .single();
+
+        assertThat(count).isEqualTo(1);
     }
 
     @Test

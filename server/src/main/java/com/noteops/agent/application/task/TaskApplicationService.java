@@ -61,14 +61,31 @@ public class TaskApplicationService {
         UUID noteId = parseOptionalUuid(command.noteId(), "INVALID_NOTE_ID", "note_id must be a valid UUID");
         Binding binding = resolveBinding(noteId, command.relatedEntityType(), command.relatedEntityId());
         validateNoteOwnership(userId, binding.noteId());
+        String taskType = defaultTaskType(command.taskType());
         int priority = normalizePriority(command.priority());
         Instant dueAt = parseOptionalInstant(command.dueAt(), "INVALID_DUE_AT", "due_at must be a valid ISO-8601 instant");
+
+        taskRepository.findOpenDuplicateUserTask(
+                userId,
+                title,
+                taskType,
+                binding.noteId(),
+                binding.relatedEntityType(),
+                binding.relatedEntityId()
+            )
+            .ifPresent(existing -> {
+                throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "OPEN_TASK_ALREADY_EXISTS",
+                    "an open user task with the same title and binding already exists"
+                );
+            });
 
         TaskView task = taskRepository.create(
             userId,
             binding.noteId(),
             TaskSource.USER,
-            defaultTaskType(command.taskType()),
+            taskType,
             title,
             blankToNull(command.description()),
             TaskStatus.TODO,

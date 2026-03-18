@@ -599,6 +599,25 @@ class ReviewApplicationServiceTest {
         }
 
         @Override
+        public Optional<com.noteops.agent.application.task.TaskApplicationService.TaskView> findOpenDuplicateUserTask(UUID userId,
+                                                                                                                       String title,
+                                                                                                                       String taskType,
+                                                                                                                       UUID noteId,
+                                                                                                                       TaskRelatedEntityType relatedEntityType,
+                                                                                                                       UUID relatedEntityId) {
+            return tasks.values().stream()
+                .filter(task -> task.userId().equals(userId))
+                .filter(task -> task.taskSource() == TaskSource.USER)
+                .filter(task -> task.title().equals(title))
+                .filter(task -> task.taskType().equals(taskType))
+                .filter(task -> task.relatedEntityType() == relatedEntityType)
+                .filter(task -> java.util.Objects.equals(task.noteId(), noteId))
+                .filter(task -> java.util.Objects.equals(task.relatedEntityId(), relatedEntityId))
+                .filter(task -> task.status() == TaskStatus.TODO || task.status() == TaskStatus.IN_PROGRESS)
+                .findFirst();
+        }
+
+        @Override
         public void updateStatus(UUID taskId, TaskStatus status) {
             com.noteops.agent.application.task.TaskApplicationService.TaskView existing = tasks.get(taskId);
             tasks.put(taskId, new com.noteops.agent.application.task.TaskApplicationService.TaskView(
