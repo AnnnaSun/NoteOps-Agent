@@ -120,11 +120,13 @@ Trend Inbox、source registry、趋势转 Note/Idea 留到更后阶段。file
 - 只作用于 `INTERPRETATION / METADATA / RELATION`
 - 不直接改写原始正文
 - apply / rollback 需要留痕
+- apply / rollback 响应暴露 `rollback_token`、`before_snapshot_summary`、`after_snapshot_summary`
 
 ### 4.3 Review 契约
 
 - 不能退化成单池 + 单布尔完成状态
 - Review complete 请求 / 响应需要反映完成质量与后续调度结果
+- Review complete / partial / not_started / abandoned 关键动作会写入 trace、event、tool log
 
 ### 4.4 Task 契约
 
@@ -136,6 +138,7 @@ Trend Inbox、source registry、趋势转 Note/Idea 留到更后阶段。file
 
 - 外部补充只做 evidence / proposal / conflict hint
 - 不得直接覆盖本地 Note 当前摘要
+- Search 查询与 external supplement 生成会写入 trace、event、tool log
 
 ---
 
@@ -197,3 +200,17 @@ Trend Inbox、source registry、趋势转 Note/Idea 留到更后阶段。file
 - Today / Upcoming 页面实际行为变化
 - Proposal / Event / Trace 语义变化
 - 当前完成状态发生变化
+
+## 9. 更新记录 2026-03-18
+
+### 已完成
+- Step 2.5 Search 三分栏后端契约已落地：`GET /api/v1/search` 返回 `exact_matches` / `related_matches` / `external_supplements`。
+- Search 现在基于 `notes` 与 `latest_content_id` 的只读查询做确定性分桶，`exact_matches` / `related_matches` 不重复同一条 note。
+- `external_supplements` 目前仍是 deterministic stub，只返回来源、摘要、关键词、关系标签，不接真实外部 provider。
+- Step 2.6 Proposal / Event / Trace 补强已完成：Review 和 Search 关键链路写入 `agent_traces`、`user_action_events`、`tool_invocation_logs`；`ChangeProposal` apply / rollback 响应补充 `rollback_token` 与 snapshot summary。
+
+### 验证
+- `mvn -q -Dtest=ReviewApplicationServiceTest,SearchApplicationServiceTest,ChangeProposalControllerTest test` 通过。
+
+### 风险
+- 外部补充仍是 stub，后续若接入真实 provider，需要重新校准结果字段与排序策略。

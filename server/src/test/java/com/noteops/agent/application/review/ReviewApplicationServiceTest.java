@@ -14,6 +14,7 @@ import com.noteops.agent.persistence.note.NoteRepository;
 import com.noteops.agent.persistence.review.ReviewStateRepository;
 import com.noteops.agent.persistence.task.TaskRepository;
 import com.noteops.agent.persistence.trace.AgentTraceRepository;
+import com.noteops.agent.persistence.trace.ToolInvocationLogRepository;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -105,12 +106,23 @@ class ReviewApplicationServiceTest {
         UUID userId = UUID.randomUUID();
         UUID noteId = UUID.randomUUID();
         InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        RecordingUserActionEventRepository eventRepository = new RecordingUserActionEventRepository();
+        RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
         ReviewApplicationService.ReviewStateView schedule = reviewStateRepository.create(
             userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
             null, null, BigDecimal.valueOf(10), null, NOW, 0, 0
         );
 
-        ReviewApplicationService service = newService(reviewStateRepository, new InMemoryNoteRepository());
+        ReviewApplicationService service = newService(
+            reviewStateRepository,
+            new InMemoryNoteRepository(),
+            taskRepository,
+            traceRepository,
+            eventRepository,
+            toolInvocationLogRepository
+        );
 
         ReviewApplicationService.ReviewCompletionView result = service.complete(
             schedule.id().toString(),
@@ -121,6 +133,14 @@ class ReviewApplicationServiceTest {
         assertThat(result.nextReviewAt()).isEqualTo(NOW.plusSeconds(3 * 24 * 3600));
         assertThat(result.masteryScore()).isEqualByComparingTo("30");
         assertThat(reviewStateRepository.findByUserIdAndNoteIdAndQueueType(userId, noteId, ReviewQueueType.RECALL)).isEmpty();
+        assertThat(traceRepository.created.entryType()).isEqualTo("REVIEW_COMPLETE");
+        assertThat(traceRepository.completed.traceId()).isEqualTo(traceRepository.traceId);
+        assertThat(eventRepository.events).hasSize(1);
+        assertThat(eventRepository.events.getFirst().eventType()).isEqualTo("REVIEW_COMPLETED");
+        assertThat(toolInvocationLogRepository.logs).hasSize(1);
+        assertThat(toolInvocationLogRepository.logs.getFirst().toolName()).isEqualTo("review.complete");
+        assertThat(toolInvocationLogRepository.logs.getFirst().status()).isEqualTo("COMPLETED");
+        assertThat(toolInvocationLogRepository.logs.getFirst().outputDigest()).doesNotContainKey("follow_up_task_id");
     }
 
     @Test
@@ -190,6 +210,50 @@ class ReviewApplicationServiceTest {
         assertThat(taskRepository.findByIdAndUserId(taskRepository.lastTaskId, userId)).get()
             .extracting(ReviewApplicationServiceTest::taskStatus)
             .isEqualTo(TaskStatus.DONE);
+    }
+
+    @Test
+    void partialScheduleWritesGovernanceArtifactsAndFollowUpTask() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        RecordingUserActionEventRepository eventRepository = new RecordingUserActionEventRepository();
+        RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
+        ReviewApplicationService.ReviewStateView schedule = reviewStateRepository.create(
+            userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.valueOf(50), null, NOW, 0, 0
+        );
+
+        ReviewApplicationService service = newService(
+            reviewStateRepository,
+            new InMemoryNoteRepository(),
+            taskRepository,
+            traceRepository,
+            eventRepository,
+            toolInvocationLogRepository
+        );
+
+        ReviewApplicationService.ReviewCompletionView result = service.complete(
+            schedule.id().toString(),
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "PARTIAL", "TIME_LIMIT", null, null)
+        );
+
+        assertThat(result.completionStatus()).isEqualTo(ReviewCompletionStatus.PARTIAL);
+        assertThat(traceRepository.created.entryType()).isEqualTo("REVIEW_COMPLETE");
+        assertThat(traceRepository.completed.orchestratorState()).containsEntry("completion_status", "PARTIAL");
+        assertThat(traceRepository.completed.orchestratorState()).containsEntry("completion_reason", "TIME_LIMIT");
+        assertThat(eventRepository.events).hasSize(2);
+        assertThat(eventRepository.events).extracting(ReviewUserActionEventRecord::eventType)
+            .containsExactly("SYSTEM_TASK_CREATED_FROM_REVIEW", "REVIEW_PARTIAL");
+        assertThat(eventRepository.events.getLast().payload()).containsEntry("completion_status", "PARTIAL");
+        assertThat(eventRepository.events.getLast().payload()).containsEntry("completion_reason", "TIME_LIMIT");
+        assertThat(toolInvocationLogRepository.logs).hasSize(1);
+        assertThat(toolInvocationLogRepository.logs.getFirst().toolName()).isEqualTo("review.complete");
+        assertThat(toolInvocationLogRepository.logs.getFirst().status()).isEqualTo("COMPLETED");
+        assertThat(toolInvocationLogRepository.logs.getFirst().outputDigest()).containsKey("follow_up_task_id");
+        assertThat(toolInvocationLogRepository.logs.getFirst().outputDigest().get("follow_up_task_id")).isEqualTo(taskRepository.lastTaskId);
     }
 
     @Test
@@ -290,6 +354,23 @@ class ReviewApplicationServiceTest {
             taskRepository,
             new InMemoryAgentTraceRepository(),
             new InMemoryUserActionEventRepository(),
+            Clock.fixed(NOW, ZoneOffset.UTC)
+        );
+    }
+
+    private ReviewApplicationService newService(InMemoryReviewStateRepository reviewStateRepository,
+                                               InMemoryNoteRepository noteRepository,
+                                               InMemoryTaskRepository taskRepository,
+                                               AgentTraceRepository agentTraceRepository,
+                                               UserActionEventRepository userActionEventRepository,
+                                               ToolInvocationLogRepository toolInvocationLogRepository) {
+        return new ReviewApplicationService(
+            reviewStateRepository,
+            noteRepository,
+            taskRepository,
+            agentTraceRepository,
+            userActionEventRepository,
+            toolInvocationLogRepository,
             Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }
@@ -607,5 +688,97 @@ class ReviewApplicationServiceTest {
         @Override
         public void append(UUID userId, String eventType, String entityType, UUID entityId, UUID traceId, Map<String, Object> payload) {
         }
+    }
+
+    private static final class RecordingAgentTraceRepository implements AgentTraceRepository {
+
+        private final UUID traceId = UUID.randomUUID();
+        private TraceCreateRecord created;
+        private TraceCompletionRecord completed;
+
+        @Override
+        public UUID create(UUID userId, String entryType, String goal, String rootEntityType, UUID rootEntityId, List<String> workerSequence, Map<String, Object> orchestratorState) {
+            created = new TraceCreateRecord(userId, entryType, goal, rootEntityType, rootEntityId, workerSequence, orchestratorState);
+            return traceId;
+        }
+
+        @Override
+        public void markCompleted(UUID traceId, String resultSummary, Map<String, Object> orchestratorState) {
+            completed = new TraceCompletionRecord(traceId, resultSummary, orchestratorState);
+        }
+
+        @Override
+        public void markFailed(UUID traceId, String resultSummary, Map<String, Object> orchestratorState) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    private static final class RecordingUserActionEventRepository implements UserActionEventRepository {
+
+        private final List<ReviewUserActionEventRecord> events = new ArrayList<>();
+
+        @Override
+        public void append(UUID userId, String eventType, String entityType, UUID entityId, UUID traceId, Map<String, Object> payload) {
+            events.add(new ReviewUserActionEventRecord(userId, eventType, entityType, entityId, traceId, payload));
+        }
+    }
+
+    private static final class RecordingToolInvocationLogRepository implements ToolInvocationLogRepository {
+
+        private final List<ReviewToolInvocationLogRecord> logs = new ArrayList<>();
+
+        @Override
+        public void append(UUID userId,
+                           UUID traceId,
+                           String toolName,
+                           String status,
+                           Map<String, Object> inputDigest,
+                           Map<String, Object> outputDigest,
+                           Integer latencyMs,
+                           String errorCode,
+                           String errorMessage) {
+            logs.add(new ReviewToolInvocationLogRecord(userId, traceId, toolName, status, inputDigest, outputDigest, latencyMs, errorCode, errorMessage));
+        }
+    }
+
+    private record TraceCreateRecord(
+        UUID userId,
+        String entryType,
+        String goal,
+        String rootEntityType,
+        UUID rootEntityId,
+        List<String> workerSequence,
+        Map<String, Object> orchestratorState
+    ) {
+    }
+
+    private record TraceCompletionRecord(
+        UUID traceId,
+        String resultSummary,
+        Map<String, Object> orchestratorState
+    ) {
+    }
+
+    private record ReviewUserActionEventRecord(
+        UUID userId,
+        String eventType,
+        String entityType,
+        UUID entityId,
+        UUID traceId,
+        Map<String, Object> payload
+    ) {
+    }
+
+    private record ReviewToolInvocationLogRecord(
+        UUID userId,
+        UUID traceId,
+        String toolName,
+        String status,
+        Map<String, Object> inputDigest,
+        Map<String, Object> outputDigest,
+        Integer latencyMs,
+        String errorCode,
+        String errorMessage
+    ) {
     }
 }

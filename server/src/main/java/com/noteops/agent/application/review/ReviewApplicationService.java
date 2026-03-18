@@ -14,6 +14,7 @@ import com.noteops.agent.persistence.note.NoteRepository;
 import com.noteops.agent.persistence.review.ReviewStateRepository;
 import com.noteops.agent.persistence.task.TaskRepository;
 import com.noteops.agent.persistence.trace.AgentTraceRepository;
+import com.noteops.agent.persistence.trace.ToolInvocationLogRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,12 +41,15 @@ public class ReviewApplicationService {
     private static final Logger log = LoggerFactory.getLogger(ReviewApplicationService.class);
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
     private static final String REVIEW_FOLLOW_UP_TASK_TYPE = "REVIEW_FOLLOW_UP";
+    private static final ToolInvocationLogRepository NO_OP_TOOL_INVOCATION_LOG_REPOSITORY = (userId, traceId, toolName, status, inputDigest, outputDigest, latencyMs, errorCode, errorMessage) -> {
+    };
 
     private final ReviewStateRepository reviewStateRepository;
     private final NoteRepository noteRepository;
     private final TaskRepository taskRepository;
     private final AgentTraceRepository agentTraceRepository;
     private final UserActionEventRepository userActionEventRepository;
+    private final ToolInvocationLogRepository toolInvocationLogRepository;
     private final Clock clock;
 
     @Autowired
@@ -53,8 +57,33 @@ public class ReviewApplicationService {
                                     NoteRepository noteRepository,
                                     TaskRepository taskRepository,
                                     AgentTraceRepository agentTraceRepository,
+                                    UserActionEventRepository userActionEventRepository,
+                                    ToolInvocationLogRepository toolInvocationLogRepository) {
+        this(
+            reviewStateRepository,
+            noteRepository,
+            taskRepository,
+            agentTraceRepository,
+            userActionEventRepository,
+            toolInvocationLogRepository,
+            Clock.systemUTC()
+        );
+    }
+
+    public ReviewApplicationService(ReviewStateRepository reviewStateRepository,
+                                    NoteRepository noteRepository,
+                                    TaskRepository taskRepository,
+                                    AgentTraceRepository agentTraceRepository,
                                     UserActionEventRepository userActionEventRepository) {
-        this(reviewStateRepository, noteRepository, taskRepository, agentTraceRepository, userActionEventRepository, Clock.systemUTC());
+        this(
+            reviewStateRepository,
+            noteRepository,
+            taskRepository,
+            agentTraceRepository,
+            userActionEventRepository,
+            NO_OP_TOOL_INVOCATION_LOG_REPOSITORY,
+            Clock.systemUTC()
+        );
     }
 
     ReviewApplicationService(ReviewStateRepository reviewStateRepository,
@@ -63,11 +92,30 @@ public class ReviewApplicationService {
                              AgentTraceRepository agentTraceRepository,
                              UserActionEventRepository userActionEventRepository,
                              Clock clock) {
+        this(
+            reviewStateRepository,
+            noteRepository,
+            taskRepository,
+            agentTraceRepository,
+            userActionEventRepository,
+            NO_OP_TOOL_INVOCATION_LOG_REPOSITORY,
+            clock
+        );
+    }
+
+    ReviewApplicationService(ReviewStateRepository reviewStateRepository,
+                             NoteRepository noteRepository,
+                             TaskRepository taskRepository,
+                             AgentTraceRepository agentTraceRepository,
+                             UserActionEventRepository userActionEventRepository,
+                             ToolInvocationLogRepository toolInvocationLogRepository,
+                             Clock clock) {
         this.reviewStateRepository = reviewStateRepository;
         this.noteRepository = noteRepository;
         this.taskRepository = taskRepository;
         this.agentTraceRepository = agentTraceRepository;
         this.userActionEventRepository = userActionEventRepository;
+        this.toolInvocationLogRepository = toolInvocationLogRepository;
         this.clock = clock;
     }
 
@@ -117,6 +165,7 @@ public class ReviewApplicationService {
         ReviewStateView target = reviewStateRepository.findByIdAndUserId(reviewItemId, userId)
             .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "REVIEW_ITEM_NOT_FOUND", "review item not found"));
         RecallFeedback recallFeedback = validateRecallFeedback(target.queueType(), command.selfRecallResult(), command.note());
+        long startedAt = System.nanoTime();
         log.info(
             "action=review_complete_start user_id={} review_item_id={} queue_type={} completion_status={} self_recall_result={} has_note={}",
             userId,
@@ -138,6 +187,9 @@ public class ReviewApplicationService {
         traceState.put("review_item_id", reviewItemId);
         traceState.put("queue_type", target.queueType().name());
         traceState.put("completion_status", completionStatus.name());
+        if (completionReason != null) {
+            traceState.put("completion_reason", completionReason.name());
+        }
         if (recallFeedback.selfRecallResult() != null) {
             traceState.put("self_recall_result", recallFeedback.selfRecallResult().name());
         }
@@ -155,24 +207,43 @@ public class ReviewApplicationService {
 
         ReviewStateView updated = reviewStateRepository.findByIdAndUserId(reviewItemId, userId).orElseThrow();
         UUID followUpTaskId = syncReviewFollowUpTask(updated, completionStatus, completionReason, traceId);
+        long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
 
-        Map<String, Object> payload = completionPayload(target.noteId(), completionStatus, completionReason, recallFeedback);
+        Map<String, Object> payload = completionPayload(target.noteId(), target.queueType(), completionStatus, completionReason, recallFeedback);
         if (followUpTaskId != null) {
             payload.put("follow_up_task_id", followUpTaskId);
         }
         userActionEventRepository.append(
             userId,
-            "REVIEW_COMPLETED",
+            reviewEventType(completionStatus),
             "REVIEW_STATE",
             reviewItemId,
             traceId,
             payload
         );
 
+        Map<String, Object> toolInputDigest = reviewToolInputDigest(reviewItemId, target.queueType(), completionStatus, completionReason, recallFeedback);
+        Map<String, Object> toolOutputDigest = reviewToolOutputDigest(updated, followUpTaskId);
+        toolInvocationLogRepository.append(
+            userId,
+            traceId,
+            "review.complete",
+            "COMPLETED",
+            toolInputDigest,
+            toolOutputDigest,
+            toLatencyMs(durationMs),
+            null,
+            null
+        );
+
         Map<String, Object> completionState = new LinkedHashMap<>();
         completionState.put("review_item_id", reviewItemId);
         completionState.put("note_id", target.noteId());
+        completionState.put("queue_type", target.queueType().name());
         completionState.put("completion_status", completionStatus.name());
+        if (completionReason != null) {
+            completionState.put("completion_reason", completionReason.name());
+        }
         if (recallFeedback.selfRecallResult() != null) {
             completionState.put("self_recall_result", recallFeedback.selfRecallResult().name());
         }
@@ -184,14 +255,16 @@ public class ReviewApplicationService {
         }
         agentTraceRepository.markCompleted(traceId, "Completed review " + reviewItemId, completionState);
         log.info(
-            "action=review_complete_success user_id={} review_item_id={} queue_type={} trace_id={} completion_status={} self_recall_result={} has_note={}",
+            "action=review_complete_success user_id={} review_item_id={} queue_type={} trace_id={} completion_status={} completion_reason={} self_recall_result={} has_note={} duration_ms={}",
             userId,
             reviewItemId,
             target.queueType(),
             traceId,
             completionStatus,
+            completionReason == null ? null : completionReason.name(),
             recallFeedback.selfRecallResult() == null ? null : recallFeedback.selfRecallResult().name(),
-            recallFeedback.note() != null
+            recallFeedback.note() != null,
+            durationMs
         );
         return toCompletionView(updated);
     }
@@ -405,11 +478,13 @@ public class ReviewApplicationService {
     }
 
     private Map<String, Object> completionPayload(UUID noteId,
+                                                  ReviewQueueType queueType,
                                                   ReviewCompletionStatus completionStatus,
                                                   ReviewCompletionReason completionReason,
                                                   RecallFeedback recallFeedback) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("note_id", noteId);
+        payload.put("queue_type", queueType.name());
         payload.put("completion_status", completionStatus.name());
         if (completionReason != null) {
             payload.put("completion_reason", completionReason.name());
@@ -421,6 +496,49 @@ public class ReviewApplicationService {
             payload.put("note", recallFeedback.note());
         }
         return payload;
+    }
+
+    private String reviewEventType(ReviewCompletionStatus completionStatus) {
+        return switch (completionStatus) {
+            case COMPLETED -> "REVIEW_COMPLETED";
+            case PARTIAL -> "REVIEW_PARTIAL";
+            case NOT_STARTED -> "REVIEW_NOT_STARTED";
+            case ABANDONED -> "REVIEW_ABANDONED";
+        };
+    }
+
+    private Map<String, Object> reviewToolInputDigest(UUID reviewItemId,
+                                                      ReviewQueueType queueType,
+                                                      ReviewCompletionStatus completionStatus,
+                                                      ReviewCompletionReason completionReason,
+                                                      RecallFeedback recallFeedback) {
+        Map<String, Object> digest = new LinkedHashMap<>();
+        digest.put("review_item_id", reviewItemId);
+        digest.put("queue_type", queueType.name());
+        digest.put("completion_status", completionStatus.name());
+        if (completionReason != null) {
+            digest.put("completion_reason", completionReason.name());
+        }
+        if (recallFeedback.selfRecallResult() != null) {
+            digest.put("self_recall_result", recallFeedback.selfRecallResult().name());
+        }
+        digest.put("has_note", recallFeedback.note() != null);
+        return digest;
+    }
+
+    private Map<String, Object> reviewToolOutputDigest(ReviewStateView updated, UUID followUpTaskId) {
+        Map<String, Object> digest = new LinkedHashMap<>();
+        digest.put("review_item_id", updated.id());
+        digest.put("completion_status", updated.completionStatus().name());
+        digest.put("queue_type", updated.queueType().name());
+        digest.put("next_review_at", updated.nextReviewAt());
+        digest.put("retry_after_hours", updated.retryAfterHours());
+        digest.put("unfinished_count", updated.unfinishedCount());
+        digest.put("mastery_score", updated.masteryScore());
+        if (followUpTaskId != null) {
+            digest.put("follow_up_task_id", followUpTaskId);
+        }
+        return digest;
     }
 
     private UUID syncReviewFollowUpTask(ReviewStateView reviewState,
@@ -535,6 +653,13 @@ public class ReviewApplicationService {
             reviewState.nextReviewAt(),
             reviewState.queueType() == ReviewQueueType.RECALL ? 90 : 70
         );
+    }
+
+    private int toLatencyMs(long durationMs) {
+        if (durationMs > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return (int) durationMs;
     }
 
     private UUID parseUuid(String rawValue, String errorCode, String message) {

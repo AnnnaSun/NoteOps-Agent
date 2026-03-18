@@ -107,6 +107,9 @@ class ChangeProposalControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.trace_id").value("trace-proposal-apply"))
+            .andExpect(jsonPath("$.data.rollback_token").value("rollback-token"))
+            .andExpect(jsonPath("$.data.before_snapshot_summary").value("current_summary=before; current_key_points=[before-point]"))
+            .andExpect(jsonPath("$.data.after_snapshot_summary").value("current_summary=after; current_key_points=[after-point]"))
             .andExpect(jsonPath("$.data.status").value("APPLIED"));
     }
 
@@ -132,6 +135,7 @@ class ChangeProposalControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.trace_id").value("trace-proposal-rollback"))
+            .andExpect(jsonPath("$.data.rollback_token").value("rollback-token"))
             .andExpect(jsonPath("$.data.status").value("ROLLED_BACK"));
     }
 
@@ -168,7 +172,7 @@ class ChangeProposalControllerTest {
             Map.of("current_summary", "before", "current_key_points", List.of("before-point")),
             Map.of("current_summary", "after", "current_key_points", List.of("after-point")),
             List.of(Map.of("content_type", "CAPTURE_RAW")),
-            status == ChangeProposalStatus.APPLIED ? "rollback-token" : null,
+            status == ChangeProposalStatus.PENDING_REVIEW ? null : "rollback-token",
             status,
             Instant.parse("2026-03-16T01:00:00Z"),
             Instant.parse("2026-03-16T01:05:00Z")
