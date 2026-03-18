@@ -6,6 +6,7 @@ import com.noteops.agent.domain.review.ReviewCompletionStatus;
 import com.noteops.agent.domain.review.ReviewQueueType;
 import com.noteops.agent.domain.review.ReviewSelfRecallResult;
 import com.noteops.agent.persistence.JsonSupport;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -30,29 +31,31 @@ public class JdbcReviewStateRepository implements ReviewStateRepository {
 
     @Override
     public void createInitialScheduleIfMissing(UUID userId, UUID noteId, Instant now) {
-        jdbcClient.sql("""
-            insert into review_states (
-                id, user_id, note_id, queue_type, mastery_score, next_review_at,
-                completion_status, unfinished_count, retry_after_hours, review_meta
-            )
-            select :id, :userId, :noteId, :queueType, :masteryScore, :nextReviewAt,
-                   :completionStatus, :unfinishedCount, :retryAfterHours, cast(:reviewMeta as jsonb)
-            where not exists (
-                select 1 from review_states
-                where user_id = :userId and note_id = :noteId and queue_type = :queueType
-            )
-            """)
-            .param("id", UUID.randomUUID())
-            .param("userId", userId)
-            .param("noteId", noteId)
-            .param("queueType", ReviewQueueType.SCHEDULE.name())
-            .param("masteryScore", BigDecimal.ZERO)
-            .param("nextReviewAt", Timestamp.from(now))
-            .param("completionStatus", ReviewCompletionStatus.NOT_STARTED.name())
-            .param("unfinishedCount", 0)
-            .param("retryAfterHours", 0)
-            .param("reviewMeta", jsonSupport.write(Map.of()))
-            .update();
+        try {
+            jdbcClient.sql("""
+                insert into review_states (
+                    id, user_id, note_id, queue_type, mastery_score, next_review_at,
+                    completion_status, unfinished_count, retry_after_hours, review_meta
+                )
+                values (
+                    :id, :userId, :noteId, :queueType, :masteryScore, :nextReviewAt,
+                    :completionStatus, :unfinishedCount, :retryAfterHours, cast(:reviewMeta as jsonb)
+                )
+                """)
+                .param("id", UUID.randomUUID())
+                .param("userId", userId)
+                .param("noteId", noteId)
+                .param("queueType", ReviewQueueType.SCHEDULE.name())
+                .param("masteryScore", BigDecimal.ZERO)
+                .param("nextReviewAt", Timestamp.from(now))
+                .param("completionStatus", ReviewCompletionStatus.NOT_STARTED.name())
+                .param("unfinishedCount", 0)
+                .param("retryAfterHours", 0)
+                .param("reviewMeta", jsonSupport.write(Map.of()))
+                .update();
+        } catch (DuplicateKeyException ignored) {
+            // Another concurrent workspace/read path already created the same initial schedule.
+        }
     }
 
     @Override

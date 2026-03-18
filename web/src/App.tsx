@@ -1,19 +1,35 @@
 import { FormEvent, useEffect, useState, useTransition } from "react";
 import {
   applyChangeProposal,
+  completeReview,
   createCapture,
   createChangeProposal,
+  getWorkspaceToday,
+  getWorkspaceUpcoming,
   getNote,
   listChangeProposals,
   listNotes,
-  listReviewsToday,
-  listTasksToday,
+  searchNotes,
   rollbackChangeProposal
 } from "./api";
-import type { CaptureResponse, ChangeProposal, NoteDetail, NoteSummary, ReviewTodayItem, TaskItem } from "./types";
+import type {
+  CaptureResponse,
+  ChangeProposal,
+  NoteDetail,
+  NoteSummary,
+  ReviewCompletionPayload,
+  ReviewTodayItem,
+  SearchResult,
+  TaskItem,
+  WorkspaceToday,
+  WorkspaceUpcoming
+} from "./types";
 
 const DEFAULT_USER_ID = "11111111-1111-1111-1111-111111111111";
 const USER_ID_STORAGE_KEY = "noteops-user-id";
+const REVIEW_COMPLETION_STATUS_OPTIONS = ["COMPLETED", "PARTIAL", "NOT_STARTED", "ABANDONED"] as const;
+const REVIEW_COMPLETION_REASON_OPTIONS = ["TIME_LIMIT", "TOO_HARD", "VAGUE_MEMORY", "DEFERRED"] as const;
+const REVIEW_SELF_RECALL_RESULT_OPTIONS = ["GOOD", "VAGUE", "FAILED"] as const;
 
 function getTimezoneOffsetLabel(): string {
   const minutes = -new Date().getTimezoneOffset();
@@ -92,6 +108,94 @@ function readStoredUserId(): string {
   return window.localStorage.getItem(USER_ID_STORAGE_KEY) ?? DEFAULT_USER_ID;
 }
 
+type WorkspaceSnapshot = {
+  today: WorkspaceToday;
+  upcoming: WorkspaceUpcoming;
+};
+
+type UpcomingReviewGroup = {
+  noteId: string;
+  title: string;
+  currentSummary: string;
+  reviews: ReviewTodayItem[];
+};
+
+async function fetchWorkspaceSnapshot(userId: string): Promise<WorkspaceSnapshot> {
+  const timezoneOffset = getTimezoneOffsetLabel();
+  const [today, upcoming] = await Promise.all([
+    getWorkspaceToday(userId, timezoneOffset),
+    getWorkspaceUpcoming(userId, timezoneOffset)
+  ]);
+  return { today, upcoming };
+}
+
+function getReviewTimingLabel(review: ReviewTodayItem): string {
+  if (review.next_review_at) {
+    return `下次 ${formatDateTime(review.next_review_at)}`;
+  }
+  if (review.retry_after_hours > 0) {
+    return `${review.retry_after_hours}h 后重试`;
+  }
+  return "等待重新排期";
+}
+
+function getTaskTimingLabel(task: TaskItem): string {
+  return task.due_at ? `截止 ${formatDateTime(task.due_at)}` : "无 due_at";
+}
+
+function getUpcomingReviewQueueDescription(review: ReviewTodayItem): string {
+  return review.queue_type === "RECALL"
+    ? "短期 recall 回补队列，用来快速追踪未掌握内容。"
+    : "长期 schedule 节奏队列，用来保留正常复习周期。";
+}
+
+function groupUpcomingReviewsByNote(reviews: ReviewTodayItem[]): UpcomingReviewGroup[] {
+  const groups = new Map<string, UpcomingReviewGroup>();
+  for (const review of reviews) {
+    const existing = groups.get(review.note_id);
+    if (existing) {
+      existing.reviews.push(review);
+      continue;
+    }
+    groups.set(review.note_id, {
+      noteId: review.note_id,
+      title: review.title,
+      currentSummary: review.current_summary,
+      reviews: [review]
+    });
+  }
+  return Array.from(groups.values());
+}
+
+type ReviewFormDraft = {
+  completionStatus: string;
+  completionReason: string;
+  selfRecallResult: string;
+  note: string;
+};
+
+function isRecallQueue(queueType: string): boolean {
+  return queueType === "RECALL";
+}
+
+function requiresCompletionReason(completionStatus: string): boolean {
+  return completionStatus !== "COMPLETED";
+}
+
+function createReviewFormDraft(queueType: string): ReviewFormDraft {
+  return {
+    completionStatus: "COMPLETED",
+    completionReason: "",
+    selfRecallResult: isRecallQueue(queueType) ? "GOOD" : "",
+    note: ""
+  };
+}
+
+function normalizeOptionalValue(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 export default function App() {
   const [userIdInput, setUserIdInput] = useState(readStoredUserId);
   const [activeUserId, setActiveUserId] = useState(readStoredUserId);
@@ -101,22 +205,57 @@ export default function App() {
   const [proposals, setProposals] = useState<ChangeProposal[]>([]);
   const [reviewsToday, setReviewsToday] = useState<ReviewTodayItem[]>([]);
   const [tasksToday, setTasksToday] = useState<TaskItem[]>([]);
+  const [upcomingReviews, setUpcomingReviews] = useState<ReviewTodayItem[]>([]);
+  const [upcomingTasks, setUpcomingTasks] = useState<TaskItem[]>([]);
   const [captureResult, setCaptureResult] = useState<CaptureResponse | null>(null);
   const [captureInputType, setCaptureInputType] = useState<"TEXT" | "URL">("TEXT");
   const [captureText, setCaptureText] = useState("");
   const [captureSourceUri, setCaptureSourceUri] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [activeReviewFormId, setActiveReviewFormId] = useState<string | null>(null);
+  const [reviewFormDraft, setReviewFormDraft] = useState<ReviewFormDraft | null>(null);
   const [notesError, setNotesError] = useState<string | null>(null);
-  const [todayError, setTodayError] = useState<string | null>(null);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [reviewFormError, setReviewFormError] = useState<string | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isSubmittingCapture, startCaptureTransition] = useTransition();
-  const [isRefreshingToday, startTodayTransition] = useTransition();
+  const [isSearching, startSearchTransition] = useTransition();
+  const [isRefreshingWorkspace, startWorkspaceTransition] = useTransition();
   const [isRefreshingNote, startNoteTransition] = useTransition();
+  const [isSubmittingReview, startReviewTransition] = useTransition();
   const [isMutatingProposal, startProposalTransition] = useTransition();
   const isDetailVisible = Boolean(selectedNoteId || noteError || isRefreshingNote);
-  const selectedNoteSummary = selectedNote?.current_summary ?? "当前没有展开的 Note。";
+  const upcomingItemCount = upcomingReviews.length + upcomingTasks.length;
+  const upcomingReviewGroups = groupUpcomingReviewsByNote(upcomingReviews);
+  const exactMatches = searchResult?.exact_matches ?? [];
+  const relatedMatches = searchResult?.related_matches ?? [];
+  const externalSupplements = searchResult?.external_supplements ?? [];
+
+  function applyWorkspaceSnapshot(snapshot: WorkspaceSnapshot) {
+    setReviewsToday(snapshot.today.today_reviews);
+    setTasksToday(snapshot.today.today_tasks);
+    setUpcomingReviews(snapshot.upcoming.upcoming_reviews);
+    setUpcomingTasks(snapshot.upcoming.upcoming_tasks);
+  }
+
+  function resetSearchState() {
+    setSearchQuery("");
+    setSearchResult(null);
+    setSearchError(null);
+    setHasSearched(false);
+  }
+
+  function closeReviewForm() {
+    setActiveReviewFormId(null);
+    setReviewFormDraft(null);
+    setReviewFormError(null);
+  }
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -130,19 +269,17 @@ export default function App() {
     async function bootstrap() {
       setIsBootstrapping(true);
       setNotesError(null);
-      setTodayError(null);
+      setWorkspaceError(null);
       try {
-        const [noteItems, reviewItems, taskItems] = await Promise.all([
+        const [noteItems, workspaceSnapshot] = await Promise.all([
           listNotes(activeUserId),
-          listReviewsToday(activeUserId),
-          listTasksToday(activeUserId, getTimezoneOffsetLabel())
+          fetchWorkspaceSnapshot(activeUserId)
         ]);
         if (cancelled) {
           return;
         }
         setNotes(noteItems);
-        setReviewsToday(reviewItems);
-        setTasksToday(taskItems);
+        applyWorkspaceSnapshot(workspaceSnapshot);
         setSelectedNoteId(noteItems[0]?.id ?? null);
       } catch (error) {
         if (cancelled) {
@@ -150,10 +287,12 @@ export default function App() {
         }
         const message = error instanceof Error ? error.message : "Failed to load data";
         setNotesError(message);
-        setTodayError(message);
+        setWorkspaceError(message);
         setNotes([]);
         setReviewsToday([]);
         setTasksToday([]);
+        setUpcomingReviews([]);
+        setUpcomingTasks([]);
         setSelectedNoteId(null);
       } finally {
         if (!cancelled) {
@@ -235,6 +374,8 @@ export default function App() {
       return;
     }
     setCaptureResult(null);
+    resetSearchState();
+    closeReviewForm();
     setActiveUserId(nextUserId);
   }
 
@@ -254,18 +395,14 @@ export default function App() {
           setCaptureText("");
           setCaptureSourceUri("");
           await refreshNotes(result.note_id ?? undefined);
-          startTodayTransition(() => {
+          startWorkspaceTransition(() => {
             void (async () => {
               try {
-                const [reviewItems, taskItems] = await Promise.all([
-                  listReviewsToday(activeUserId),
-                  listTasksToday(activeUserId, getTimezoneOffsetLabel())
-                ]);
-                setReviewsToday(reviewItems);
-                setTasksToday(taskItems);
-                setTodayError(null);
+                const workspaceSnapshot = await fetchWorkspaceSnapshot(activeUserId);
+                applyWorkspaceSnapshot(workspaceSnapshot);
+                setWorkspaceError(null);
               } catch (error) {
-                setTodayError(error instanceof Error ? error.message : "Failed to refresh today");
+                setWorkspaceError(error instanceof Error ? error.message : "Failed to refresh workspace");
               }
             })();
           });
@@ -325,19 +462,118 @@ export default function App() {
     });
   }
 
-  function handleTodayRefresh() {
-    startTodayTransition(() => {
+  function handleWorkspaceRefresh() {
+    startWorkspaceTransition(() => {
       void (async () => {
-        setTodayError(null);
+        setWorkspaceError(null);
         try {
-          const [reviewItems, taskItems] = await Promise.all([
-            listReviewsToday(activeUserId),
-            listTasksToday(activeUserId, getTimezoneOffsetLabel())
-          ]);
-          setReviewsToday(reviewItems);
-          setTasksToday(taskItems);
+          const workspaceSnapshot = await fetchWorkspaceSnapshot(activeUserId);
+          applyWorkspaceSnapshot(workspaceSnapshot);
         } catch (error) {
-          setTodayError(error instanceof Error ? error.message : "Failed to refresh today");
+          setWorkspaceError(error instanceof Error ? error.message : "Failed to refresh workspace");
+        }
+      })();
+    });
+  }
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    if (!query) {
+      return;
+    }
+    setHasSearched(true);
+    startSearchTransition(() => {
+      void (async () => {
+        setSearchError(null);
+        try {
+          const result = await searchNotes(activeUserId, query);
+          setSearchResult(result);
+        } catch (error) {
+          setSearchResult(null);
+          setSearchError(error instanceof Error ? error.message : "Failed to search notes");
+        }
+      })();
+    });
+  }
+
+  function handleReviewFormToggle(review: ReviewTodayItem) {
+    if (activeReviewFormId === review.id) {
+      closeReviewForm();
+      return;
+    }
+    setActiveReviewFormId(review.id);
+    setReviewFormDraft(createReviewFormDraft(review.queue_type));
+    setReviewFormError(null);
+  }
+
+  function handleReviewDraftChange(field: keyof ReviewFormDraft, value: string) {
+    setReviewFormDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      if (field === "completionStatus") {
+        return {
+          ...current,
+          completionStatus: value,
+          completionReason: value === "COMPLETED" ? "" : current.completionReason
+        };
+      }
+      return {
+        ...current,
+        [field]: value
+      };
+    });
+    setReviewFormError(null);
+  }
+
+  function isReviewFormValid(review: ReviewTodayItem, draft: ReviewFormDraft | null): boolean {
+    if (!draft) {
+      return false;
+    }
+    if (requiresCompletionReason(draft.completionStatus) && !draft.completionReason.trim()) {
+      return false;
+    }
+    if (isRecallQueue(review.queue_type) && !draft.selfRecallResult.trim()) {
+      return false;
+    }
+    return true;
+  }
+
+  function buildReviewCompletionPayload(review: ReviewTodayItem, draft: ReviewFormDraft): ReviewCompletionPayload {
+    const payload: ReviewCompletionPayload = {
+      user_id: activeUserId,
+      completion_status: draft.completionStatus
+    };
+    if (requiresCompletionReason(draft.completionStatus)) {
+      payload.completion_reason = normalizeOptionalValue(draft.completionReason);
+    }
+    if (isRecallQueue(review.queue_type)) {
+      payload.self_recall_result = normalizeOptionalValue(draft.selfRecallResult);
+      const note = normalizeOptionalValue(draft.note);
+      if (note) {
+        payload.note = note;
+      }
+    }
+    return payload;
+  }
+
+  function handleReviewSubmit(event: FormEvent<HTMLFormElement>, review: ReviewTodayItem) {
+    event.preventDefault();
+    if (!reviewFormDraft || !isReviewFormValid(review, reviewFormDraft)) {
+      return;
+    }
+    startReviewTransition(() => {
+      void (async () => {
+        setReviewFormError(null);
+        try {
+          await completeReview(review.id, buildReviewCompletionPayload(review, reviewFormDraft));
+          const workspaceSnapshot = await fetchWorkspaceSnapshot(activeUserId);
+          applyWorkspaceSnapshot(workspaceSnapshot);
+          setWorkspaceError(null);
+          closeReviewForm();
+        } catch (error) {
+          setReviewFormError(error instanceof Error ? error.message : "Failed to complete review");
         }
       })();
     });
@@ -347,10 +583,11 @@ export default function App() {
     <main className="app-shell">
       <section className="hero-panel">
         <div>
-          <p className="eyebrow">Phase 1 / M7</p>
-          <h1>Note-first knowledge kernel, now with a real web surface.</h1>
+          <p className="eyebrow">Phase 2 / Step 2.7</p>
+          <h1>Search、Review 与 Workspace 主路径已连真实接口。</h1>
           <p className="hero-copy">
-            单页骨架直接联到现有 Capture、Note、Review、Task 和 Proposal API，保持 Phase 1 的最小可验证闭环。
+            当前单页继续保留 Capture、Note 和 Proposal 主链路，并补齐 Search 三分栏与 Today Review
+            完成表单，保持 Step 2.7 的最小可验收闭环。
           </p>
         </div>
         <form className="user-form" onSubmit={handleUserIdApply}>
@@ -382,9 +619,9 @@ export default function App() {
           <p>待办与跟进任务</p>
         </article>
         <article className="overview-card overview-card-wide">
-          <span className="overview-label">Focus</span>
-          <strong>{isDetailVisible ? "Detail Open" : "Browse Mode"}</strong>
-          <p>{selectedNoteSummary}</p>
+          <span className="overview-label">Upcoming Queue</span>
+          <strong>{upcomingItemCount}</strong>
+          <p>未来待处理的 Review 与 Task</p>
         </article>
       </section>
 
@@ -458,6 +695,141 @@ export default function App() {
           <article className="panel">
             <div className="panel-heading">
               <div>
+                <p className="panel-kicker">Search</p>
+                <h2>三分栏结果</h2>
+              </div>
+              <span className="meta-chip">API: /api/v1/search</span>
+            </div>
+            <form className="search-form" onSubmit={handleSearchSubmit}>
+              <input
+                placeholder="输入 query，例如 kickoff alpha"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                spellCheck={false}
+              />
+              <div className="form-actions">
+                <button type="submit" disabled={isSearching || !searchQuery.trim()}>
+                  {isSearching ? "查询中..." : "执行 Search"}
+                </button>
+                {searchResult ? <span className="meta-chip">query: {searchResult.query}</span> : null}
+              </div>
+            </form>
+            {searchError ? <p className="status-message error">{searchError}</p> : null}
+            {!hasSearched ? (
+              <p className="status-message">输入 query 后执行 Search，结果会按 exact / related / external 三分栏展示。</p>
+            ) : (
+              <div className="search-grid">
+                <section className="subpanel search-panel-exact">
+                  <div className="subpanel-heading">
+                    <h3>Exact Matches</h3>
+                    <span className="meta-chip">{exactMatches.length}</span>
+                  </div>
+                  <p className="subpanel-description">命中当前 Note 解释层或最新内容的直接匹配。</p>
+                  {exactMatches.length === 0 ? <p className="status-message">本次查询没有 exact match。</p> : null}
+                  {exactMatches.map((match) => (
+                    <div key={match.note_id} className="list-row">
+                      <div className="list-row-content">
+                        <strong>{match.title}</strong>
+                        <p>{match.current_summary}</p>
+                        {match.current_key_points.length > 0 ? (
+                          <div className="note-card-points">
+                            {match.current_key_points.slice(0, 3).map((point) => (
+                              <span key={`${match.note_id}-${point}`} className="note-card-point">
+                                {point}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                        <p className="search-result-detail">{match.latest_content}</p>
+                        <div className="row-meta row-meta-inline">
+                          <span className="tone-slate">{formatDateTime(match.updated_at)}</span>
+                        </div>
+                        <div className="form-actions">
+                          <button type="button" className="ghost-button" onClick={() => setSelectedNoteId(match.note_id)}>
+                            打开 Note
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </section>
+
+                <section className="subpanel search-panel-related">
+                  <div className="subpanel-heading">
+                    <h3>Related Matches</h3>
+                    <span className="meta-chip">{relatedMatches.length}</span>
+                  </div>
+                  <p className="subpanel-description">展示与 query 存在 token 关联的内部 Note。</p>
+                  {relatedMatches.length === 0 ? <p className="status-message">本次查询没有 related match。</p> : null}
+                  {relatedMatches.map((match) => (
+                    <div key={match.note_id} className="list-row">
+                      <div className="list-row-content">
+                        <strong>{match.title}</strong>
+                        <p>{match.current_summary}</p>
+                        {match.current_key_points.length > 0 ? (
+                          <div className="note-card-points">
+                            {match.current_key_points.slice(0, 3).map((point) => (
+                              <span key={`${match.note_id}-${point}`} className="note-card-point">
+                                {point}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                        <p className="search-result-detail">{match.latest_content}</p>
+                        <div className="row-meta row-meta-inline">
+                          <span className="tone-blue">{match.relation_reason}</span>
+                          <span className="tone-slate">{formatDateTime(match.updated_at)}</span>
+                        </div>
+                        <div className="form-actions">
+                          <button type="button" className="ghost-button" onClick={() => setSelectedNoteId(match.note_id)}>
+                            打开 Note
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </section>
+
+                <section className="subpanel search-panel-external">
+                  <div className="subpanel-heading">
+                    <h3>External Supplements</h3>
+                    <span className="meta-chip">{externalSupplements.length}</span>
+                  </div>
+                  <p className="subpanel-description">只读展示外部补充信息，不在本步执行 evidence/proposal 动作。</p>
+                  {externalSupplements.length === 0 ? <p className="status-message">本次查询没有 external supplement。</p> : null}
+                  {externalSupplements.map((item) => (
+                    <div key={`${item.source_uri}-${item.summary}`} className="list-row">
+                      <div className="list-row-content">
+                        <strong>{item.source_name}</strong>
+                        <p>{item.summary}</p>
+                        <p className="search-result-detail">{item.source_uri}</p>
+                        {item.keywords.length > 0 ? (
+                          <div className="note-card-points">
+                            {item.keywords.map((keyword) => (
+                              <span key={`${item.source_uri}-${keyword}`} className="note-card-point">
+                                {keyword}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                        <div className="row-meta row-meta-inline">
+                          {item.relation_tags.map((tag) => (
+                            <span key={`${item.source_uri}-${tag}`} className="tone-cyan">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              </div>
+            )}
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
                 <p className="panel-kicker">Notes</p>
                 <h2>当前解释层列表</h2>
               </div>
@@ -500,56 +872,236 @@ export default function App() {
           <article className="panel">
             <div className="panel-heading">
               <div>
-                <p className="panel-kicker">Today</p>
-                <h2>Review + Task</h2>
+                <p className="panel-kicker">Workspace</p>
+                <h2>Today + Upcoming</h2>
               </div>
-              <button type="button" className="ghost-button" onClick={handleTodayRefresh} disabled={isRefreshingToday}>
-                {isRefreshingToday ? "刷新中..." : "刷新"}
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={handleWorkspaceRefresh}
+                disabled={isRefreshingWorkspace}
+              >
+                {isRefreshingWorkspace ? "刷新中..." : "刷新"}
               </button>
             </div>
-            {todayError ? <p className="status-message error">{todayError}</p> : null}
-            <div className="today-grid">
-              <section className="subpanel review-panel">
-                <div className="subpanel-heading">
-                  <h3>Reviews</h3>
-                  <span className="meta-chip">{reviewsToday.length}</span>
-                </div>
-                <p className="subpanel-description">聚焦当前理解不稳或需要回忆强化的 Note。</p>
-                {reviewsToday.length === 0 ? <p className="status-message">今天没有待复习项。</p> : null}
-                {reviewsToday.map((review) => (
-                  <div key={review.id} className="list-row">
-                    <div className="list-row-content">
-                      <strong>{review.title}</strong>
-                      <p>{review.current_summary}</p>
-                      <div className="row-meta row-meta-inline">
-                        <span className={getReviewMetaTone(review.queue_type)}>{review.queue_type}</span>
-                        <span className={getReviewMetaTone(review.completion_status)}>{review.completion_status}</span>
-                        <span className="tone-slate">{review.unfinished_count} unfinished</span>
-                      </div>
-                    </div>
+            {workspaceError ? <p className="status-message error">{workspaceError}</p> : null}
+            <div className="workspace-sections">
+              <section className="workspace-cluster">
+                <div className="workspace-cluster-header">
+                  <div>
+                    <p className="panel-kicker">Today</p>
+                    <h3>当前工作台</h3>
                   </div>
-                ))}
+                  <span className="meta-chip">{reviewsToday.length + tasksToday.length} items</span>
+                </div>
+                <p className="section-hint">由 `GET /api/v1/workspace/today` 聚合返回，并保持 Review / Task 分区。</p>
+                <div className="today-grid">
+                  <section className="subpanel review-panel">
+                    <div className="subpanel-heading">
+                      <h3>Reviews</h3>
+                      <span className="meta-chip">{reviewsToday.length}</span>
+                    </div>
+                    <p className="subpanel-description">聚焦当前理解不稳或需要回忆强化的 Note。</p>
+                    {reviewsToday.length === 0 ? <p className="status-message">今天没有待复习项。</p> : null}
+                    {reviewsToday.map((review) => (
+                      <div key={review.id} className="list-row review-list-row">
+                        <div className="list-row-content">
+                          <strong>{review.title}</strong>
+                          <p>{review.current_summary}</p>
+                          <div className="row-meta row-meta-inline">
+                            <span className={getReviewMetaTone(review.queue_type)}>{review.queue_type}</span>
+                            <span className={getReviewMetaTone(review.completion_status)}>{review.completion_status}</span>
+                            <span className="tone-slate">{review.unfinished_count} unfinished</span>
+                            <span className="tone-slate">{getReviewTimingLabel(review)}</span>
+                          </div>
+                          <div className="form-actions">
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              onClick={() => handleReviewFormToggle(review)}
+                              disabled={isSubmittingReview && activeReviewFormId === review.id}
+                            >
+                              {activeReviewFormId === review.id ? "收起表单" : "完成 / 提交结果"}
+                            </button>
+                          </div>
+                          {activeReviewFormId === review.id && reviewFormDraft ? (
+                            <form className="review-form" onSubmit={(event) => handleReviewSubmit(event, review)}>
+                              <label className="field-stack">
+                                <span className="detail-label">completion_status</span>
+                                <select
+                                  value={reviewFormDraft.completionStatus}
+                                  onChange={(event) => handleReviewDraftChange("completionStatus", event.target.value)}
+                                >
+                                  {REVIEW_COMPLETION_STATUS_OPTIONS.map((status) => (
+                                    <option key={status} value={status}>
+                                      {status}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              {requiresCompletionReason(reviewFormDraft.completionStatus) ? (
+                                <label className="field-stack">
+                                  <span className="detail-label">completion_reason</span>
+                                  <select
+                                    value={reviewFormDraft.completionReason}
+                                    onChange={(event) => handleReviewDraftChange("completionReason", event.target.value)}
+                                  >
+                                    <option value="">选择 completion_reason</option>
+                                    {REVIEW_COMPLETION_REASON_OPTIONS.map((reason) => (
+                                      <option key={reason} value={reason}>
+                                        {reason}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ) : null}
+                              {isRecallQueue(review.queue_type) ? (
+                                <>
+                                  <label className="field-stack">
+                                    <span className="detail-label">self_recall_result</span>
+                                    <select
+                                      value={reviewFormDraft.selfRecallResult}
+                                      onChange={(event) => handleReviewDraftChange("selfRecallResult", event.target.value)}
+                                    >
+                                      {REVIEW_SELF_RECALL_RESULT_OPTIONS.map((result) => (
+                                        <option key={result} value={result}>
+                                          {result}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="field-stack">
+                                    <span className="detail-label">note</span>
+                                    <textarea
+                                      className="compact-textarea"
+                                      placeholder="可选补充：本次 recall 的简短备注"
+                                      value={reviewFormDraft.note}
+                                      onChange={(event) => handleReviewDraftChange("note", event.target.value)}
+                                    />
+                                  </label>
+                                </>
+                              ) : null}
+                              {reviewFormError ? <p className="status-message error">{reviewFormError}</p> : null}
+                              <div className="form-actions">
+                                <button
+                                  type="submit"
+                                  disabled={
+                                    (isSubmittingReview && activeReviewFormId === review.id) ||
+                                    !isReviewFormValid(review, reviewFormDraft)
+                                  }
+                                >
+                                  {isSubmittingReview && activeReviewFormId === review.id ? "提交中..." : "提交结果"}
+                                </button>
+                                <button type="button" className="ghost-button" onClick={closeReviewForm}>
+                                  取消
+                                </button>
+                              </div>
+                            </form>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </section>
+                  <section className="subpanel task-panel">
+                    <div className="subpanel-heading">
+                      <h3>Tasks</h3>
+                      <span className="meta-chip">{tasksToday.length}</span>
+                    </div>
+                    <p className="subpanel-description">展示用户任务与系统派生的跟进动作。</p>
+                    {tasksToday.length === 0 ? <p className="status-message">今天没有任务。</p> : null}
+                    {tasksToday.map((task) => (
+                      <div key={task.id} className="list-row">
+                        <div className="list-row-content">
+                          <strong>{task.title}</strong>
+                          <p>{task.description || task.task_type}</p>
+                          <div className="row-meta row-meta-inline">
+                            <span className={getTaskMetaTone(task.task_source)}>{task.task_source}</span>
+                            <span className={getTaskMetaTone(task.status)}>{task.status}</span>
+                            <span className="tone-slate">P{task.priority}</span>
+                            <span className="tone-slate">{getTaskTimingLabel(task)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </section>
+                </div>
               </section>
-              <section className="subpanel task-panel">
-                <div className="subpanel-heading">
-                  <h3>Tasks</h3>
-                  <span className="meta-chip">{tasksToday.length}</span>
+
+              <section className="workspace-cluster">
+                <div className="workspace-cluster-header">
+                  <div>
+                    <p className="panel-kicker">Upcoming</p>
+                    <h3>基础列表工作台</h3>
+                  </div>
+                  <span className="meta-chip">{upcomingItemCount} items</span>
                 </div>
-                <p className="subpanel-description">展示用户任务与系统派生的跟进动作。</p>
-                {tasksToday.length === 0 ? <p className="status-message">今天没有任务。</p> : null}
-                {tasksToday.map((task) => (
-                  <div key={task.id} className="list-row">
-                    <div className="list-row-content">
-                      <strong>{task.title}</strong>
-                      <p>{task.description || task.task_type}</p>
-                      <div className="row-meta row-meta-inline">
-                        <span className={getTaskMetaTone(task.task_source)}>{task.task_source}</span>
-                        <span className={getTaskMetaTone(task.status)}>{task.status}</span>
-                        <span className="tone-slate">P{task.priority}</span>
+                <p className="section-hint">由 `GET /api/v1/workspace/upcoming` 聚合返回，按后端排序展示未来到期项。</p>
+                <div className="today-grid">
+                  <section className="subpanel review-panel">
+                    <div className="subpanel-heading">
+                      <h3>Upcoming Reviews</h3>
+                      <div className="meta-chip-stack">
+                        <span className="meta-chip">{upcomingReviewGroups.length} notes</span>
+                        <span className="meta-chip">{upcomingReviews.length} queues</span>
                       </div>
                     </div>
-                  </div>
-                ))}
+                    <p className="subpanel-description">同一 Note 的 recall / schedule 会按 `note_id` 分组展示，避免误判成重复条目。</p>
+                    {upcomingReviews.length === 0 ? <p className="status-message">当前没有 upcoming review。</p> : null}
+                    {upcomingReviewGroups.map((group) => (
+                      <section key={group.noteId} className="review-group">
+                        <div className="review-group-header">
+                          <div className="review-group-summary">
+                            <strong>{group.title}</strong>
+                            <p className="review-group-id">note_id: {group.noteId}</p>
+                            <p>{group.currentSummary}</p>
+                          </div>
+                          <button type="button" className="ghost-button compact-button" onClick={() => setSelectedNoteId(group.noteId)}>
+                            打开 Note
+                          </button>
+                        </div>
+                        <div className="review-group-list">
+                          {group.reviews.map((review) => (
+                            <div key={review.id} className="list-row review-group-item">
+                              <div className="list-row-content">
+                                <strong>{review.queue_type} queue</strong>
+                                <p>{getUpcomingReviewQueueDescription(review)}</p>
+                                <div className="row-meta row-meta-inline">
+                                  <span className={getReviewMetaTone(review.queue_type)}>{review.queue_type}</span>
+                                  <span className={getReviewMetaTone(review.completion_status)}>{review.completion_status}</span>
+                                  <span className="tone-slate">{review.completion_reason ?? "未设 reason"}</span>
+                                  <span className="tone-slate">{getReviewTimingLabel(review)}</span>
+                                  <span className="tone-slate">unfinished {review.unfinished_count}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </section>
+                  <section className="subpanel task-panel">
+                    <div className="subpanel-heading">
+                      <h3>Upcoming Tasks</h3>
+                      <span className="meta-chip">{upcomingTasks.length}</span>
+                    </div>
+                    <p className="subpanel-description">展示带 `due_at` 的后续动作，保留 `task_source` 区分。</p>
+                    {upcomingTasks.length === 0 ? <p className="status-message">当前没有 upcoming task。</p> : null}
+                    {upcomingTasks.map((task) => (
+                      <div key={task.id} className="list-row">
+                        <div className="list-row-content">
+                          <strong>{task.title}</strong>
+                          <p>{task.description || task.task_type}</p>
+                          <div className="row-meta row-meta-inline">
+                            <span className={getTaskMetaTone(task.task_source)}>{task.task_source}</span>
+                            <span className={getTaskMetaTone(task.status)}>{task.status}</span>
+                            <span className="tone-slate">{task.related_entity_type}</span>
+                            <span className="tone-slate">{getTaskTimingLabel(task)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </section>
+                </div>
               </section>
             </div>
           </article>

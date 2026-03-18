@@ -35,6 +35,13 @@ public interface TaskRepository {
                                                                                              String taskType,
                                                                                              UUID noteId);
 
+    Optional<TaskApplicationService.TaskView> findOpenDuplicateUserTask(UUID userId,
+                                                                        String title,
+                                                                        String taskType,
+                                                                        UUID noteId,
+                                                                        TaskRelatedEntityType relatedEntityType,
+                                                                        UUID relatedEntityId);
+
     void updateStatus(UUID taskId, TaskStatus status);
 
     void refreshOpenTask(UUID taskId,

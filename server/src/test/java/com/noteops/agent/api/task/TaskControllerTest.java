@@ -81,6 +81,29 @@ class TaskControllerTest {
     }
 
     @Test
+    void returnsConflictEnvelopeForDuplicateOpenUserTask() throws Exception {
+        UUID userId = UUID.randomUUID();
+
+        when(taskApplicationService.create(any()))
+            .thenThrow(new ApiException(HttpStatus.CONFLICT, "OPEN_TASK_ALREADY_EXISTS", "an open user task with the same title and binding already exists"));
+
+        mockMvc.perform(post("/api/v1/tasks")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "user_id": "%s",
+                      "title": "跟进这次 review",
+                      "task_type": "REVIEW_ACTION"
+                    }
+                    """.formatted(userId)))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.trace_id").value(nullValue()))
+            .andExpect(jsonPath("$.error.code").value("OPEN_TASK_ALREADY_EXISTS"))
+            .andExpect(jsonPath("$.meta.server_time").exists());
+    }
+
+    @Test
     void returnsTodayTasksWithTaskSource() throws Exception {
         UUID taskId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();

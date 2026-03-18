@@ -4,8 +4,13 @@ import type {
   ChangeProposal,
   NoteDetail,
   NoteSummary,
+  ReviewCompletionPayload,
+  ReviewCompletionResult,
   ReviewTodayItem,
-  TaskItem
+  SearchResult,
+  TaskItem,
+  WorkspaceToday,
+  WorkspaceUpcoming
 } from "./types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "";
@@ -67,6 +72,40 @@ export function listTasksToday(userId: string, timezoneOffset: string): Promise<
     timezone_offset: timezoneOffset
   });
   return request(`/api/v1/tasks/today?${params.toString()}`);
+}
+
+function buildWorkspaceParams(userId: string, timezoneOffset: string): string {
+  const params = new URLSearchParams({
+    user_id: userId,
+    timezone_offset: timezoneOffset
+  });
+  return params.toString();
+}
+
+export function getWorkspaceToday(userId: string, timezoneOffset: string): Promise<WorkspaceToday> {
+  return request(`/api/v1/workspace/today?${buildWorkspaceParams(userId, timezoneOffset)}`);
+}
+
+export function getWorkspaceUpcoming(userId: string, timezoneOffset: string): Promise<WorkspaceUpcoming> {
+  return request(`/api/v1/workspace/upcoming?${buildWorkspaceParams(userId, timezoneOffset)}`);
+}
+
+export function searchNotes(userId: string, query: string): Promise<SearchResult> {
+  const params = new URLSearchParams({
+    user_id: userId,
+    query
+  });
+  return request(`/api/v1/search?${params.toString()}`);
+}
+
+export function completeReview(
+  reviewItemId: string,
+  payload: ReviewCompletionPayload
+): Promise<ReviewCompletionResult> {
+  return request(`/api/v1/reviews/${encodeURIComponent(reviewItemId)}/complete`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }
 
 export function listChangeProposals(noteId: string, userId: string): Promise<ChangeProposal[]> {

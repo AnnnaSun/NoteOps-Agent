@@ -142,6 +142,38 @@ public class JdbcTaskRepository implements TaskRepository {
     }
 
     @Override
+    public Optional<TaskApplicationService.TaskView> findOpenDuplicateUserTask(UUID userId,
+                                                                               String title,
+                                                                               String taskType,
+                                                                               UUID noteId,
+                                                                               TaskRelatedEntityType relatedEntityType,
+                                                                               UUID relatedEntityId) {
+        return jdbcClient.sql("""
+            select id, user_id, note_id, task_source, task_type, title, description, status,
+                   priority, due_at, related_entity_type, related_entity_id, created_at, updated_at
+            from tasks
+            where user_id = :userId
+              and task_source = 'USER'
+              and title = :title
+              and task_type = :taskType
+              and related_entity_type = :relatedEntityType
+              and ((note_id = :noteId) or (note_id is null and :noteId is null))
+              and ((related_entity_id = :relatedEntityId) or (related_entity_id is null and :relatedEntityId is null))
+              and status in ('TODO', 'IN_PROGRESS')
+            order by updated_at desc
+            limit 1
+            """)
+            .param("userId", userId)
+            .param("title", title)
+            .param("taskType", taskType)
+            .param("relatedEntityType", relatedEntityType.name())
+            .param("noteId", noteId)
+            .param("relatedEntityId", relatedEntityId)
+            .query((rs, rowNum) -> mapView(rs))
+            .optional();
+    }
+
+    @Override
     public void updateStatus(UUID taskId, TaskStatus status) {
         jdbcClient.sql("""
             update tasks
