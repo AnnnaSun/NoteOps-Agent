@@ -12,17 +12,23 @@ export type ApiEnvelope<T> = {
 };
 
 export type CaptureResponse = {
-  id: string;
-  user_id: string;
-  input_type: string;
-  source_uri: string | null;
-  raw_input: string;
+  capture_job_id: string;
+  source_type: string;
   status: string;
-  error_code: string | null;
-  error_message: string | null;
+  note_id: string | null;
+  failure_reason: string | null;
+  analysis_preview: {
+    title_candidate: string;
+    summary: string;
+    key_points: string[];
+    tags: string[];
+    idea_candidate: string | null;
+    confidence: number;
+    language: string | null;
+    warnings: string[];
+  } | null;
   created_at: string;
   updated_at: string;
-  note_id: string | null;
 };
 
 export type NoteSummary = {

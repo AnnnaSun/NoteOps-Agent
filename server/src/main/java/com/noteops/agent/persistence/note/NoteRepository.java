@@ -19,6 +19,29 @@ public interface NoteRepository {
                               Map<String, Object> sourceSnapshot,
                               Map<String, Object> analysisResult);
 
+    default NoteCreationResult create(UUID userId,
+                                      String title,
+                                      String currentSummary,
+                                      List<String> currentKeyPoints,
+                                      List<String> currentTags,
+                                      String sourceUri,
+                                      String rawText,
+                                      String cleanText,
+                                      Map<String, Object> sourceSnapshot,
+                                      Map<String, Object> analysisResult) {
+        return create(
+            userId,
+            title,
+            currentSummary,
+            currentKeyPoints,
+            sourceUri,
+            rawText,
+            cleanText,
+            sourceSnapshot,
+            analysisResult
+        );
+    }
+
     Optional<NoteQueryService.NoteDetailView> findByIdAndUserId(UUID noteId, UUID userId);
 
     List<NoteQueryService.NoteSummaryView> findAllByUserId(UUID userId);

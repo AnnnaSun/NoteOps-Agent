@@ -2,6 +2,8 @@ package com.noteops.agent.api.capture;
 
 import com.noteops.agent.api.ApiEnvelope;
 import com.noteops.agent.application.capture.CaptureApplicationService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/captures")
 public class CaptureController {
 
+    private static final Logger log = LoggerFactory.getLogger(CaptureController.class);
+
     private final CaptureApplicationService captureApplicationService;
 
     public CaptureController(CaptureApplicationService captureApplicationService) {
@@ -24,22 +28,33 @@ public class CaptureController {
 
     @PostMapping
     public ResponseEntity<ApiEnvelope<CaptureResponse>> create(@RequestBody CreateCaptureRequest request) {
+        log.info(
+            "module=CaptureController action=capture_request path=/api/v1/captures user_id={} source_type={} trace_id=null",
+            request.userId(),
+            request.sourceType()
+        );
         CaptureApplicationService.CaptureView captureView = captureApplicationService.create(
             new CaptureApplicationService.CreateCaptureCommand(
                 request.userId(),
-                request.inputType(),
-                request.rawInput(),
-                request.sourceUri()
+                request.sourceType(),
+                request.rawText(),
+                request.sourceUrl(),
+                request.titleHint()
             )
         );
         return ResponseEntity
             .status(HttpStatus.CREATED)
-            .body(ApiEnvelope.success(captureView.traceId(), CaptureResponse.from(captureView)));
+            .body(ApiEnvelope.success(captureView.traceId() == null ? null : captureView.traceId().toString(), CaptureResponse.from(captureView)));
     }
 
     @GetMapping("/{id}")
     public ApiEnvelope<CaptureResponse> get(@PathVariable String id, @RequestParam("user_id") String userId) {
+        log.info(
+            "module=CaptureController action=capture_get_request path=/api/v1/captures/{} user_id={} trace_id=null",
+            id,
+            userId
+        );
         CaptureApplicationService.CaptureView captureView = captureApplicationService.get(id, userId);
-        return ApiEnvelope.success(captureView.traceId(), CaptureResponse.from(captureView));
+        return ApiEnvelope.success(captureView.traceId() == null ? null : captureView.traceId().toString(), CaptureResponse.from(captureView));
     }
 }

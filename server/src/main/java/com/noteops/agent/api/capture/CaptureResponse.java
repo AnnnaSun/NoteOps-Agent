@@ -6,41 +6,33 @@ import com.noteops.agent.application.capture.CaptureApplicationService;
 import java.time.Instant;
 
 public record CaptureResponse(
-    String id,
-    @JsonProperty("user_id")
-    String userId,
-    @JsonProperty("input_type")
-    String inputType,
-    @JsonProperty("source_uri")
-    String sourceUri,
-    @JsonProperty("raw_input")
-    String rawInput,
+    @JsonProperty("capture_job_id")
+    String captureJobId,
+    @JsonProperty("source_type")
+    String sourceType,
     String status,
-    @JsonProperty("error_code")
-    String errorCode,
-    @JsonProperty("error_message")
-    String errorMessage,
+    @JsonProperty("note_id")
+    String noteId,
+    @JsonProperty("failure_reason")
+    String failureReason,
+    @JsonProperty("analysis_preview")
+    CaptureAnalysisPreviewResponse analysisPreview,
     @JsonProperty("created_at")
     Instant createdAt,
     @JsonProperty("updated_at")
-    Instant updatedAt,
-    @JsonProperty("note_id")
-    String noteId
+    Instant updatedAt
 ) {
 
     public static CaptureResponse from(CaptureApplicationService.CaptureView view) {
         return new CaptureResponse(
-            view.id().toString(),
-            view.userId().toString(),
-            view.inputType().name(),
-            view.sourceUri(),
-            view.rawInput(),
+            view.captureJobId().toString(),
+            view.sourceType().name(),
             view.status().name(),
-            view.errorCode(),
-            view.errorMessage(),
+            view.noteId() == null ? null : view.noteId().toString(),
+            view.failureReason() == null ? null : view.failureReason().name(),
+            CaptureAnalysisPreviewResponse.from(view.analysisPreview()),
             view.createdAt(),
-            view.updatedAt(),
-            view.noteId()
+            view.updatedAt()
         );
     }
 }

@@ -19,3 +19,22 @@ management:
     web:
       exposure:
         include: health
+
+noteops:
+  capture:
+    ai:
+      provider: ${NOTEOPS_CAPTURE_AI_PROVIDER:DEEPSEEK}
+      request-timeout: ${NOTEOPS_CAPTURE_AI_REQUEST_TIMEOUT:PT20S}
+      deepseek:
+        base-url: ${DEEPSEEK_BASE_URL:${OPENAI_BASE_URL:https://api.deepseek.com}}
+        api-key: ${DEEPSEEK_API_KEY:${OPENAI_API_KEY:}}
+        model: ${DEEPSEEK_MODEL:${OPENAI_MODEL:}}
+      ollama:
+        base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+        model: ${OLLAMA_MODEL:}
+    url:
+      connect-timeout: ${NOTEOPS_CAPTURE_URL_CONNECT_TIMEOUT:PT5S}
+      read-timeout: ${NOTEOPS_CAPTURE_URL_READ_TIMEOUT:PT15S}
+      max-response-bytes: ${NOTEOPS_CAPTURE_URL_MAX_RESPONSE_BYTES:200000}
+      max-text-length: ${NOTEOPS_CAPTURE_URL_MAX_TEXT_LENGTH:4000}
+      user-agent: ${NOTEOPS_CAPTURE_URL_USER_AGENT:NoteOps-Agent/0.0.1}

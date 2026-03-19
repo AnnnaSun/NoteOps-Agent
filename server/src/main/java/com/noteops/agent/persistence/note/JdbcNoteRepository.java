@@ -34,6 +34,31 @@ public class JdbcNoteRepository implements NoteRepository {
                                      String cleanText,
                                      Map<String, Object> sourceSnapshot,
                                      Map<String, Object> analysisResult) {
+        return create(
+            userId,
+            title,
+            currentSummary,
+            currentKeyPoints,
+            List.of(),
+            sourceUri,
+            rawText,
+            cleanText,
+            sourceSnapshot,
+            analysisResult
+        );
+    }
+
+    @Override
+    public NoteCreationResult create(UUID userId,
+                                     String title,
+                                     String currentSummary,
+                                     List<String> currentKeyPoints,
+                                     List<String> currentTags,
+                                     String sourceUri,
+                                     String rawText,
+                                     String cleanText,
+                                     Map<String, Object> sourceSnapshot,
+                                     Map<String, Object> analysisResult) {
         UUID noteId = UUID.randomUUID();
         UUID contentId = UUID.randomUUID();
 
@@ -55,7 +80,7 @@ public class JdbcNoteRepository implements NoteRepository {
             .param("title", title)
             .param("currentSummary", currentSummary)
             .param("currentKeyPoints", jsonSupport.write(currentKeyPoints))
-            .param("currentTags", jsonSupport.write(List.of()))
+            .param("currentTags", jsonSupport.write(currentTags == null ? List.of() : currentTags))
             .param("currentTopicLabels", jsonSupport.write(List.of()))
             .param("currentRelationSummary", jsonSupport.write(Map.of()))
             .param("importanceScore", 50)

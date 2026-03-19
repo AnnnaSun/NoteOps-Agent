@@ -25,7 +25,7 @@ Do not change the language of existing repository files unless the task explicit
 
 本文件是 NoteOps 仓库级执行契约。Codex 在执行任何任务前，必须先遵守这里的边界、优先级、目录路由、验证要求与完成定义。
 
-本仓库对应的产品不是通用笔记软件，而是 **以 Note 为第一公民的多 Agent Knowledge-to-Action 系统**。当前开发基线已进入 **Phase 2：Review / Search / Today Workspace**，后续实现必须优先满足“可控、可追溯、可验证”，而不是一次性铺开全部未来能力。
+本仓库对应的产品不是通用笔记软件，而是 **以 Note 为第一公民的多 Agent Knowledge-to-Action 系统**。当前开发基线已进入 **Phase 3：Idea Lifecycle / Idea Workspace**，后续实现必须优先满足“可控、可追溯、可验证”，而不是一次性铺开全部未来能力。
 
 ---
 
@@ -40,14 +40,14 @@ Do not change the language of existing repository files unless the task explicit
    客户端（Web/PWA/未来移动端）只负责缓存、离线操作记录和回传，不得将客户端本地状态视为最终真相。
 
 3. **原始内容与当前解释层分离**
-    - `note_contents`：保存原始内容、更新块、证据块、转写块等追加型历史内容。
-    - `notes`：保存当前视图，如 `current_summary`、`current_key_points`、`current_tags`。
-    - ChangeProposal 只能作用于解释层、元数据层、关系层，不得静默覆盖原始正文。
+  - `note_contents`：保存原始内容、更新块、证据块、转写块等追加型历史内容。
+  - `notes`：保存当前视图，如 `current_summary`、`current_key_points`、`current_tags`。
+  - ChangeProposal 只能作用于解释层、元数据层、关系层，不得静默覆盖原始正文。
 
 4. **自动化变更必须可治理**
-    - 低风险：可建议、可一键应用、可撤销
-    - 中风险：必须人工确认
-    - 高风险：只提示冲突，不直接改写正文
+  - 低风险：可建议、可一键应用、可撤销
+  - 中风险：必须人工确认
+  - 高风险：只提示冲突，不直接改写正文
 
 5. **所有核心聚合预留 `user_id`**
    V1 可以是单用户运行，但模型、查询、索引、接口设计都必须保留未来多用户边界。
@@ -58,70 +58,93 @@ Do not change the language of existing repository files unless the task explicit
 ### 2.7 可观测性根原则
 
 7. **关键链路必须具备可监控、可定位、可关联的结构化日志**
-    - 任何核心业务链路，不允许只靠零散 `console.log` 或无法关联上下文的纯文本输出。
-    - 以下场景默认必须补充结构化日志：
-        - 请求入口与核心命令入口
-        - 状态迁移与状态机流转
-        - 外部调用开始 / 成功 / 失败
-        - proposal apply / rollback
-        - review complete / partial / recall requeue
-        - search external supplement 生成 evidence / proposal
-        - task 创建、完成、跳过、重排
-        - 任何会写入 `agent_traces`、`tool_invocation_logs`、`user_action_events` 的关键动作
-    - 日志字段至少应包含：
-        - `trace_id`
-        - `user_id`
-        - 模块名或 service / controller 名
-        - 接口路径或命令名
-        - 关键业务标识，如 `note_id`、`review_item_id`、`task_id`、`proposal_id`
-        - `action`
-        - `result`
-        - `duration_ms`（如适用）
-        - `error_code`、`error_message`（失败时）
-    - 同一条请求链路中的日志应可通过 `trace_id` 关联，保证问题可以从入口追到落库、外调和状态变更。
-    - 新增涉及核心状态变更、外部调用、调度决策的实现时，如未补日志，视为未完成最小闭环。
+  - 任何核心业务链路，不允许只靠零散 `console.log` 或无法关联上下文的纯文本输出。
+  - 以下场景默认必须补充结构化日志：
+    - 请求入口与核心命令入口
+    - 状态迁移与状态机流转
+    - 外部调用开始 / 成功 / 失败
+    - proposal apply / rollback
+    - review complete / partial / recall requeue
+    - idea create / assess / promote_to_plan / archive / reopen
+    - idea task generation / idea follow-up decision
+    - 任何会写入 `agent_traces`、`tool_invocation_logs`、`user_action_events` 的关键动作
+  - 日志字段至少应包含：
+    - `trace_id`
+    - `user_id`
+    - 模块名或 service / controller 名
+    - 接口路径或命令名
+    - 关键业务标识，如 `note_id`、`idea_id`、`task_id`、`proposal_id`
+    - `action`
+    - `result`
+    - `duration_ms`（如适用）
+    - `error_code`、`error_message`（失败时）
+  - 同一条请求链路中的日志应可通过 `trace_id` 关联，保证问题可以从入口追到落库、外调和状态变更。
+  - 新增涉及核心状态变更、外部调用、调度决策的实现时，如未补日志，视为未完成最小闭环。
 
 ---
 
-## 3. 当前阶段边界（Phase 2）
+## 3. 当前阶段边界（Phase 3）
 
-当前以 **Phase 2：Review / Search / Today Workspace** 为唯一开发目标。
+当前以 **Phase 3：Idea Lifecycle / Idea Workspace** 为唯一开发目标。
 
-### 3.1 Phase 2 必做
+### 3.1 Phase 3 必做
 
-1. Review 双池工作流真正落地：`SCHEDULE` / `RECALL`
-2. Review 完成语义落地：
-    - `completion_status`：`COMPLETED` / `PARTIAL` / `NOT_STARTED` / `ABANDONED`
-    - `completion_reason`：`TIME_LIMIT` / `TOO_HARD` / `VAGUE_MEMORY` / `DEFERRED`
-3. Recall 用户反馈最小闭环：支持用户自评 + 简短备注
-4. Today / Upcoming 工作台：同屏展示 ReviewItem 与 Task，并显式区分 `task_source`
-5. User Task Phase 2 能力：创建、完成、跳过、Today 展示、按 `due_at` 排序进入 Upcoming
-6. Search 三分栏结果：
-    - `exact_matches`
-    - `related_matches`
-    - `external_supplements`
-7. 外部补充证据治理：外部结果只能形成 `EVIDENCE` block 或 `ChangeProposal`，不得直接覆盖 `notes.current_*`
-8. Proposal / Event / Trace 补强：Search 与 Review 导致的建议、证据、应用动作必须可追溯
-9. API / DTO / 文档同步到 Phase 2 语义
-10. Web 页面最小可用：Today / Review / Search 主路径连真实接口
+1. Idea 生命周期真正落地：
+  - `CAPTURED`
+  - `ASSESSED`
+  - `PLANNED`
+  - `IN_PROGRESS`
+  - `ARCHIVED`
 
-### 3.2 Phase 2 可预留但不做正式闭环
+2. Idea 创建最小闭环：
+  - 支持 `FROM_NOTE`
+  - 支持独立创建
+  - 允许保留未来来源的扩展位，但当前不实现 Trend 驱动正式流
 
-1. `ideas` 正式生命周期
-2. `user_preference_profiles` 正式画像计算与回写
-3. Trend 正式闭环
-4. 周视图 / 月视图 Calendar
-5. 复杂智能评分、复杂推荐算法、复杂优先级学习
-6. 真实外部搜索 provider 的正式接入（可先保留接口与 stub/mock）
+3. Idea Assess 最小闭环：
+  - 输出 `problem_statement`
+  - 输出 `target_user`
+  - 输出 `core_hypothesis` 或等价假设摘要
+  - 输出 `mvp_validation_path`
+  - 输出 `next_actions`
 
-### 3.3 Phase 2 明确不做
+4. Idea 与 Task 的主链路打通：
+  - Assess 后可生成 `SYSTEM` task
+  - 生成的 task 能进入 Today / Upcoming
+  - task 与 `IDEA` 关联可追溯
+
+5. Idea Workspace 最小可用：
+  - `Idea List`
+  - `Idea Detail`
+  - `Assess` 入口
+  - `Promote to Plan / Archive / Reopen` 的基础交互
+
+6. Idea 相关 Proposal / Event / Trace 补强：
+  - 关键字段更新需可追溯
+  - assess、状态迁移、task 派生必须写 trace / event / logs
+  - 高风险更新继续走 proposal 治理链路
+
+7. API / DTO / 文档同步到 Phase 3 语义
+
+8. Web 页面最小可用：Idea 主路径连真实接口
+
+### 3.2 Phase 3 可预留但不做正式闭环
+
+1. Trend source registry 与 Trend Inbox
+2. `user_preference_profiles` 正式画像重算与稳定排序影响
+3. 复杂 Idea 打分算法、市场评分、竞品自动分析
+4. Kanban / Pipeline 高级视图
+5. 复杂任务批量拆解
+6. 真实外部 research provider 的正式接入（可先保留接口与 stub/mock）
+
+### 3.3 Phase 3 明确不做
 
 1. 完整账号体系
 2. 原生 Android / iOS
 3. 原始音视频处理
 4. 任意网站自由抓取
 5. 完整导出中心
-6. Idea Card assess / task 派生正式流
+6. Trend 正式闭环
 7. Preference Learning 的成熟画像重算器
 
 ---
@@ -180,40 +203,28 @@ Do not change the language of existing repository files unless the task explicit
 - 原始内容默认只追加，不覆盖
 - `latest_content_id` 应可回指当前最新内容块
 - `content_type` 至少覆盖：
-    - `PRIMARY`
-    - `UPDATE`
-    - `EVIDENCE`
-    - `TRANSCRIPT`
-    - `CAPTURE_RAW`
+  - `PRIMARY`
+  - `UPDATE`
+  - `EVIDENCE`
+  - `TRANSCRIPT`
+  - `CAPTURE_RAW`
 
 ### 7.2 Review
 
-Review 必须支持双池语义：
+Review 仍保持 Phase 2 既有语义，不允许在 Phase 3 回退：
+- 双池：`SCHEDULE` / `RECALL`
+- 完成状态：
+  - `COMPLETED`
+  - `PARTIAL`
+  - `NOT_STARTED`
+  - `ABANDONED`
+- 完成原因：
+  - `TIME_LIMIT`
+  - `TOO_HARD`
+  - `VAGUE_MEMORY`
+  - `DEFERRED`
 
-- `SCHEDULE`
-- `RECALL`
-
-并至少支持以下完成状态：
-
-- `COMPLETED`
-- `PARTIAL`
-- `NOT_STARTED`
-- `ABANDONED`
-
-完成原因至少支持：
-
-- `TIME_LIMIT`
-- `TOO_HARD`
-- `VAGUE_MEMORY`
-- `DEFERRED`
-
-Phase 2 的 Recall 闭环至少包含：
-
-- 用户自评结果
-- 用户简短备注
-- 与 review item 的可追溯关联
-
-Review 默认展示对象是 **当前摘要 + 关键点 + 必要延伸**，不是整条 Note 全文直出。
+Review 默认展示对象仍是 **当前摘要 + 关键点 + 必要延伸**，不是整条 Note 全文直出。
 
 ### 7.3 Task
 
@@ -237,54 +248,68 @@ Task 状态保持轻量：
 - `SKIPPED`
 - `CANCELLED`
 
-Task 在 Phase 2 必须支持 `due_at` 语义，以服务 Today / Upcoming 排序与展示。
+Phase 3 中，Idea 派生 task 必须显式设置：
+- `task_source`
+- `task_type`
+- `related_entity_type=IDEA`
+- `related_entity_id=<idea_id>`
+- `due_at`（如存在计划时间）
 
 ### 7.4 ChangeProposal
 
 ChangeProposal 必须显式包含：
 
 - `target_layer`：
-    - `INTERPRETATION`
-    - `METADATA`
-    - `RELATION`
+  - `INTERPRETATION`
+  - `METADATA`
+  - `RELATION`
 - `risk_level`
 - `before_snapshot`
 - `after_snapshot`
 - `diff_summary`
 - `rollback_token`
 
-ChangeProposal 不是正文覆盖器。
+ChangeProposal 不是正文覆盖器。  
+Phase 3 中，Idea 的关键字段更新也不得绕开 proposal / trace / event 治理链路。
 
-### 7.5 Search
+### 7.5 Idea
 
-Search 的结果合同必须显式区分：
+Idea 是独立实体，但不能脱离主知识链路。
 
-- `exact_matches`
-- `related_matches`
-- `external_supplements`
+Idea 至少支持：
+- `FROM_NOTE`
+- `MANUAL`
 
-外部补充结果不得静默改写 note 当前解释层。若需要影响解释层，必须通过：
+Idea 状态机必须保持：
+- `CAPTURED`
+- `ASSESSED`
+- `PLANNED`
+- `IN_PROGRESS`
+- `ARCHIVED`
 
-1. 写入 `EVIDENCE` block，或
-2. 生成 `ChangeProposal`
+Idea Assess 输出至少包含：
+- `problem_statement`
+- `target_user`
+- `core_hypothesis` 或等价字段
+- `mvp_validation_path`
+- `next_actions`
 
-### 7.6 CaptureJob
+Assess 结果可以保存到 `assessment_result`，但关键状态推进、任务派生、人工改写都必须可追溯。
+
+### 7.6 Search / Trend / Preference 的阶段边界
+
+- Search 保持已有能力，但 Phase 3 不以 Search 为主线扩展目标
+- Trend 仍属于后续阶段，不应提前做正式 Inbox / 转化流
+- `user_preference_profiles` 仍可预留或只读占位，不做正式学习闭环与静默生效
+
+### 7.7 CaptureJob
 
 V1 仍只支持：
 
 - `TEXT`
 - `URL`
 
-状态机至少覆盖：
-
-- `RECEIVED`
-- `EXTRACTING`
-- `ANALYZING`
-- `CONSOLIDATING`
-- `COMPLETED`
-- `FAILED`
-
-Phase 2 不应为了 Search/Review 扩大 Capture 输入边界。
+Phase 3 不应为了 Idea 扩大 Capture 输入边界。
 
 ---
 
@@ -298,10 +323,10 @@ Phase 2 不应为了 Search/Review 扩大 Capture 输入边界。
    负责 DTO、参数校验、响应 envelope、错误码映射。
 
 2. Application / Orchestration 层  
-   负责编排 Capture / Review / Search / Today 等流程、写 Trace、组织规则决策。
+   负责编排 Idea / Task / Proposal / Trace 等流程、写 Trace、组织规则决策。
 
 3. Domain 层  
-   负责 Note、Review、Task、Proposal 等核心业务规则与状态机。
+   负责 Note、Review、Task、Idea、Proposal 等核心业务规则与状态机。
 
 4. Persistence 层  
    负责 Repository、ORM 映射、查询与迁移。
@@ -311,10 +336,11 @@ Phase 2 不应为了 Search/Review 扩大 Capture 输入边界。
 
 ### 8.2 Worker Agent 边界
 
-当前 Phase 2 只允许最小 Worker Agent 扩展点，不要把未来 Phase 3/4/5 的完整逻辑提前实现。
+当前 Phase 3 只允许最小 Worker Agent 扩展点，不要把未来 Phase 4/5/6 的完整逻辑提前实现。
 
 最小边界：
 - Capture Worker
 - Review Worker
-- Search Worker（可 stub/mock 外部 provider）
-- Workspace Aggregation Worker（如 Today 聚合需要）
+- Search Worker
+- Idea Worker
+- Workspace Aggregation Worker（如 Today / Idea 聚合需要）
