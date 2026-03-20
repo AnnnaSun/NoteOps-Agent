@@ -55,7 +55,7 @@ Phase 3 的目标不是做 Trend，而是把 Phase 2 已有的 Note / Search / R
     - `FAILED`
 - `TEXT` 走原文规整提取，`URL` 走最小 HTTP 快照提取
 - `ANALYZING` 阶段支持 `DEEPSEEK / KIMI / GEMINI / OLLAMA` 四个 provider 的真实结构化 JSON 调用
-- provider/router 已抽到共享 `application.ai` 平台，当前只有 `capture-analysis` 接入，未顺势扩到 `note/task/search/review`
+- provider/router 已抽到共享 `service.ai` 平台，当前只有 `capture-analysis` 接入，未顺势扩到 `note/task/search/review`
 - 服务端对 `CaptureAnalysisResult` 做强校验
 - consolidate 默认新建 Note，原始输入落 `CAPTURE_RAW`，AI 结果仅写 Note 当前解释层与 `analysis_result`
 - 写入 `agent_traces`、`tool_invocation_logs`、`user_action_events`、结构化日志

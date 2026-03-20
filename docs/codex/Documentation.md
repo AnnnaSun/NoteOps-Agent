@@ -73,17 +73,20 @@
 - `noteops.capture.url.max-text-length=4000`
 - `noteops.capture.url.user-agent=NoteOps-Agent/0.0.1`
 
-运行时默认 provider 现在固定为 `OLLAMA`，`capture-analysis` 通过共享 `application.ai` 路由平台按 `routeKey` 选 provider/model。非敏感配置已收敛进 `application.yml`，只把 `api-key`、数据库密码这类敏感值留给环境变量或 secret manager。若要切换 `capture-analysis` 的 AI 连接，直接改 `noteops.ai.routes.capture-analysis.provider/model` 即可。
+运行时默认 provider 现在固定为 `OLLAMA`，`capture-analysis` 通过共享 `service.ai` 路由平台按 `routeKey` 选 provider/model。非敏感配置已收敛进 `application.yml`，只把 `api-key`、数据库密码这类敏感值留给环境变量或 secret manager。若要切换 `capture-analysis` 的 AI 连接，直接改 `noteops.ai.routes.capture-analysis.provider/model` 即可。
+
+fallback 顺序由 `AiProperties.java` 里的 provider 优先级列表手工维护，不按价格自动推断；当某个 provider/model 为空或调用失败时，路由会按这个顺序继续尝试后续候选。调整模型优先级时，请同步更新这里的顺序说明，因为不同模型价格不同。
 
 ### AI Router 边界
-当前 router 已从 `capture` 内部实现抽成共享 `application.ai` 平台：
+当前 router 已从 `capture` 内部实现抽成共享 `service.ai` 平台：
 - provider transport、provider 注册和 route 选择位于共享层
 - `capture` 只负责 prompt、结构化结果校验、状态推进与落库
 - route 目前按 `routeKey` 配置 provider/model，`capture` 首个接入的 route 为 `capture-analysis`
 
 这意味着后续补 `note/task/search/review` 的 AI 能力时，不需要再复制 provider/router 代码，但当前仍不是通用多模型平台：
 - route 配置虽然已支持动态 key，但 provider 配置结构仍是显式字段
-- 还不支持 fallback chain、权重路由、成本/延迟策略路由
+- fallback 顺序仍需要手工维护，适合按价格或稳定性调整
+- 还不支持复杂的权重路由、成本/延迟策略路由
 - 还没有通用 prompt registry；业务 prompt 仍保留在各自业务模块
 
 ### 请求 / 响应语义

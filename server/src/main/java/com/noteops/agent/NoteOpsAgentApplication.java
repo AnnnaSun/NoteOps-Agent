@@ -1,7 +1,7 @@
 package com.noteops.agent;
 
-import com.noteops.agent.application.ai.AiProperties;
-import com.noteops.agent.application.capture.CaptureUrlProperties;
+import com.noteops.agent.config.AiProperties;
+import com.noteops.agent.config.CaptureUrlProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
