@@ -1,237 +1,156 @@
 # Prompt.md
+# NoteOps-Agent Phase 3 执行提示（Idea 正式闭环）
+
+## 1. 本轮目标
+
+当前仓库已完成 Phase 2 最小闭环。
+在正式推进 Idea 主线前，先完成一个 **Phase 3 前置补丁：Capture AI 最小闭环**，用于把当前系统推进到“至少已有一条真实可演示的 AI 主链路”。
+这一步只允许落在 Capture 的 `ANALYZING` 阶段，不等于开始 Search / Review / Task / Idea / Trend 的全面 AI 化。
+
+本轮进入 **Phase 3：Idea 正式闭环**，目标是把 Note / Search 产出的想法沉淀为可评估、可推进、可转任务的 Idea 工作流。
+
+本轮**只做 Phase 3 的最小闭环**，不要提前进入 Trend 正式闭环，不要把 Preference Learning 做成完整画像系统，不要为了未来铺过多抽象层。
+
+## 2. Phase 3 必做范围
+
+1. **Idea 实体正式落地**
+    - 支持 `CAPTURED / ASSESSED / PLANNED / IN_PROGRESS / ARCHIVED`
+    - 支持 `source_note_id`
+    - 支持 `assessment_result`
+    - 所有核心表与接口保留 `user_id`
+
+2. **Idea 来源**
+    - 支持从 `Note` 生成 Idea
+    - 支持独立创建 Idea
+    - 可以为未来 `FROM_SEARCH / FROM_TREND_CANDIDATE` 预留枚举或字段，但不要做正式闭环
+
+3. **Idea Assess**
+    - 评估结果至少包含：
+        - 问题定义
+        - 目标用户
+        - 核心假设
+        - MVP 验证路径
+    - 不要求现在实现复杂评分引擎
+
+4. **Idea -> Task**
+    - 支持基于 Idea 一键生成 system task
+    - 生成后的 task 能进入 Today / Upcoming 视图
+    - task 与 `linked_entity_type = IDEA`、`linked_entity_id` 对齐
+
+5. **Idea UI 最小工作台**
+    - 至少具备：
+        - Idea List
+        - Idea Detail
+        - Assess 入口
+        - Generate Task 入口
+    - 页面必须连真实接口，不允许纯前端假数据冒充完成
+
+6. **治理链路**
+    - Idea 关键字段更新、assessment 写回、任务生成，必须写 trace / event
+    - 关键更新默认走 proposal / trace 语义，不要让 Idea 成为绕开治理的例外
+    - 关键链路必须补齐结构化日志
+
+## 3. 本轮明确不做
+
+1. Trend 正式抓取、排序、趋势池闭环
+2. user_preference_profiles 完整重算与自动学习管线
+3. Idea 复杂评分系统（价值分、风险分、置信度）
+4. Idea Kanban / Pipeline 高级视图
+5. 周/月 Calendar
+6. 多 provider 外部实时接入
+7. 大规模通用化 Agent framework
+
+## 4. 默认实施顺序
+
+1. schema / enum / state machine
+2. domain model / repository / migration
+3. DTO / API contract
+4. service / orchestration
+5. trace / event / proposal / log
+6. frontend API client
+7. Idea List / Detail / Assess / Generate Task 页面
+8. 最小验证与文档同步
+
+不要反过来先堆 UI，再回头补后端契约。
+
+## 5. 领域与状态约束
+
+1. **Idea 生命周期**
+    - `CAPTURED -> ASSESSED -> PLANNED -> IN_PROGRESS -> ARCHIVED`
+    - 可支持 `ARCHIVED -> PLANNED` 重新开启
+
+2. **Note 仍是第一公民**
+    - Idea 不是脱离 Note 的独立系统
+    - 即便支持独立创建，也要保留与 Note / Search / Task 的主链路关系
+
+3. **Proposal / Trace 不可绕开**
+    - Idea assessment_result、title、relation、task planning 等关键变更，要么经 proposal，要么至少保留 trace + event + before/after 摘要
+    - 不允许关键变更完全静默写库
+
+4. **Task 继续沿用现有轻量状态**
+    - `TODO / IN_PROGRESS / DONE / SKIPPED / CANCELLED`
+
+## 6. 日志与可观测性要求
+
+以下场景必须补结构化日志：
+
+- 创建 Idea
+- 从 Note 派生 Idea
+- Assess 开始 / 成功 / 失败
+- Generate Task 开始 / 成功 / 失败
+- Idea 状态迁移
+- Proposal apply / reject / rollback（如果本轮涉及）
+- 写入 trace / event / user_action_event
 
-## 1. 目标
+日志至少包含：
 
-你当前执行的是 **NoteOps-Agent Phase 2：Review / Search / Today 工作台**。
+- `trace_id`
+- `user_id`
+- `idea_id`（如适用）
+- `action`
+- `result`
+- `duration_ms`（如适用）
+- `error_code` / `error_message`（失败时）
 
-本阶段目标不是扩张产品边界，而是在 **Phase 1 已完成最小闭环** 的基础上，把以下三条链路做成可展示、可验证、可继续迭代的产品化增量：
+## 7. 每一步输出要求
 
-1. Review 双池与完成语义闭环
-2. Search 三分栏与 external evidence 治理闭环
-3. Today / Calendar 工作台对 Review + Task 的统一承载
+### 本次完成
+- 本步支持了什么真实行为
 
-你必须严格遵守仓库根原则：
+### 修改文件
+- 改了哪些关键文件
+- 为什么改
 
-- Note 仍然是第一公民
-- PostgreSQL 仍然是唯一真相源
-- 原始内容只追加，不静默覆盖
-- ChangeProposal 只作用于 `INTERPRETATION / METADATA / RELATION`
-- 所有核心聚合继续保留 `user_id`
-- 不允许为了“顺手”提前把 Phase 3/4/5 做成正式闭环
+### 验证结果
+- 跑了哪些命令 / 测试
+- 通过 / 失败情况
+- 哪些还没验证
 
-相关冻结依据来自最终 PRD、架构文档、补丁整合版和 AGENTS 约束。Phase 2 路线图原始定义为 **Review / Search**，Today / Calendar 属于该阶段主要交付；Search 结果形态冻结为 `exact_matches / related_matches / external_supplements` 三分栏；外部结果只进入 evidence/proposal/冲突提示，不直接覆盖本地 Note。fileciteturn1file0 fileciteturn1file3 fileciteturn1file4
+### 风险与下一步
+- 当前最主要缺口
+- 下一个最小切片是什么
 
----
+## 8. 完成定义
 
-## 2. 本阶段范围（已确认）
+只有同时满足以下条件，Phase 3 才能标记“已完成最小闭环”：
 
-### 2.1 必做范围
+1. 可以创建 Idea
+2. 可以从 Note 派生 Idea
+3. 可以对 Idea 做最小 Assess
+4. 可以从 Idea 生成真实 system task
+5. Today / Upcoming 能看到生成后的任务
+6. 关键状态迁移有 trace / event / log
+7. 前端工作台走真实接口
+8. Documentation.md 已同步当前真实实现
 
-本次 Phase 2 只做以下内容：
+## 9. Deferred Backlog 记录要求
 
-#### A. Review 升级
+任何为了最小闭环暂时跳过的能力，必须显式记录到 deferred backlog，例如：
 
-把 Phase 1 的最小 Review 闭环，升级为正式的双池与完成语义闭环：
+- Idea scoring
+- Trend candidate 接入
+- Preference profile 重算
+- Kanban / pipeline
+- richer assessment templates
 
-- `queue_type` 支持：`SCHEDULE / RECALL`
-- `completion_status` 支持：`COMPLETED / PARTIAL / NOT_STARTED / ABANDONED`
-- `completion_reason` 支持：`TIME_LIMIT / TOO_HARD / VAGUE_MEMORY / DEFERRED`
-- `self_recall_result` 保留用户自评：`GOOD / VAGUE / FAILED`
-- Review 展示对象为：**当前摘要 + 关键点 + 必要延伸**，不是全文直出
-- Review 完成后必须能决定：
-  - 更新 `next_review_at`
-  - 进入 `SCHEDULE_POOL` 或 `RECALL_POOL`
-  - 必要时生成 follow-up system task
-
-这些规则已在补丁文档和表结构文档中冻结。fileciteturn1file4turn1file5turn1file6turn1file7
-
-#### B. Search 升级
-
-把 Search 从占位或基础检索，升级为正式三分栏：
-
-- `exact_matches`
-- `related_matches`
-- `external_supplements`
-
-要求：
-
-- `related_matches` 必须有 `relation_reason`
-- `external_supplements` 必须返回来源、摘要、关键词、关系标签
-- 外部结果只允许：
-  - 形成 `evidence block`
-  - 形成 `change proposal`
-  - 形成冲突 / 背景补充 / 延伸阅读提示
-- 外部结果不得直接覆盖 `notes.current_summary`
-
-该边界在 PRD、架构和 AGENTS 中是一致冻结的。fileciteturn1file0turn1file3turn1file8
-
-#### C. Today / Calendar 工作台
-
-Today / Calendar 本阶段只做 **列表工作台能力**，不做复杂周/月视图。
-
-必须支持：
-
-- Today 页面同时展示 Review 与 Task
-- Task 同时覆盖 `SYSTEM` 与 `USER`
-- 返回结果必须带 `task_source`
-- 页面采用 **分区展示**，不要混成无结构单流
-- Calendar 本阶段只做 `Today + Upcoming` 列表能力，不做周视图/月历
-
-这一点与补丁文档对 Task 和 Today 视图要求一致。fileciteturn1file4turn1file5turn1file6
-
-#### D. User Task 扩展到 Calendar 场景
-
-User Task 本阶段能力边界：
-
-- 创建
-- 查看 Today
-- 查看 Upcoming / Calendar 列表
-- 完成
-- 跳过
-- 按 `due_at` 基础排序
-
-不要求本阶段完成复杂编辑、拖拽重排、批量操作。
-
-#### E. Proposal 治理补强
-
-本阶段的 Proposal 不只是保留表结构，必须补强以下链路：
-
-- Search 产生的 evidence / proposal
-- Review 后产生的 proposal 或 follow-up task
-- apply / rollback 的响应结构带 `rollback_token` 与快照摘要
-- proposal 操作同步写入 `change_proposals / user_action_events / agent_traces`
-
-相关语义在 JSON 补丁、架构补丁和表结构文档中已冻结。fileciteturn1file5turn1file6turn1file7
-
-#### F. Preference 仅做采集层，不做正式画像学习闭环
-
-本阶段允许：
-
-- 继续完善 `user_action_events`
-- 为未来 `user_preference_profiles` 输入做准备
-- 在接口与服务层预留最小读取/写入边界
-
-本阶段不要求：
-
-- 完整偏好重算任务
-- Prompt 自动演化
-- 基于画像的大规模排序/生成逻辑
-
-系统对 Preference 的正式原则是：**先学习用户关心什么，再学习用户怎么表达**。fileciteturn1file4turn1file6turn1file7
-
----
-
-## 3. 本阶段明确不做
-
-### 3.1 不做正式 Idea 生命周期闭环
-
-`ideas` 表和模型可以预留，但不要在本阶段实现以下完整能力：
-
-- Idea Card 正式页面
-- `POST /api/v1/ideas/{id}/assess` 的完整产品链路
-- Idea → Task 全闭环执行面板
-- Idea 状态流正式推进
-
-原因：原始路线图把 **Idea 放在 Phase 3**。尽管完整表结构文档把 `ideas` 列为 Phase 2，但这里按你已确认的策略处理为 **预留，不抢占主线**。fileciteturn1file0turn1file7
-
-### 3.2 不做正式 UserPreferenceProfile 画像计算
-
-`user_preference_profiles` 本阶段只允许预留模型与采集输入，不做正式学习闭环。完整画像学习更适合后续阶段。fileciteturn1file0turn1file7
-
-### 3.3 不做 Trend 正式闭环
-
-不做 Trend Inbox、source registry、趋势转 Note/Idea 正式流程。Trend 仍留在更后阶段。fileciteturn1file0
-
-### 3.4 不做复杂 Calendar 视图
-
-不做：
-
-- 周视图
-- 月历视图
-- 拖拽排期
-- 时间块视图
-
-本阶段 Calendar 只做列表型 `Upcoming` 工作台。
-
----
-
-## 4. Deferred Backlog（必须保留，后续补回）
-
-以下内容是为了完成 **Phase 2 最小闭环** 而暂时跳过的功能，**后期必须补回，不得永久遗漏**：
-
-1. 正式 Idea 生命周期闭环
-2. 正式 UserPreferenceProfile 画像重算与注入
-3. Trend 正式闭环
-4. 更强的外部检索增强与真实外部源接入
-5. 更完整的 Calendar 视图（周 / 月）
-6. User Task 编辑、重排、批处理
-7. 更成熟的 recall question / recall scoring
-8. tag_definitions 与标签规范化治理
-9. PWA 离线 review 与 sync 完整链路
-10. 更完整的 Proposal 审计与治理体验
-
-每次做 Phase 2 子步骤时，允许显式写“deferred”，但不得删除该清单。
-
----
-
-## 5. 实施优先级
-
-严格按下面顺序推进，不要跨步大面积发散：
-
-1. Schema / enum / migration 对齐
-2. Review 状态机与 command/query 对齐
-3. Today / Upcoming 聚合接口
-4. Search 三分栏后端契约
-5. Proposal / event / trace 补强
-6. Web 工作台接入
-7. 文档同步与阶段状态收口
-
----
-
-## 6. 执行约束
-
-### 6.1 修改原则
-
-- 只做当前子步骤最小闭环
-- 先读现有代码，再增量修改
-- 不做无关重构
-- 不静默更名核心字段、接口路径、状态字面量
-- 改 schema 时同步检查 entity / DTO / service / frontend / docs
-
-### 6.2 必须保护的冻结语义
-
-- `notes` 保存当前解释层，`note_contents` 保存追加型原始内容与证据块
-- Review 不能退化为单池 + 单布尔完成状态
-- Task 不能只保留 `SYSTEM`
-- Proposal 不能变成正文覆盖器
-- 外部证据不能直接覆盖本地知识正文
-- 所有核心表继续保留 `user_id`
-
-### 6.3 验证要求
-
-涉及后端变更至少执行：
-
-- 受影响模块测试
-- 构建 / 编译
-- migration 校验（若涉及 DB）
-
-涉及前端变更至少执行：
-
-- 构建
-- 类型检查 / lint（若已配置）
-- 关键页面手工自检说明
-
-若未验证，必须明确写未验证项与风险。
-
----
-
-## 7. 交付输出格式
-
-每个子步骤完成后，默认按以下格式汇报：
-
-1. **本次完成**
-2. **修改文件**
-3. **验证结果**
-4. **未覆盖风险 / 下一步**
-
-不要只说“done”。
+**阶段性跳过 ≠ 永久删除。**

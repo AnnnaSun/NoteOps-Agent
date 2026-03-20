@@ -387,9 +387,9 @@ export default function App() {
         try {
           const result = await createCapture({
             userId: activeUserId,
-            inputType: captureInputType,
-            rawInput: captureText,
-            sourceUri: captureInputType === "URL" ? captureSourceUri : undefined
+            sourceType: captureInputType,
+            rawText: captureInputType === "TEXT" ? captureText : undefined,
+            sourceUrl: captureInputType === "URL" ? captureSourceUri : undefined
           });
           setCaptureResult(result);
           setCaptureText("");
@@ -583,11 +583,11 @@ export default function App() {
     <main className="app-shell">
       <section className="hero-panel">
         <div>
-          <p className="eyebrow">Phase 2 / Step 2.7</p>
-          <h1>Search、Review 与 Workspace 主路径已连真实接口。</h1>
+          <p className="eyebrow">Phase 3 前置补丁 / Capture AI</p>
+          <h1>Capture 已接上最小真实 AI 主链路。</h1>
           <p className="hero-copy">
-            当前单页继续保留 Capture、Note 和 Proposal 主链路，并补齐 Search 三分栏与 Today Review
-            完成表单，保持 Step 2.7 的最小可验收闭环。
+            当前单页保留既有 Note、Proposal、Search、Review、Workspace 页面，并把 Capture 升级为
+            TEXT / URL 提取、结构化 AI 分析与默认新建 Note 的最小可演示闭环。
           </p>
         </div>
         <form className="user-form" onSubmit={handleUserIdApply}>
@@ -628,12 +628,12 @@ export default function App() {
       <section className={`workspace-grid ${isDetailVisible ? "detail-open" : "detail-closed"}`}>
         <div className="column-stack">
           <article className="panel">
-            <div className="panel-heading">
-              <div>
-                <p className="panel-kicker">Capture</p>
-                <h2>提交一条新输入</h2>
+              <div className="panel-heading">
+                <div>
+                  <p className="panel-kicker">Capture</p>
+                  <h2>提交一条新输入并触发 AI 分析</h2>
+                </div>
               </div>
-            </div>
             <form className="capture-form" onSubmit={handleCaptureSubmit}>
               <div className="segmented-control" role="tablist" aria-label="Capture input type">
                 <button
@@ -659,13 +659,21 @@ export default function App() {
                   spellCheck={false}
                 />
               ) : null}
-              <textarea
-                placeholder={captureInputType === "TEXT" ? "输入要落库的正文内容..." : "输入 URL 说明或抓取原文占位..."}
-                value={captureText}
-                onChange={(event) => setCaptureText(event.target.value)}
-              />
+              {captureInputType === "TEXT" ? (
+                <textarea
+                  placeholder="输入要落库的正文内容..."
+                  value={captureText}
+                  onChange={(event) => setCaptureText(event.target.value)}
+                />
+              ) : null}
               <div className="form-actions">
-                <button type="submit" disabled={isSubmittingCapture || !captureText.trim()}>
+                <button
+                  type="submit"
+                  disabled={
+                    isSubmittingCapture ||
+                    (captureInputType === "TEXT" ? !captureText.trim() : !captureSourceUri.trim())
+                  }
+                >
                   {isSubmittingCapture ? "提交中..." : "提交 Capture"}
                 </button>
                 <span className="meta-chip">user_id: {activeUserId}</span>
@@ -686,8 +694,15 @@ export default function App() {
                     </button>
                   ) : null}
                 </div>
-                <p>capture_id: {captureResult.id}</p>
+                <p>capture_job_id: {captureResult.capture_job_id}</p>
                 <p>note_id: {captureResult.note_id ?? "N/A"}</p>
+                <p>failure_reason: {captureResult.failure_reason ?? "N/A"}</p>
+                {captureResult.analysis_preview ? (
+                  <>
+                    <p>title_candidate: {captureResult.analysis_preview.title_candidate}</p>
+                    <p>{captureResult.analysis_preview.summary}</p>
+                  </>
+                ) : null}
               </div>
             ) : null}
           </article>

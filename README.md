@@ -5,6 +5,13 @@ Phase 2 monorepo for the NoteOps Review / Search / Today Workspace milestone. Th
 ## Structure
 
 - `server`: Spring Boot backend
+  - `controller`: HTTP 入口与响应组装
+  - `service`: 用例编排与业务流程
+  - `model`: 业务状态、枚举、领域模型
+  - `dto`: 请求 / 响应对象
+  - `repository`: 数据访问实现
+  - `common`: 通用异常、工具和共享基础类型
+  - `config`: 配置属性
 - `web`: React + Vite + TypeScript frontend
 - `docs`: project documentation
 - `docker-compose.yml`: local PostgreSQL service

@@ -47,17 +47,19 @@ export function getNote(noteId: string, userId: string): Promise<NoteDetail> {
 
 export function createCapture(input: {
   userId: string;
-  inputType: "TEXT" | "URL";
-  rawInput: string;
-  sourceUri?: string;
+  sourceType: "TEXT" | "URL";
+  rawText?: string;
+  sourceUrl?: string;
+  titleHint?: string;
 }): Promise<CaptureResponse> {
   return request("/api/v1/captures", {
     method: "POST",
     body: JSON.stringify({
       user_id: input.userId,
-      input_type: input.inputType,
-      raw_input: input.rawInput,
-      source_uri: input.sourceUri ?? null
+      source_type: input.sourceType,
+      raw_text: input.rawText ?? null,
+      source_url: input.sourceUrl ?? null,
+      title_hint: input.titleHint ?? null
     })
   });
 }

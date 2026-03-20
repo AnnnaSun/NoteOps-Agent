@@ -6,7 +6,7 @@
 本文件定义 Codex 在 NoteOps 仓库内执行任务时的默认工作方式。  
 目标是减少发散、减少误改、减少“看起来做了很多但主线没推进”的情况。
 
-当前默认服务于 **Phase 2：Review / Search / Today Workspace**。
+当前默认服务于 **Phase 3：Idea Lifecycle / Idea Workspace**。
 
 ---
 
@@ -18,7 +18,7 @@
 2. 阅读 `docs/codex/Prompt.md`
 3. 阅读 `docs/codex/Plan.md`
 4. 阅读 `docs/codex/Implement.md`
-5. 确定当前任务所属 Phase 2 子步骤
+5. 确定当前任务所属 Phase 3 子步骤
 6. 只实现该子步骤的最小闭环
 7. 跑最小验证
 8. 需要时更新 `docs/codex/Documentation.md`
@@ -40,7 +40,7 @@
 不符合以下情况：
 
 - 为了“以后可能会用”提前铺很多抽象层
-- 把 Phase 3/4 的逻辑塞进 Phase 2
+- 把 Phase 4/5 的逻辑塞进 Phase 3
 - 一次改 schema、API、页面、算法、移动端预研全部内容
 - 大量生成占位文件却没有跑通主链路
 
@@ -75,16 +75,16 @@
 
 ### 5.1 总优先级
 
-Phase 2 默认按以下顺序推进：
+Phase 3 默认按以下顺序推进：
 
 1. schema / state machine / enum 正确性
 2. API contract 与 DTO 一致性
-3. Today / Upcoming 聚合可用
-4. Review 双池与 recall 反馈闭环可用
-5. Search 三分栏结果合同可用
-6. Proposal / Event / Trace 治理链路补齐
+3. Idea create / assess / state transition 主链路可用
+4. Idea 与 Task 派生关系可用
+5. Idea List / Detail / Assess 主路径可用
+6. Proposal / Event / Trace / Logs 治理链路补齐
 7. Web 页面接真实接口
-8. 复杂算法、外部 provider、视觉细节后置
+8. 复杂评分、Trend 集成、Preference 学习、视觉细节后置
 
 ### 5.2 后端偏好
 
@@ -98,11 +98,12 @@ Phase 2 默认按以下顺序推进：
 关键日志默认必须覆盖：
 - controller 请求入口
 - service 核心命令入口与出口
-- 状态迁移
-- 外部调用开始 / 成功 / 失败
+- idea create
+- idea assess
+- idea status transition
+- idea task generation
 - proposal apply / rollback
-- review complete / recall requeue
-- search external supplement 的 evidence / proposal 生成
+- 外部调用开始 / 成功 / 失败（如 assess 中存在）
 - task create / complete / skip / reschedule
 
 日志至少包含：
@@ -115,8 +116,9 @@ Phase 2 默认按以下顺序推进：
 - `error_code` / `error_message`（失败时）
 
 可以暂时简化：
-- 智能打分算法
-- 外部接入质量
+- 复杂 Idea 打分算法
+- 复杂市场评估与竞品分析
+- Trend / Preference 正式接入质量
 - UI 呈现细节
 - 高级优化
 
@@ -124,20 +126,21 @@ Phase 2 默认按以下顺序推进：
 - 关键链路日志
 - 可关联的 trace 信息
 - 核心失败分支日志
+- Idea 生命周期状态推进的最小验证
 
 ### 5.3 前端偏好
 
 优先：
 - 页面能连上真实接口
-- Today / Review / Search 主路径能跑通
+- Idea create / list / detail / assess 主路径能跑通
 - 状态边界清楚（加载、空、错误、成功）
-- ReviewItem 与 Task 在工作台上分区展示
+- Idea 详情中能清楚看到 assessment 与派生 task
 
 不优先：
 - 复杂视觉效果
 - 完整组件系统
 - 动画、主题、多端适配细节
-- 周视图 / 月视图 calendar
+- Kanban / 拖拽 / 高级 pipeline 视图
 
 ---
 
@@ -221,47 +224,46 @@ Proposal 只允许作用于：
 
 禁止把 proposal 设计成“直接改写原始 note_contents 正文”。
 
-### 9.3 Search 特殊规则
-外部搜索结果：
-
-- 可以进入 `external_supplements`
-- 可以形成 evidence block
-- 可以生成 change proposal
-- 不能直接覆盖 `notes.current_summary/current_key_points/current_tags`
+### 9.3 Idea 特殊规则
+Idea 的 assess / edit / promote 流程中：
+- 允许生成 assessment 结果
+- 允许更新 Idea 当前状态
+- 允许派生 task
+- 不允许绕开 trace / event / proposal 治理链路静默改动关键字段
 
 ---
 
-## 10. Review / Task / Workspace 特殊规则
+## 10. Idea / Task / Workspace 特殊规则
 
-### 10.1 Review
-不要把 Review 简化成：
-- 单一布尔完成状态
-- 单一队列
-- 只有 `next_review_at` 没有完成语义
+### 10.1 Idea
+不要把 Idea 简化成：
+- 只有标题和备注的临时草稿
+- 没有状态机的轻量卡片
+- assess 后不产生任何可执行结果
 
 必须体现：
-- `queue_type`
-- `completion_status`
-- `completion_reason`
-- recall 用户反馈（自评 + 备注）
+- `status`
+- `assessment_result`
+- `FROM_NOTE` 与独立创建两种来源
+- assess 后可产生 `next_actions`
+- 需要时可派生 task
 
 ### 10.2 Task
-不要只做 System Task。  
-Phase 2 需要支持 User Task 的最小能力：
+不要把 Phase 3 的 task 派生做成纯前端假数据。  
+Phase 3 中 Idea 派生 task 至少要支持：
 
-- 创建
-- 查看 Today / Upcoming
-- 完成
-- 跳过
-- 基于 `due_at` 排序
+- 创建 system task
+- 与 idea 建立可追溯关联
+- 进入 Today / Upcoming
+- 完成 / 跳过后能回写状态或事件
 
 ### 10.3 Workspace
-Today / Upcoming 不是简单列表拼接。至少要保证：
+Idea Workspace 不是简单列表页。至少要保证：
 
-- ReviewItem 与 Task 可同时展示
-- 两类对象边界清晰
-- `task_source` 可见或可推断
-- 排序规则可解释
+- Idea List 与 Idea Detail 都可用
+- 详情中 assessment 结果可见
+- 状态流转入口清晰
+- 派生 task 可查看或可跳转
 
 ---
 
@@ -276,13 +278,13 @@ Today / Upcoming 不是简单列表拼接。至少要保证：
 则采用以下策略：
 
 ### 11.1 文档冲突
-优先采用当前 Phase 2 基线中的冻结结论，尤其是：
-- Review 双池
-- Recall 自评 + 备注
-- User Task + `due_at`
-- Search 三分栏
-- 外部证据不得静默覆盖解释层
-- Proposal 治理链路
+优先采用当前 Phase 3 基线中的冻结结论，尤其是：
+- Phase 3 主目标是 Idea，而不是 Trend
+- Idea 生命周期
+- Idea assess 产出结构
+- Idea 到 Task 的派生链路
+- Proposal / Trace / Event 治理不被绕开
+- Trend / Preference 继续后置
 
 ### 11.2 代码与文档不一致
 优先保护当前冻结文档中的主边界，不要盲从现有草稿代码。
@@ -319,7 +321,7 @@ Today / Upcoming 不是简单列表拼接。至少要保证：
 - 新增或修改状态迁移
 - 新增外部调用
 - 新增调度逻辑
-- 新增 proposal / review / task 核心流程
+- 新增 proposal / idea / task 核心流程
 
 输出结果中必须额外写明：
 1. 本次新增了哪些关键日志点

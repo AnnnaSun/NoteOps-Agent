@@ -1,233 +1,381 @@
 # Documentation.md
-
-## 1. 当前仓库状态
-
-当前仓库状态定义为：
-
-- **Phase 1：最小知识内核已完成**
-- **Phase 2：Review / Search / Today Workspace 最小闭环已形成，当前进入文档收口与风险消化阶段**
-
-这表示仓库已经不再是纯骨架或纯占位状态，也不再停留在“刚进入 Phase 2”的状态，而是已经围绕以下三个产品化增量形成了可 review 的最小闭环：
-
-1. Review 双池与完成质量语义
-2. Search 三分栏与 external evidence 治理
-3. Today / Calendar 工作台
-
-路线图依据来自 PRD：Phase 2 为 `Review / Search`，Phase 3 才是 `Idea`。fileciteturn1file0
-
----
-
-## 2. Phase 2 范围冻结
-
-### 2.1 本阶段包含
-
-#### Review
-
-- 双池：`SCHEDULE / RECALL`
-- 完成状态：`COMPLETED / PARTIAL / NOT_STARTED / ABANDONED`
-- 完成原因：`TIME_LIMIT / TOO_HARD / VAGUE_MEMORY / DEFERRED`
-- 用户 recall 自评：`GOOD / VAGUE / FAILED`
-- Review complete 合同回传并持久化 `self_recall_result` 与简短 `note`
-- Review 默认展示载体：`current_summary + current_key_points + necessary extensions`
-- Web 当前已在 Today 工作台内接入 Review 完成表单：始终提交 `completion_status`，非 `COMPLETED` 时要求 `completion_reason`，且仅 `RECALL` 队列展示 `self_recall_result` 与可选 `note`
-
-相关冻结依据见补丁文档与表结构。fileciteturn1file4turn1file5turn1file7
-
-#### Search
-
-- 三分栏：`exact_matches / related_matches / external_supplements`
-- `related_matches` 要返回 `relation_reason`
-- `external_supplements` 要返回来源、摘要、关键词、关系标签
-- 外部结果只进入 evidence / proposal / conflict flow
-- Web 当前已在单页工作台中展示 Search 三分栏，并允许从 `exact_matches` / `related_matches` 直接打开 Note 详情
-
-相关冻结依据见 PRD、架构文档与 AGENTS。fileciteturn1file0turn1file3turn1file8
-
-#### Today / Calendar
-
-- Today 同时展示 Review 与 Task
-- Task 同时包含 `SYSTEM / USER`
-- 返回必须携带 `task_source`
-- 后端提供聚合型 workspace 查询：
-  - `GET /api/v1/workspace/today` 返回 `today_reviews` 与 `today_tasks`
-  - `GET /api/v1/workspace/upcoming` 返回 `upcoming_reviews` 与 `upcoming_tasks`
-- Web 工作台已切到上述聚合接口，Today 与 Upcoming 都按 Review / Task 分区展示
-- Upcoming Review 当前会将同一 `note_id` 下的 `SCHEDULE` / `RECALL` 条目按 Note 分组展示，减少双池语义造成的“重复项”误判
-- 本阶段 Calendar 仅做 `Today + Upcoming` 列表，不做周/月视图
-
-#### Proposal / Event / Trace
-
-- Proposal apply / rollback 需要返回回退信息
-- Review / Task / proposal / external evidence 的关键动作需要写入事件
-- 核心链路需要可追溯 trace
-
-#### Preference 采集层
-
-- 本阶段允许继续补强 `user_action_events`
-- 允许为 `user_preference_profiles` 做输入准备
-- 不做完整画像计算与自动注入
-
----
-
-## 3. Phase 2 不包含
-
-以下能力明确不在当前阶段正式闭环内：
-
-### 3.1 Idea 正式生命周期
-
-- `ideas` 表可预留
-- 允许保留最小 DTO / service 扩展点
-- 不交付正式 Idea Card / assess / lifecycle 页面
-
-### 3.2 Preference Learning 正式闭环
-
-`user_preference_profiles` 中文定义：
-
-> 用户长期偏好画像。
-
-它的职责不是保存一次性的 UI 选项，而是沉淀用户长期行为后形成的结构化偏好，例如：
-
-- `interest_profile`：用户关心什么，例如关注主题、来源偏好、任务偏好
-- `output_style_profile`：用户偏好的输出风格，例如标签风格、摘要长度、表达偏好
-
-架构文档还明确了一个更重要的产品原则：
-
-> 系统先学习用户关心什么，再学习用户怎么表达。
-
-这意味着 `user_preference_profiles` 本质上是未来的“偏好记忆层 / 个性化画像层”，而不是简单配置表。fileciteturn1file3turn1file7
-
-本阶段只预留，不做正式重算闭环。
-
-### 3.3 Trend 正式闭环
-
-Trend Inbox、source registry、趋势转 Note/Idea 留到更后阶段。fileciteturn1file0
-
-### 3.4 Calendar 高级视图
-
-本阶段不做周视图、月历视图、拖拽排期。
-
----
-
-## 4. 当前核心契约
-
-### 4.1 数据层契约
-
-- PostgreSQL 仍是唯一真相源
-- 所有核心表继续保留 `user_id`
-- `notes` 保存当前解释层
-- `note_contents` 保存原始内容、更新块、证据块
-- 原始内容只追加，不静默覆盖
-
-### 4.2 Proposal 契约
-
-- 只作用于 `INTERPRETATION / METADATA / RELATION`
-- 不直接改写原始正文
-- apply / rollback 需要留痕
-- apply / rollback 响应暴露 `rollback_token`、`before_snapshot_summary`、`after_snapshot_summary`
-
-### 4.3 Review 契约
-
-- 不能退化成单池 + 单布尔完成状态
-- Review complete 请求 / 响应需要反映完成质量与后续调度结果
-- Review complete / partial / not_started / abandoned 关键动作会写入 trace、event、tool log
-
-### 4.4 Task 契约
-
-- 同时支持 `SYSTEM / USER`
-- 支持 `NOTE / IDEA / REVIEW / NONE`
-- 本阶段重点是 Today / Upcoming 工作台消费能力
-- User Task 创建会拒绝重复的 open user task：若 `title`、`task_type` 与绑定对象一致，且旧任务仍为 `TODO / IN_PROGRESS`，接口返回 `409 OPEN_TASK_ALREADY_EXISTS`
-
-### 4.5 Search 契约
-
-- 外部补充只做 evidence / proposal / conflict hint
-- 不得直接覆盖本地 Note 当前摘要
-- Search 查询与 external supplement 生成会写入 trace、event、tool log
-
----
-
-## 5. 推荐的 Phase 2 实现顺序
-
-1. 对齐 Phase 2 文档与仓库级约束
-2. 对齐 Review schema / API / 状态机
-3. 建立 Today / Upcoming 聚合接口
-4. 扩展 User Task 到 Calendar 列表能力
-5. 实现 Search 三分栏后端契约
-6. 补强 proposal / event / trace
-7. 接入 Web 页面
-8. 更新文档与阶段状态
-
----
-
-## 6. Deferred Backlog（后期必须补回）
-
-以下是为了完成 Phase 2 最小闭环而暂时延后的功能，后续必须补回：
-
-1. 正式 Idea 生命周期闭环
-2. 正式 UserPreferenceProfile 画像重算与个性化注入
-3. Trend 正式闭环
-4. 更真实的 external provider 接入
-5. 周 / 月 Calendar 视图
-6. User Task 编辑、重排、批量能力
-7. recall question / recall scoring 增强
-8. tag_definitions 与标签治理
-9. PWA 离线 review / sync 完整链路
-10. 更完整的 Proposal 治理体验
-
-本清单不得因为“当前没做”而删除。
-
----
-
-## 7. 当前文档使用方式
-
-### Prompt.md
-
-定义当前阶段的执行边界、做与不做、Deferred Backlog、输出要求。
-
-### Plan.md
-
-定义 Phase 2 的子步骤拆分、依赖关系与验收点。
-
-### Documentation.md
-
-记录当前仓库已经进入到什么阶段、当前语义如何冻结、哪些内容仍 deferred。
-
----
-
-## 8. 与仓库级文件的同步要求
-
-当 Phase 2 继续推进时，以下情况必须同步更新本文档：
-
-- schema 改动
-- Review / Task / Search API 字段改动
-- 状态机改动
-- Today / Upcoming 页面实际行为变化
-- Proposal / Event / Trace 语义变化
-- 当前完成状态发生变化
-
-## 9. 更新记录 2026-03-18
-
-### 已完成
-- Step 2.8 阶段文档收口已完成：`README.md`、`docs/phase1-scope.md` 与本文件已同步到当前 Phase 2 状态，不再保留“仓库仍停留在 Phase 1 / Web 尚未接 Upcoming / Search 未接真实页面”的过期表述。
-- Step 2.5 Search 三分栏后端契约已落地：`GET /api/v1/search` 返回 `exact_matches` / `related_matches` / `external_supplements`。
-- Search 现在基于 `notes` 与 `latest_content_id` 的只读查询做确定性分桶，`exact_matches` / `related_matches` 不重复同一条 note。
-- `external_supplements` 目前仍是 deterministic stub，只返回来源、摘要、关键词、关系标签，不接真实外部 provider。
-- Step 2.6 Proposal / Event / Trace 补强已完成：Review 和 Search 关键链路写入 `agent_traces`、`user_action_events`、`tool_invocation_logs`；`ChangeProposal` apply / rollback 响应补充 `rollback_token` 与 snapshot summary。
-- Step 2.7 Web 工作台接入已完成最小闭环：`web/src/App.tsx` 现在在同一页面消费 `GET /api/v1/workspace/today`、`GET /api/v1/workspace/upcoming`、`GET /api/v1/search` 与 `POST /api/v1/reviews/{reviewItemId}/complete`，补齐 Today / Upcoming、Search 三分栏和 Today Review 完成表单的真实前端接线。
-- 修复 `workspace/today` 与 `workspace/upcoming` 并发刷新时的 `review_states` 初始 `SCHEDULE` 竞态：`createInitialScheduleIfMissing` 现在直接依赖唯一索引仲裁并吞掉重复创建的 `DuplicateKeyException`，避免新 capture 后偶发把唯一索引冲突透传到 UI。
-- 调整 Upcoming Review 的前端呈现：保持后端双池语义不变，但将同一 `note_id` 的 `SCHEDULE` / `RECALL` 条目按 Note 分组展示，并补充 `note_id`、queue 数量和更醒目的队列说明，降低“重复 review”误判。
-- User Task 创建现在会拒绝重复的 open user task：当 `title`、`task_type` 和绑定对象（`note_id` / `related_entity_type` / `related_entity_id`）一致且旧任务仍处于 `TODO` / `IN_PROGRESS` 时，`POST /api/v1/tasks` 返回 `409 OPEN_TASK_ALREADY_EXISTS`，避免 accidental duplicate submit。
-
-### 验证
-- `mvn -q -Dtest=ReviewApplicationServiceTest,SearchApplicationServiceTest,ChangeProposalControllerTest test` 通过。
-- `mvn -q -Dtest=ReviewControllerTest,SearchControllerTest test` 通过。
-- `npm run build`（`web/`）通过。
-- `mvn -q -Dtest=JdbcReviewStateRepositoryIntegrationTest test` 通过。
-- `npm run build`（`web/`，含 Upcoming Review 分组展示调整）通过。
-- `mvn -q -Dtest=TaskApplicationServiceTest,TaskControllerTest,TaskTransactionIntegrationTest test` 通过。
-- `git diff --check` 通过。
-
-### 风险
-- 外部补充仍是 stub，后续若接入真实 provider，需要重新校准结果字段与排序策略。
-- 浏览器手工自测已经覆盖部分主链路，并暴露了 workspace 初始 review 竞态、Upcoming Review 可读性，以及 user task 重复创建三个问题；这三项都已修复，但仍未完成一次从 Capture 到 Search / Review / Task 的全量回归。
-- User Task 的去重目前只覆盖“相同 `title` + `task_type` + 绑定对象”的 open user task；如果标题或类型不同，系统仍会视为新任务。
+# NoteOps-Agent Phase 3 文档基线（Idea 正式闭环）
+
+## 1. 阶段定位
+
+当前仓库进入 **Phase 3：Idea 正式闭环**。
+但在正式推进 Idea 工作台前，已先落地一个 **Phase 3 前置补丁：Capture AI 最小闭环**，用于提供第一条真实可演示的 AI 主链路。
+
+本阶段目标是承接 Phase 2 已完成的 Note / Search / Review / Task 主链路，把“知识沉淀”推进到“想法评估与执行规划”。
+
+## 1.1 Capture AI 前置补丁（已完成）
+
+这一步只覆盖 Capture，不代表 Search / Review / Task / Idea / Trend 已进入正式 AI 闭环。
+
+### 当前真实能力
+- `POST /api/v1/captures`
+- `GET /api/v1/captures/{capture_job_id}`
+- 输入类型仅支持：
+  - `TEXT`
+  - `URL`
+- CaptureJob 状态机：
+  - `RECEIVED`
+  - `EXTRACTING`
+  - `ANALYZING`
+  - `CONSOLIDATING`
+  - `COMPLETED`
+  - `FAILED`
+- 失败原因固定为：
+  - `EXTRACTION_FAILED`
+  - `LLM_CALL_FAILED`
+  - `LLM_OUTPUT_INVALID`
+  - `CONSOLIDATION_FAILED`
+
+### Capture AI 的边界
+- AI 只允许插在 `ANALYZING` 阶段
+- LLM 只输出结构化 `CaptureAnalysisResult`
+- 默认永远新建 Note
+- 原始输入只落 append-only `CAPTURE_RAW`
+- AI 结果只更新 Note 当前解释层与 `analysis_result`
+- 不允许模型直接覆盖 raw content
+- 不做旧 Note 匹配 / 合并策略
+- 不做 `UPDATE / APPEND / CONFLICT`
+
+### CaptureAnalysisResult 字段
+- `title_candidate`
+- `summary`
+- `key_points`
+- `tags`
+- `idea_candidate`
+- `confidence`
+- `language`
+- `warnings`
+
+### 当前 provider 配置
+- `noteops.ai.default-provider=OLLAMA`
+- `noteops.ai.request-timeout=PT20S`
+- `noteops.ai.routes.capture-analysis.provider=OLLAMA`
+- `noteops.ai.routes.capture-analysis.model=deepseek-r1:8b`
+- `noteops.ai.deepseek.base-url=https://api.deepseek.com`
+- `noteops.ai.deepseek.api-key` 通过环境变量或 secret manager 注入
+- `noteops.ai.deepseek.model=deepseek-chat`
+- `noteops.ai.kimi.base-url=https://api.moonshot.cn/v1`
+- `noteops.ai.kimi.api-key` 通过环境变量或 secret manager 注入
+- `noteops.ai.kimi.model=kimi-k2`
+- `noteops.ai.gemini.base-url=https://generativelanguage.googleapis.com/v1beta/openai`
+- `noteops.ai.gemini.api-key` 通过环境变量或 secret manager 注入
+- `noteops.ai.gemini.model=gemini-2.0-flash`
+- `noteops.ai.ollama.base-url=http://localhost:11434`
+- `noteops.ai.ollama.model=deepseek-r1:8b`
+- `noteops.capture.url.connect-timeout=PT5S`
+- `noteops.capture.url.read-timeout=PT15S`
+- `noteops.capture.url.max-response-bytes=200000`
+- `noteops.capture.url.max-text-length=4000`
+- `noteops.capture.url.user-agent=NoteOps-Agent/0.0.1`
+
+运行时默认 provider 现在固定为 `OLLAMA`，`capture-analysis` 通过共享 `service.ai` 路由平台按 `routeKey` 选 provider/model。非敏感配置已收敛进 `application.yml`，只把 `api-key`、数据库密码这类敏感值留给环境变量或 secret manager。若要切换 `capture-analysis` 的 AI 连接，直接改 `noteops.ai.routes.capture-analysis.provider/model` 即可。
+
+fallback 顺序由 `AiProperties.java` 里的 provider 优先级列表手工维护，不按价格自动推断；当某个 provider/model 为空或调用失败时，路由会按这个顺序继续尝试后续候选。调整模型优先级时，请同步更新这里的顺序说明，因为不同模型价格不同。
+
+### AI Router 边界
+当前 router 已从 `capture` 内部实现抽成共享 `service.ai` 平台：
+- provider transport、provider 注册和 route 选择位于共享层
+- `capture` 只负责 prompt、结构化结果校验、状态推进与落库
+- route 目前按 `routeKey` 配置 provider/model，`capture` 首个接入的 route 为 `capture-analysis`
+
+这意味着后续补 `note/task/search/review` 的 AI 能力时，不需要再复制 provider/router 代码，但当前仍不是通用多模型平台：
+- route 配置虽然已支持动态 key，但 provider 配置结构仍是显式字段
+- fallback 顺序仍需要手工维护，适合按价格或稳定性调整
+- 还不支持复杂的权重路由、成本/延迟策略路由
+- 还没有通用 prompt registry；业务 prompt 仍保留在各自业务模块
+
+### 请求 / 响应语义
+创建 Capture 的 canonical 请求字段为：
+- `user_id`
+- `source_type`
+- `raw_text`
+- `source_url`
+- `title_hint`
+
+后端继续兼容旧别名：
+- `input_type`
+- `raw_input`
+- `source_uri`
+
+Capture 响应 data 字段为：
+- `capture_job_id`
+- `source_type`
+- `status`
+- `note_id`
+- `failure_reason`
+- `analysis_preview`
+- `created_at`
+- `updated_at`
+
+`trace_id` 保持放在统一 `ApiEnvelope.trace_id` 顶层，不重复写入 data。
+
+### Capture 成功时的最小落库结果
+- 创建一个新 Note
+- 创建一条 `note_contents.content_type = CAPTURE_RAW`
+- raw content 保存 TEXT 原文或 URL 文本快照
+- `notes.title / current_summary / current_key_points / current_tags` 来自已校验的 AI 输出
+- `latest_content_id` 回指新写入的 raw content
+- 写入 `agent_traces`
+- 写入 `tool_invocation_logs`
+- 写入 `user_action_events`
+- 关键阶段补齐结构化日志
+
+### 本阶段关注的问题
+- 哪些想法值得保留？
+- 这些想法的目标用户和问题定义是什么？
+- 最小验证路径是什么？
+- 哪些想法值得立即拆成任务推进？
+
+### 本阶段不解决的问题
+- 趋势抓取与趋势排序闭环
+- 完整偏好画像学习
+- 高级推荐与打分系统
+- 多端适配与高级工作台形态
+
+## 2. 核心领域语义
+
+## 2.1 Idea
+Idea 是从知识到执行之间的中间层。
+它不是纯灵感收集箱，也不是脱离 Note 的独立产品，而是面向后续任务化、验证化推进的候选单元。
+
+### 核心字段
+- `id`
+- `user_id`
+- `source_note_id`
+- `title`
+- `status`
+- `assessment_result`
+- `created_at`
+- `updated_at`
+
+### 来源
+Phase 3 最小闭环支持两类来源：
+1. 从 Note 派生
+2. 独立创建
+
+仅预留、不正式闭环：
+1. `FROM_SEARCH`
+2. `FROM_TREND_CANDIDATE`
+
+## 2.2 Idea 状态机
+
+本阶段使用以下状态：
+
+- `CAPTURED`
+- `ASSESSED`
+- `PLANNED`
+- `IN_PROGRESS`
+- `ARCHIVED`
+
+### 最小状态迁移
+- 创建后进入 `CAPTURED`
+- 完成评估后进入 `ASSESSED`
+- 生成执行任务后进入 `PLANNED`
+- 开始真实推进后进入 `IN_PROGRESS`
+- 完成 / 暂停 / 放弃后进入 `ARCHIVED`
+- 可选支持 `ARCHIVED -> PLANNED` 重新开启
+
+## 2.3 Assessment Result
+
+Phase 3 的 `assessment_result` 至少包含：
+
+- `problem_definition`
+- `target_user`
+- `core_hypothesis`
+- `mvp_validation_path`
+
+本阶段不要求：
+- 复杂评分模型
+- 价值 / 风险 / 置信度精算
+- 多轮自动迭代评估
+
+## 2.4 Idea 与 Task 的关系
+
+Idea 不是终点。
+被评估后的 Idea 应能生成 system task，进入既有 Task / Today / Upcoming 链路。
+
+### Task 生成规则
+- `task_source = SYSTEM`
+- `linked_entity_type = IDEA`
+- `linked_entity_id = idea.id`
+
+### 目标
+让想法能进入真实执行层，而不是停留在展示层。
+
+## 3. API 基线
+
+### 3.1 创建 Idea
+`POST /api/ideas`
+
+### 3.2 从 Note 派生 Idea
+`POST /api/notes/{noteId}/ideas`
+
+### 3.3 Idea 列表
+`GET /api/ideas`
+
+可选过滤：
+- `status`
+- `source_note_id`
+
+### 3.4 Idea 详情
+`GET /api/ideas/{id}`
+
+### 3.5 Assess Idea
+`POST /api/ideas/{id}/assess`
+
+### 3.6 从 Idea 生成 Task
+`POST /api/ideas/{id}/generate-task`
+
+### 3.7 Idea 开始推进
+`POST /api/ideas/{id}/start`
+
+### 3.8 Idea 归档
+`POST /api/ideas/{id}/archive`
+
+### 3.9 Idea 重新开启（可选）
+`POST /api/ideas/{id}/reopen`
+
+## 4. 前端工作台基线
+
+Phase 3 最小工作台至少包含：
+
+1. **Idea List**
+    - 列出 title、status、source_note_id、updated_at
+    - 支持基础状态筛选
+
+2. **Idea Detail**
+    - 展示 Idea 基本信息
+    - 展示 assessment_result
+    - 展示关联 Task（如已有）
+
+3. **Assess 入口**
+    - 能提交最小 assessment payload
+    - 成功后刷新详情状态
+
+4. **Generate Task 入口**
+    - 一键生成 system task
+    - 生成后可跳转或提示进入 Today / Upcoming 查看
+
+不要求现在提供：
+- board
+- drag-and-drop
+- 高级排序
+- 多列 pipeline
+
+## 5. 治理与可追溯性
+
+## 5.1 Trace / Event / UserActionEvent
+以下动作必须至少写入 trace 与 event，并在适用时记录 user_action_event：
+
+- 创建 Idea
+- 从 Note 派生 Idea
+- Assess Idea
+- Generate Task
+- 状态迁移
+- Archive / Reopen
+- 关键字段更新
+
+### user_action_event 建议
+- `entity_type = IDEA`
+- `action_type` 例如：
+    - `IDEA_CREATED`
+    - `IDEA_DERIVED_FROM_NOTE`
+    - `IDEA_ASSESSED`
+    - `IDEA_TASK_GENERATED`
+    - `IDEA_STARTED`
+    - `IDEA_ARCHIVED`
+
+## 5.2 Proposal 语义
+
+Phase 3 不要求所有 Idea 变更都强制经过完整 proposal 流程。
+但以下原则必须遵守：
+
+1. 关键变更不能完全静默写库
+2. 至少保留 before / after 摘要
+3. 关键评估写回应保留 trace 与 decision summary
+4. 若仓库已有成熟 proposal 机制，优先沿用
+
+## 5.3 结构化日志
+
+以下行为必须补齐结构化日志：
+
+- create idea
+- derive idea from note
+- assess idea
+- generate task from idea
+- idea state transition
+- archive / reopen
+- trace / event write failure
+- external dependency failure（如本阶段涉及）
+
+### 最小日志字段
+- `trace_id`
+- `user_id`
+- `idea_id`
+- `note_id`（如适用）
+- `task_id`（如适用）
+- `action`
+- `result`
+- `duration_ms`（如适用）
+- `error_code`
+- `error_message`
+
+## 6. 与其他阶段的边界
+
+## 6.1 已完成基础（来自前置阶段）
+- Note 主链路
+- Review 双池
+- Search 三分栏
+- Today / Upcoming
+- Task 基础闭环
+- Proposal / Trace / Event 最小治理链路
+
+## 6.2 本阶段新增
+- Idea 正式实体
+- Idea Assess
+- Idea -> Task
+- Idea 工作台
+
+## 6.3 后续阶段继续处理
+- Trend 抓取、聚合、排序、候选池
+- Preference Learning 正式闭环
+- Trend 与 Idea 的自动联动
+- 高级推荐系统
+
+## 7. 完成定义
+
+只有满足以下条件，Phase 3 才能标记为“已完成最小闭环”：
+
+1. 能独立创建 Idea
+2. 能从 Note 派生 Idea
+3. 能进行最小 Assess
+4. 能从 Idea 生成真实 Task
+5. Task 能进入 Today / Upcoming
+6. Idea 状态机能跑到 `ARCHIVED`
+7. 关键动作具备 trace / event / structured log
+8. 前端工作台走真实接口
+
+## 8. Deferred Backlog
+
+本阶段明确后置，但后面必须补回：
+
+1. Trend 正式闭环
+2. user_preference_profiles 正式学习
+3. Idea scoring / ranking
+4. Trend candidate -> Idea 自动流转
+5. richer assessment template
+6. Idea board / pipeline
+7. 基于 preference 的 Idea 排序与推荐
+8. 旧 Note 匹配与合并策略
+9. `UPDATE / APPEND / CONFLICT` 全量决策
+10. Search 的 AI relation / evidence 闭环
+11. Review 的 AI recall / extension 闭环
+12. Task 的 AI 派生策略
+13. Idea candidate 的正式生命周期
+14. URL extraction robustness
+15. 多模型路由与 prompt 模板治理

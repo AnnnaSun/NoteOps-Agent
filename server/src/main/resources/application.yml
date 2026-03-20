@@ -19,3 +19,34 @@ management:
     web:
       exposure:
         include: health
+
+noteops:
+  ai:
+    default-provider: OLLAMA
+    request-timeout: PT60S
+    routes:
+      capture-analysis:
+        provider: OLLAMA
+        model: deepseek-r1:8b
+    deepseek:
+      base-url: https://api.deepseek.com
+      api-key: ${NOTEOPS_AI_DEEPSEEK_API_KEY:${DEEPSEEK_API_KEY:${OPENAI_API_KEY:}}}
+      model: deepseek-chat
+    kimi:
+      base-url: https://api.moonshot.cn/v1
+      api-key: ${NOTEOPS_AI_KIMI_API_KEY:${KIMI_API_KEY:${MOONSHOT_API_KEY:}}}
+      model: kimi-k2
+    gemini:
+      base-url: https://generativelanguage.googleapis.com/v1beta/openai
+      api-key: ${NOTEOPS_AI_GEMINI_API_KEY:${GEMINI_API_KEY:}}
+      model: gemini-2.0-flash
+    ollama:
+      base-url: http://localhost:11434
+      model: deepseek-r1:8b
+  capture:
+    url:
+      connect-timeout: PT5S
+      read-timeout: PT15S
+      max-response-bytes: 200000
+      max-text-length: 4000
+      user-agent: NoteOps-Agent/0.0.1
