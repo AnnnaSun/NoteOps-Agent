@@ -1,8 +1,8 @@
-package com.noteops.agent.application.capture;
+package com.noteops.agent.application.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.noteops.agent.domain.capture.CaptureAiProvider;
+import com.noteops.agent.application.capture.CapturePipelineException;
 import com.noteops.agent.domain.capture.CaptureFailureReason;
 import com.noteops.agent.persistence.trace.ToolInvocationLogRepository;
 import org.slf4j.Logger;
@@ -20,26 +20,26 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-public class OllamaCaptureAnalysisClient implements CaptureProviderClient {
+public class OllamaAiProviderClient implements AiProviderClient {
 
-    private static final Logger log = LoggerFactory.getLogger(OllamaCaptureAnalysisClient.class);
+    private static final Logger log = LoggerFactory.getLogger(OllamaAiProviderClient.class);
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
-    private final CaptureAiProperties properties;
+    private final AiProperties properties;
     private final ToolInvocationLogRepository toolInvocationLogRepository;
 
     @Autowired
-    public OllamaCaptureAnalysisClient(ObjectMapper objectMapper,
-                                       CaptureAiProperties properties,
-                                       ToolInvocationLogRepository toolInvocationLogRepository) {
+    public OllamaAiProviderClient(ObjectMapper objectMapper,
+                                  AiProperties properties,
+                                  ToolInvocationLogRepository toolInvocationLogRepository) {
         this(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build(), objectMapper, properties, toolInvocationLogRepository);
     }
 
-    OllamaCaptureAnalysisClient(HttpClient httpClient,
-                                ObjectMapper objectMapper,
-                                CaptureAiProperties properties,
-                                ToolInvocationLogRepository toolInvocationLogRepository) {
+    OllamaAiProviderClient(HttpClient httpClient,
+                           ObjectMapper objectMapper,
+                           AiProperties properties,
+                           ToolInvocationLogRepository toolInvocationLogRepository) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.properties = properties;
@@ -47,35 +47,37 @@ public class OllamaCaptureAnalysisClient implements CaptureProviderClient {
     }
 
     @Override
-    public CaptureAiProvider provider() {
-        return CaptureAiProvider.OLLAMA;
+    public AiProvider provider() {
+        return AiProvider.OLLAMA;
     }
 
     @Override
-    public AnalyzeResponse analyze(AnalyzeRequest request) {
-        String model = properties.ollama().model();
+    public AiResponse analyze(AiRequest request, AiProperties.ResolvedRoute route) {
+        String model = route.model();
         if (model == null) {
             throw llmFailure(model, "ollama provider is missing model", null);
         }
 
         long startedAt = System.nanoTime();
         log.info(
-            "module=OllamaCaptureAnalysisClient action=llm_call_start result=RUNNING trace_id={} user_id={} provider={} model={} source_type={}",
+            "module=OllamaAiProviderClient action=llm_call_start result=RUNNING trace_id={} user_id={} route_key={} provider={} model={}",
             request.traceId(),
             request.userId(),
-            CaptureAiProvider.OLLAMA,
-            model,
-            request.sourceType()
+            request.routeKey(),
+            AiProvider.OLLAMA,
+            model
         );
         try {
             Map<String, Object> requestBody = new LinkedHashMap<>();
             requestBody.put("model", model);
             requestBody.put("stream", false);
             requestBody.put("messages", List.of(
-                Map.of("role", "system", "content", CaptureAnalysisJsonSchema.systemPrompt()),
-                Map.of("role", "user", "content", CaptureAnalysisJsonSchema.userPrompt(request))
+                Map.of("role", "system", "content", request.systemPrompt()),
+                Map.of("role", "user", "content", request.userPrompt())
             ));
-            requestBody.put("format", CaptureAnalysisJsonSchema.schema());
+            if (request.responseMode() == AiResponseMode.JSON_OBJECT) {
+                requestBody.put("format", request.responseSchema().isEmpty() ? "json" : request.responseSchema());
+            }
 
             HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(properties.ollama().baseUrl() + "/api/chat"))
                 .timeout(properties.requestTimeout())
@@ -100,23 +102,23 @@ public class OllamaCaptureAnalysisClient implements CaptureProviderClient {
 
             appendSuccessLog(request, model, durationMs, content);
             log.info(
-                "module=OllamaCaptureAnalysisClient action=llm_call_end result=SUCCESS trace_id={} user_id={} provider={} model={} source_type={} duration_ms={}",
+                "module=OllamaAiProviderClient action=llm_call_end result=SUCCESS trace_id={} user_id={} route_key={} provider={} model={} duration_ms={}",
                 request.traceId(),
                 request.userId(),
-                CaptureAiProvider.OLLAMA,
+                request.routeKey(),
+                AiProvider.OLLAMA,
                 model,
-                request.sourceType(),
                 durationMs
             );
-            return new AnalyzeResponse(CaptureAiProvider.OLLAMA, model, content, durationMs);
+            return new AiResponse(AiProvider.OLLAMA, model, content, durationMs);
         } catch (CapturePipelineException exception) {
             log.warn(
-                "module=OllamaCaptureAnalysisClient action=llm_call_end result=FAILED trace_id={} user_id={} provider={} model={} source_type={} error_code={} error_message={}",
+                "module=OllamaAiProviderClient action=llm_call_end result=FAILED trace_id={} user_id={} route_key={} provider={} model={} error_code={} error_message={}",
                 request.traceId(),
                 request.userId(),
-                CaptureAiProvider.OLLAMA,
+                request.routeKey(),
+                AiProvider.OLLAMA,
                 model,
-                request.sourceType(),
                 exception.failureReason().name(),
                 exception.getMessage()
             );
@@ -125,12 +127,12 @@ public class OllamaCaptureAnalysisClient implements CaptureProviderClient {
             int durationMs = durationMs(startedAt);
             appendFailureLog(request, model, durationMs, "OLLAMA_CALL_ERROR", exception.getMessage());
             log.warn(
-                "module=OllamaCaptureAnalysisClient action=llm_call_end result=FAILED trace_id={} user_id={} provider={} model={} source_type={} duration_ms={} error_code={} error_message={}",
+                "module=OllamaAiProviderClient action=llm_call_end result=FAILED trace_id={} user_id={} route_key={} provider={} model={} duration_ms={} error_code={} error_message={}",
                 request.traceId(),
                 request.userId(),
-                CaptureAiProvider.OLLAMA,
+                request.routeKey(),
+                AiProvider.OLLAMA,
                 model,
-                request.sourceType(),
                 durationMs,
                 CaptureFailureReason.LLM_CALL_FAILED.name(),
                 exception.getMessage()
@@ -139,11 +141,11 @@ public class OllamaCaptureAnalysisClient implements CaptureProviderClient {
         }
     }
 
-    private void appendSuccessLog(AnalyzeRequest request, String model, int durationMs, String content) {
+    private void appendSuccessLog(AiRequest request, String model, int durationMs, String content) {
         toolInvocationLogRepository.append(
             request.userId(),
             request.traceId(),
-            "capture.analysis.ollama",
+            toolName(request),
             "SUCCESS",
             inputDigest(model, request),
             Map.of(
@@ -156,11 +158,11 @@ public class OllamaCaptureAnalysisClient implements CaptureProviderClient {
         );
     }
 
-    private void appendFailureLog(AnalyzeRequest request, String model, int durationMs, String errorCode, String errorMessage) {
+    private void appendFailureLog(AiRequest request, String model, int durationMs, String errorCode, String errorMessage) {
         toolInvocationLogRepository.append(
             request.userId(),
             request.traceId(),
-            "capture.analysis.ollama",
+            toolName(request),
             "FAILED",
             inputDigest(model, request),
             Map.of("result", "FAILED"),
@@ -170,14 +172,15 @@ public class OllamaCaptureAnalysisClient implements CaptureProviderClient {
         );
     }
 
-    private Map<String, Object> inputDigest(String model, AnalyzeRequest request) {
+    private Map<String, Object> inputDigest(String model, AiRequest request) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("provider", CaptureAiProvider.OLLAMA.name());
-        payload.put("request_type", "CAPTURE_ANALYSIS");
-        payload.put("source_type", request.sourceType().name());
+        payload.put("provider", AiProvider.OLLAMA.name());
+        payload.put("request_type", request.requestType());
+        payload.put("route_key", request.routeKey());
         if (model != null) {
             payload.put("model", model);
         }
+        payload.putAll(request.inputMetadata());
         return payload;
     }
 
@@ -191,5 +194,10 @@ public class OllamaCaptureAnalysisClient implements CaptureProviderClient {
 
     private int durationMs(long startedAt) {
         return (int) ((System.nanoTime() - startedAt) / 1_000_000L);
+    }
+
+    private String toolName(AiRequest request) {
+        String baseToolName = request.toolName() == null ? "ai.analysis" : request.toolName();
+        return baseToolName + ".ollama";
     }
 }

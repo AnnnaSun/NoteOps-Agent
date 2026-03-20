@@ -1,7 +1,7 @@
 package com.noteops.agent.application.capture;
 
 import com.noteops.agent.api.ApiException;
-import com.noteops.agent.domain.capture.CaptureAiProvider;
+import com.noteops.agent.application.ai.AiProperties;
 import com.noteops.agent.domain.capture.CaptureFailureReason;
 import com.noteops.agent.domain.capture.CaptureInputType;
 import com.noteops.agent.domain.capture.CaptureJobStatus;
@@ -29,7 +29,7 @@ public class CaptureOrchestrator {
     private final CaptureExtractor captureExtractor;
     private final CaptureAnalysisWorker captureAnalysisWorker;
     private final CaptureNoteConsolidator captureNoteConsolidator;
-    private final CaptureAiProperties captureAiProperties;
+    private final AiProperties aiProperties;
     private final AgentTraceRepository agentTraceRepository;
     private final ToolInvocationLogRepository toolInvocationLogRepository;
     private final UserActionEventRepository userActionEventRepository;
@@ -38,7 +38,7 @@ public class CaptureOrchestrator {
                                CaptureExtractor captureExtractor,
                                CaptureAnalysisWorker captureAnalysisWorker,
                                CaptureNoteConsolidator captureNoteConsolidator,
-                               CaptureAiProperties captureAiProperties,
+                               AiProperties aiProperties,
                                AgentTraceRepository agentTraceRepository,
                                ToolInvocationLogRepository toolInvocationLogRepository,
                                UserActionEventRepository userActionEventRepository) {
@@ -46,7 +46,7 @@ public class CaptureOrchestrator {
         this.captureExtractor = captureExtractor;
         this.captureAnalysisWorker = captureAnalysisWorker;
         this.captureNoteConsolidator = captureNoteConsolidator;
-        this.captureAiProperties = captureAiProperties;
+        this.aiProperties = aiProperties;
         this.agentTraceRepository = agentTraceRepository;
         this.toolInvocationLogRepository = toolInvocationLogRepository;
         this.userActionEventRepository = userActionEventRepository;
@@ -394,8 +394,8 @@ public class CaptureOrchestrator {
         value.put("capture_job_id", captureJobId);
         value.put("source_type", command.sourceType().name());
         value.put("input_summary", command.sourceType() == CaptureInputType.TEXT ? excerpt(command.rawText()) : command.sourceUrl());
-        value.put("provider", captureAiProperties.provider().name());
-        value.put("model", configuredModel());
+        value.put("provider", configuredRoute().provider().name());
+        value.put("model", configuredRoute().model());
         return value;
     }
 
@@ -420,18 +420,15 @@ public class CaptureOrchestrator {
         value.put("capture_job_id", captureJobId);
         value.put("source_type", command.sourceType().name());
         value.put("input_summary", command.sourceType() == CaptureInputType.TEXT ? excerpt(command.rawText()) : command.sourceUrl());
-        value.put("provider", captureAiProperties.provider().name());
-        value.put("model", configuredModel());
+        value.put("provider", configuredRoute().provider().name());
+        value.put("model", configuredRoute().model());
         value.put("failure_reason", failureReason.name());
         value.put("result", "FAILED");
         return value;
     }
 
-    private String configuredModel() {
-        return switch (captureAiProperties.provider()) {
-            case OLLAMA -> captureAiProperties.ollama().model();
-            case DEEPSEEK -> captureAiProperties.deepseek().model();
-        };
+    private AiProperties.ResolvedRoute configuredRoute() {
+        return aiProperties.resolveRoute(CaptureAnalysisClient.ROUTE_KEY, null, null);
     }
 
     private String extractionToolName(CaptureInputType sourceType) {

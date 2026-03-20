@@ -1,9 +1,8 @@
-package com.noteops.agent.application.capture;
+package com.noteops.agent.application.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.noteops.agent.domain.capture.CaptureAiProvider;
+import com.noteops.agent.application.capture.CapturePipelineException;
 import com.noteops.agent.domain.capture.CaptureFailureReason;
-import com.noteops.agent.domain.capture.CaptureInputType;
 import com.noteops.agent.persistence.trace.ToolInvocationLogRepository;
 import org.junit.jupiter.api.Test;
 
@@ -21,23 +20,26 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-class DeepSeekCaptureAnalysisClientTest {
+class GeminiAiProviderClientTest {
 
     @Test
     void throwsLlmCallFailedWhenProviderConfigIsMissing() {
-        DeepSeekCaptureAnalysisClient client = new DeepSeekCaptureAnalysisClient(
+        GeminiAiProviderClient client = new GeminiAiProviderClient(
             mock(HttpClient.class),
             new ObjectMapper(),
-            new CaptureAiProperties(
-                CaptureAiProvider.DEEPSEEK,
+            new AiProperties(
+                AiProvider.GEMINI,
                 Duration.ofSeconds(20),
-                new CaptureAiProperties.DeepSeek("https://api.deepseek.com", null, null),
-                new CaptureAiProperties.Ollama("http://localhost:11434", "llama-test")
+                Map.of(),
+                new AiProperties.DeepSeek("https://api.deepseek.com", "deepseek-key", "deepseek-chat"),
+                new AiProperties.Kimi("https://api.moonshot.cn/v1", "kimi-key", "kimi-model"),
+                new AiProperties.Gemini("https://generativelanguage.googleapis.com/v1beta/openai", null, null),
+                new AiProperties.Ollama("http://localhost:11434", "llama-test")
             ),
             new RecordingToolInvocationLogRepository()
         );
 
-        assertThatThrownBy(() -> client.analyze(sampleRequest()))
+        assertThatThrownBy(() -> client.analyze(sampleRequest(), new AiProperties.ResolvedRoute(AiProvider.GEMINI, null)))
             .isInstanceOf(CapturePipelineException.class)
             .satisfies(exception -> assertThat(((CapturePipelineException) exception).failureReason())
                 .isEqualTo(CaptureFailureReason.LLM_CALL_FAILED));
@@ -52,38 +54,46 @@ class DeepSeekCaptureAnalysisClientTest {
         doReturn(502).when(response).statusCode();
         doReturn("upstream failure").when(response).body();
         RecordingToolInvocationLogRepository toolLogRepository = new RecordingToolInvocationLogRepository();
-        DeepSeekCaptureAnalysisClient client = new DeepSeekCaptureAnalysisClient(
+        GeminiAiProviderClient client = new GeminiAiProviderClient(
             httpClient,
             new ObjectMapper(),
-            new CaptureAiProperties(
-                CaptureAiProvider.DEEPSEEK,
+            new AiProperties(
+                AiProvider.GEMINI,
                 Duration.ofSeconds(20),
-                new CaptureAiProperties.DeepSeek("https://api.deepseek.com", "key", "deepseek-chat"),
-                new CaptureAiProperties.Ollama("http://localhost:11434", "llama-test")
+                Map.of(),
+                new AiProperties.DeepSeek("https://api.deepseek.com", "deepseek-key", "deepseek-chat"),
+                new AiProperties.Kimi("https://api.moonshot.cn/v1", "kimi-key", "kimi-model"),
+                new AiProperties.Gemini("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-key", "gemini-model"),
+                new AiProperties.Ollama("http://localhost:11434", "llama-test")
             ),
             toolLogRepository
         );
 
-        assertThatThrownBy(() -> client.analyze(sampleRequest()))
+        assertThatThrownBy(() -> client.analyze(sampleRequest(), new AiProperties.ResolvedRoute(AiProvider.GEMINI, "gemini-model")))
             .isInstanceOf(CapturePipelineException.class)
             .satisfies(exception -> assertThat(((CapturePipelineException) exception).failureReason())
                 .isEqualTo(CaptureFailureReason.LLM_CALL_FAILED))
             .hasMessageContaining("status 502");
 
         assertThat(toolLogRepository.statuses).containsExactly("FAILED");
-        assertThat(toolLogRepository.errorCodes).containsExactly("DEEPSEEK_HTTP_502");
+        assertThat(toolLogRepository.errorCodes).containsExactly("GEMINI_HTTP_502");
         verify(httpClient).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
     }
 
-    private CaptureAnalysisClient.AnalyzeRequest sampleRequest() {
-        return new CaptureAnalysisClient.AnalyzeRequest(
+    private AiRequest sampleRequest() {
+        return new AiRequest(
             UUID.randomUUID(),
             UUID.randomUUID(),
-            CaptureInputType.TEXT,
+            "capture-analysis",
+            "CAPTURE_ANALYSIS",
+            "capture.analysis",
+            "system",
+            "user",
+            AiResponseMode.JSON_OBJECT,
+            Map.of(),
+            Map.of("source_type", "TEXT"),
             null,
-            null,
-            null,
-            "captured text"
+            null
         );
     }
 

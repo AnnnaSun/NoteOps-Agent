@@ -1,11 +1,15 @@
 package com.noteops.agent.application.capture;
 
-import com.noteops.agent.domain.capture.CaptureAiProvider;
+import com.noteops.agent.application.ai.AiProvider;
 import com.noteops.agent.domain.capture.CaptureInputType;
 
 import java.util.UUID;
 
 public interface CaptureAnalysisClient {
+
+    String ROUTE_KEY = "capture-analysis";
+    String REQUEST_TYPE = "CAPTURE_ANALYSIS";
+    String TOOL_NAME = "capture.analysis";
 
     AnalyzeResponse analyze(AnalyzeRequest request);
 
@@ -21,7 +25,7 @@ public interface CaptureAnalysisClient {
     }
 
     record AnalyzeResponse(
-        CaptureAiProvider provider,
+        AiProvider provider,
         String model,
         String rawJson,
         int durationMs

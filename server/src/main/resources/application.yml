@@ -21,20 +21,32 @@ management:
         include: health
 
 noteops:
+  ai:
+    default-provider: OLLAMA
+    request-timeout: PT60S
+    routes:
+      capture-analysis:
+        provider: OLLAMA
+        model: deepseek-r1:8b
+    deepseek:
+      base-url: https://api.deepseek.com
+      api-key: ${NOTEOPS_AI_DEEPSEEK_API_KEY:${DEEPSEEK_API_KEY:${OPENAI_API_KEY:}}}
+      model: deepseek-chat
+    kimi:
+      base-url: https://api.moonshot.cn/v1
+      api-key: ${NOTEOPS_AI_KIMI_API_KEY:${KIMI_API_KEY:${MOONSHOT_API_KEY:}}}
+      model: kimi-k2
+    gemini:
+      base-url: https://generativelanguage.googleapis.com/v1beta/openai
+      api-key: ${NOTEOPS_AI_GEMINI_API_KEY:${GEMINI_API_KEY:}}
+      model: gemini-2.0-flash
+    ollama:
+      base-url: http://localhost:11434
+      model: deepseek-r1:8b
   capture:
-    ai:
-      provider: ${NOTEOPS_CAPTURE_AI_PROVIDER:DEEPSEEK}
-      request-timeout: ${NOTEOPS_CAPTURE_AI_REQUEST_TIMEOUT:PT20S}
-      deepseek:
-        base-url: ${DEEPSEEK_BASE_URL:${OPENAI_BASE_URL:https://api.deepseek.com}}
-        api-key: ${DEEPSEEK_API_KEY:${OPENAI_API_KEY:}}
-        model: ${DEEPSEEK_MODEL:${OPENAI_MODEL:}}
-      ollama:
-        base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-        model: ${OLLAMA_MODEL:}
     url:
-      connect-timeout: ${NOTEOPS_CAPTURE_URL_CONNECT_TIMEOUT:PT5S}
-      read-timeout: ${NOTEOPS_CAPTURE_URL_READ_TIMEOUT:PT15S}
-      max-response-bytes: ${NOTEOPS_CAPTURE_URL_MAX_RESPONSE_BYTES:200000}
-      max-text-length: ${NOTEOPS_CAPTURE_URL_MAX_TEXT_LENGTH:4000}
-      user-agent: ${NOTEOPS_CAPTURE_URL_USER_AGENT:NoteOps-Agent/0.0.1}
+      connect-timeout: PT5S
+      read-timeout: PT15S
+      max-response-bytes: 200000
+      max-text-length: 4000
+      user-agent: NoteOps-Agent/0.0.1

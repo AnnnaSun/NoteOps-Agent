@@ -52,34 +52,39 @@
 - `warnings`
 
 ### 当前 provider 配置
-- `noteops.capture.ai.provider=DEEPSEEK|OLLAMA`
-- `noteops.capture.ai.request-timeout`
-- `noteops.capture.ai.deepseek.base-url`
-- `noteops.capture.ai.deepseek.api-key`
-- `noteops.capture.ai.deepseek.model`
-- `noteops.capture.ai.ollama.base-url`
-- `noteops.capture.ai.ollama.model`
-- `noteops.capture.url.connect-timeout`
-- `noteops.capture.url.read-timeout`
-- `noteops.capture.url.max-response-bytes`
-- `noteops.capture.url.max-text-length`
-- `noteops.capture.url.user-agent`
+- `noteops.ai.default-provider=OLLAMA`
+- `noteops.ai.request-timeout=PT20S`
+- `noteops.ai.routes.capture-analysis.provider=OLLAMA`
+- `noteops.ai.routes.capture-analysis.model=deepseek-r1:8b`
+- `noteops.ai.deepseek.base-url=https://api.deepseek.com`
+- `noteops.ai.deepseek.api-key` 通过环境变量或 secret manager 注入
+- `noteops.ai.deepseek.model=deepseek-chat`
+- `noteops.ai.kimi.base-url=https://api.moonshot.cn/v1`
+- `noteops.ai.kimi.api-key` 通过环境变量或 secret manager 注入
+- `noteops.ai.kimi.model=kimi-k2`
+- `noteops.ai.gemini.base-url=https://generativelanguage.googleapis.com/v1beta/openai`
+- `noteops.ai.gemini.api-key` 通过环境变量或 secret manager 注入
+- `noteops.ai.gemini.model=gemini-2.0-flash`
+- `noteops.ai.ollama.base-url=http://localhost:11434`
+- `noteops.ai.ollama.model=deepseek-r1:8b`
+- `noteops.capture.url.connect-timeout=PT5S`
+- `noteops.capture.url.read-timeout=PT15S`
+- `noteops.capture.url.max-response-bytes=200000`
+- `noteops.capture.url.max-text-length=4000`
+- `noteops.capture.url.user-agent=NoteOps-Agent/0.0.1`
 
-运行时默认 provider 已切到 `DEEPSEEK`。当前配置仍兼容旧的 `OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL` 环境变量作为 fallback，仅用于平滑迁移，不再作为 canonical 配置名。
+运行时默认 provider 现在固定为 `OLLAMA`，`capture-analysis` 通过共享 `application.ai` 路由平台按 `routeKey` 选 provider/model。非敏感配置已收敛进 `application.yml`，只把 `api-key`、数据库密码这类敏感值留给环境变量或 secret manager。若要切换 `capture-analysis` 的 AI 连接，直接改 `noteops.ai.routes.capture-analysis.provider/model` 即可。
 
 ### AI Router 边界
-当前 router 已从硬编码 provider 分支改为基于 provider 注册表的映射路由：
-- 新增 provider 时，不需要再修改 router 主逻辑
-- 只需补：
-  - 新的 `CaptureAiProvider` 枚举值
-  - 一个实现 `CaptureProviderClient` 的 provider client bean
-  - 对应 provider 配置
-  - 新增 provider 的窄测试
+当前 router 已从 `capture` 内部实现抽成共享 `application.ai` 平台：
+- provider transport、provider 注册和 route 选择位于共享层
+- `capture` 只负责 prompt、结构化结果校验、状态推进与落库
+- route 目前按 `routeKey` 配置 provider/model，`capture` 首个接入的 route 为 `capture-analysis`
 
-这意味着后续补 `Gemini / OpenAI / ...` 的成本已经明显降低，但当前仍不是通用多模型平台：
-- provider 配置结构仍是显式字段，不是动态 registry
-- 不支持按任务/质量/成本做模型路由
-- 不支持 fallback chain、权重路由或 prompt registry
+这意味着后续补 `note/task/search/review` 的 AI 能力时，不需要再复制 provider/router 代码，但当前仍不是通用多模型平台：
+- route 配置虽然已支持动态 key，但 provider 配置结构仍是显式字段
+- 还不支持 fallback chain、权重路由、成本/延迟策略路由
+- 还没有通用 prompt registry；业务 prompt 仍保留在各自业务模块
 
 ### 请求 / 响应语义
 创建 Capture 的 canonical 请求字段为：

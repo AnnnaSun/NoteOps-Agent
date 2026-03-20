@@ -2,8 +2,9 @@ package com.noteops.agent.application.capture;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.noteops.agent.api.ApiException;
+import com.noteops.agent.application.ai.AiProperties;
+import com.noteops.agent.application.ai.AiProvider;
 import com.noteops.agent.application.note.NoteQueryService;
-import com.noteops.agent.domain.capture.CaptureAiProvider;
 import com.noteops.agent.domain.capture.CaptureAnalysisResult;
 import com.noteops.agent.domain.capture.CaptureFailureReason;
 import com.noteops.agent.domain.capture.CaptureInputType;
@@ -200,11 +201,14 @@ class CaptureApplicationServiceTest {
         private final CaptureApplicationService service;
 
         private TestFixture() {
-            CaptureAiProperties properties = new CaptureAiProperties(
-                CaptureAiProvider.DEEPSEEK,
+            AiProperties properties = new AiProperties(
+                AiProvider.DEEPSEEK,
                 Duration.ofSeconds(20),
-                new CaptureAiProperties.DeepSeek("https://api.deepseek.com", "test-key", "deepseek-chat"),
-                new CaptureAiProperties.Ollama("http://localhost:11434", "llama-test")
+                Map.of(CaptureAnalysisClient.ROUTE_KEY, new AiProperties.Route(AiProvider.DEEPSEEK, null)),
+                new AiProperties.DeepSeek("https://api.deepseek.com", "test-key", "deepseek-chat"),
+                new AiProperties.Kimi("https://api.moonshot.cn/v1", "kimi-test-key", "kimi-test-model"),
+                new AiProperties.Gemini("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-test-key", "gemini-test-model"),
+                new AiProperties.Ollama("http://localhost:11434", "llama-test")
             );
             CaptureAnalysisWorker analysisWorker = new CaptureAnalysisWorker(analysisClient, new ObjectMapper());
             CaptureNoteConsolidator consolidator = new CaptureNoteConsolidator(noteRepository);
@@ -534,7 +538,7 @@ class CaptureApplicationServiceTest {
                 null,
                 null
             );
-            return new AnalyzeResponse(CaptureAiProvider.DEEPSEEK, "fake-model", rawJson, 7);
+            return new AnalyzeResponse(AiProvider.DEEPSEEK, "fake-model", rawJson, 7);
         }
     }
 }
