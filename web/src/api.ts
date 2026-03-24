@@ -7,6 +7,7 @@ import type {
   ReviewCompletionPayload,
   ReviewCompletionResult,
   ReviewTodayItem,
+  SearchEvidenceResult,
   SearchResult,
   TaskItem,
   WorkspaceToday,
@@ -98,6 +99,46 @@ export function searchNotes(userId: string, query: string): Promise<SearchResult
     query
   });
   return request(`/api/v1/search?${params.toString()}`);
+}
+
+type SearchSupplementActionInput = {
+  userId: string;
+  query: string;
+  sourceName: string;
+  sourceUri: string;
+  summary: string;
+  keywords: string[];
+  relationLabel: string;
+  relationTags: string[];
+  summarySnippet: string;
+};
+
+function searchSupplementActionBody(input: SearchSupplementActionInput): string {
+  return JSON.stringify({
+    user_id: input.userId,
+    query: input.query,
+    source_name: input.sourceName,
+    source_uri: input.sourceUri,
+    summary: input.summary,
+    keywords: input.keywords,
+    relation_label: input.relationLabel,
+    relation_tags: input.relationTags,
+    summary_snippet: input.summarySnippet
+  });
+}
+
+export function saveSearchEvidence(noteId: string, input: SearchSupplementActionInput): Promise<SearchEvidenceResult> {
+  return request(`/api/v1/search/notes/${encodeURIComponent(noteId)}/evidence`, {
+    method: "POST",
+    body: searchSupplementActionBody(input)
+  });
+}
+
+export function createSearchChangeProposal(noteId: string, input: SearchSupplementActionInput): Promise<ChangeProposal> {
+  return request(`/api/v1/search/notes/${encodeURIComponent(noteId)}/change-proposals`, {
+    method: "POST",
+    body: searchSupplementActionBody(input)
+  });
 }
 
 export function completeReview(

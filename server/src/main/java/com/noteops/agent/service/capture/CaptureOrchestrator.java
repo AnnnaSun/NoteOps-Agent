@@ -432,7 +432,7 @@ public class CaptureOrchestrator {
     }
 
     private AiProperties.ResolvedRoute configuredRoute() {
-        return aiProperties.resolveRoute(CaptureAnalysisClient.ROUTE_KEY, null, null);
+        return aiProperties.resolveRoute(CaptureAnalysisClient.ROUTE_KEY, null);
     }
 
     private String extractionToolName(CaptureInputType sourceType) {

@@ -29,8 +29,8 @@ class DefaultCaptureAnalysisClientTest {
 
         CaptureAnalysisClient.AnalyzeResponse response = client.analyze(request);
 
-        assertThat(response.provider()).isEqualTo(AiProvider.GEMINI);
-        assertThat(response.model()).isEqualTo("gemini-test");
+        assertThat(response.provider()).isEqualTo(AiProvider.OPENAI_COMPATIBLE);
+        assertThat(response.model()).isEqualTo("gateway-model");
         assertThat(aiClient.lastRequest.routeKey()).isEqualTo(CaptureAnalysisClient.ROUTE_KEY);
         assertThat(aiClient.lastRequest.requestType()).isEqualTo(CaptureAnalysisClient.REQUEST_TYPE);
         assertThat(aiClient.lastRequest.toolName()).isEqualTo(CaptureAnalysisClient.TOOL_NAME);
@@ -47,7 +47,7 @@ class DefaultCaptureAnalysisClientTest {
         @Override
         public AiResponse analyze(AiRequest request) {
             lastRequest = request;
-            return new AiResponse(AiProvider.GEMINI, "gemini-test", "{\"summary\":\"ok\"}", 12);
+            return new AiResponse(AiProvider.OPENAI_COMPATIBLE, "gateway-model", "{\"summary\":\"ok\"}", 12);
         }
     }
 }

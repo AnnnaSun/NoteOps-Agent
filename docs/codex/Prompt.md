@@ -7,6 +7,13 @@
 在正式推进 Idea 主线前，先完成一个 **Phase 3 前置补丁：Capture AI 最小闭环**，用于把当前系统推进到“至少已有一条真实可演示的 AI 主链路”。
 这一步只允许落在 Capture 的 `ANALYZING` 阶段，不等于开始 Search / Review / Task / Idea / Trend 的全面 AI 化。
 
+当前另有一个 **用户定向补丁：Search AI 最小增强**，只允许补：
+- `related_matches.relation_reason`
+- `external_supplements.relation_label / keywords / summary_snippet`
+- `EVIDENCE` / `ChangeProposal` 治理入口
+
+这不等于 Search 已进入完整 AI 闭环，也不等于允许 Search 直接覆盖 `notes.current_*`。
+
 本轮进入 **Phase 3：Idea 正式闭环**，目标是把 Note / Search 产出的想法沉淀为可评估、可推进、可转任务的 Idea 工作流。
 
 本轮**只做 Phase 3 的最小闭环**，不要提前进入 Trend 正式闭环，不要把 Preference Learning 做成完整画像系统，不要为了未来铺过多抽象层。
@@ -57,7 +64,7 @@
 3. Idea 复杂评分系统（价值分、风险分、置信度）
 4. Idea Kanban / Pipeline 高级视图
 5. 周/月 Calendar
-6. 多 provider 外部实时接入
+6. 多协议 / 多网关混合路由
 7. 大规模通用化 Agent framework
 
 ## 4. 默认实施顺序

@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState, useTransition } from "react";
 import {
   applyChangeProposal,
   completeReview,
+  createSearchChangeProposal,
   createCapture,
   createChangeProposal,
   getWorkspaceToday,
@@ -9,6 +10,7 @@ import {
   getNote,
   listChangeProposals,
   listNotes,
+  saveSearchEvidence,
   searchNotes,
   rollbackChangeProposal
 } from "./api";
@@ -19,6 +21,7 @@ import type {
   NoteSummary,
   ReviewCompletionPayload,
   ReviewTodayItem,
+  SearchEvidenceResult,
   SearchResult,
   TaskItem,
   WorkspaceToday,
@@ -222,10 +225,12 @@ export default function App() {
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchActionMessage, setSearchActionMessage] = useState<string | null>(null);
   const [reviewFormError, setReviewFormError] = useState<string | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isSubmittingCapture, startCaptureTransition] = useTransition();
   const [isSearching, startSearchTransition] = useTransition();
+  const [isMutatingSearchAction, startSearchActionTransition] = useTransition();
   const [isRefreshingWorkspace, startWorkspaceTransition] = useTransition();
   const [isRefreshingNote, startNoteTransition] = useTransition();
   const [isSubmittingReview, startReviewTransition] = useTransition();
@@ -248,6 +253,7 @@ export default function App() {
     setSearchQuery("");
     setSearchResult(null);
     setSearchError(null);
+    setSearchActionMessage(null);
     setHasSearched(false);
   }
 
@@ -486,12 +492,71 @@ export default function App() {
     startSearchTransition(() => {
       void (async () => {
         setSearchError(null);
+        setSearchActionMessage(null);
         try {
           const result = await searchNotes(activeUserId, query);
           setSearchResult(result);
         } catch (error) {
           setSearchResult(null);
           setSearchError(error instanceof Error ? error.message : "Failed to search notes");
+        }
+      })();
+    });
+  }
+
+  function handleSearchEvidenceSave(item: SearchResult["external_supplements"][number]) {
+    if (!selectedNoteId || !searchResult) {
+      return;
+    }
+    startSearchActionTransition(() => {
+      void (async () => {
+        setSearchError(null);
+        setSearchActionMessage(null);
+        try {
+          const result: SearchEvidenceResult = await saveSearchEvidence(selectedNoteId, {
+            userId: activeUserId,
+            query: searchResult.query,
+            sourceName: item.source_name,
+            sourceUri: item.source_uri,
+            summary: item.summary,
+            keywords: item.keywords,
+            relationLabel: item.relation_label,
+            relationTags: item.relation_tags,
+            summarySnippet: item.summary_snippet
+          });
+          await refreshNotes(selectedNoteId);
+          setSearchActionMessage(`已写入 EVIDENCE：${result.content_id}`);
+        } catch (error) {
+          setSearchError(error instanceof Error ? error.message : "Failed to save search evidence");
+        }
+      })();
+    });
+  }
+
+  function handleSearchProposalCreate(item: SearchResult["external_supplements"][number]) {
+    if (!selectedNoteId || !searchResult) {
+      return;
+    }
+    startSearchActionTransition(() => {
+      void (async () => {
+        setSearchError(null);
+        setSearchActionMessage(null);
+        try {
+          await createSearchChangeProposal(selectedNoteId, {
+            userId: activeUserId,
+            query: searchResult.query,
+            sourceName: item.source_name,
+            sourceUri: item.source_uri,
+            summary: item.summary,
+            keywords: item.keywords,
+            relationLabel: item.relation_label,
+            relationTags: item.relation_tags,
+            summarySnippet: item.summary_snippet
+          });
+          await refreshNotes(selectedNoteId);
+          setSearchActionMessage("已生成 Search proposal。");
+        } catch (error) {
+          setSearchError(error instanceof Error ? error.message : "Failed to generate search proposal");
         }
       })();
     });
@@ -810,13 +875,22 @@ export default function App() {
                     <h3>External Supplements</h3>
                     <span className="meta-chip">{externalSupplements.length}</span>
                   </div>
-                  <p className="subpanel-description">只读展示外部补充信息，不在本步执行 evidence/proposal 动作。</p>
+                  <p className="subpanel-description">
+                    外部补充只可保存为 `EVIDENCE` 或生成 `ChangeProposal`，不会直接覆盖当前 Note 解释层。
+                  </p>
+                  <div className="row-meta row-meta-inline">
+                    <span className="meta-chip">
+                      target note: {selectedNote ? selectedNote.title : selectedNoteId ?? "未选择"}
+                    </span>
+                  </div>
                   {externalSupplements.length === 0 ? <p className="status-message">本次查询没有 external supplement。</p> : null}
+                  {searchActionMessage ? <p className="status-message">{searchActionMessage}</p> : null}
                   {externalSupplements.map((item) => (
                     <div key={`${item.source_uri}-${item.summary}`} className="list-row">
                       <div className="list-row-content">
                         <strong>{item.source_name}</strong>
                         <p>{item.summary}</p>
+                        <p className="search-result-detail">{item.summary_snippet}</p>
                         <p className="search-result-detail">{item.source_uri}</p>
                         {item.keywords.length > 0 ? (
                           <div className="note-card-points">
@@ -828,11 +902,30 @@ export default function App() {
                           </div>
                         ) : null}
                         <div className="row-meta row-meta-inline">
+                          <span className="tone-blue">{item.relation_label}</span>
                           {item.relation_tags.map((tag) => (
                             <span key={`${item.source_uri}-${tag}`} className="tone-cyan">
                               {tag}
                             </span>
                           ))}
+                        </div>
+                        <div className="form-actions">
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            disabled={!selectedNoteId || isMutatingSearchAction}
+                            onClick={() => handleSearchEvidenceSave(item)}
+                          >
+                            {isMutatingSearchAction ? "处理中..." : "保存证据"}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            disabled={!selectedNoteId || isMutatingSearchAction}
+                            onClick={() => handleSearchProposalCreate(item)}
+                          >
+                            {isMutatingSearchAction ? "处理中..." : "生成更新建议"}
+                          </button>
                         </div>
                       </div>
                     </div>

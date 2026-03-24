@@ -1,7 +1,6 @@
 package com.noteops.agent.service.ai;
 
 import com.noteops.agent.config.AiProperties;
-import com.noteops.agent.model.capture.CaptureFailureReason;
 import com.noteops.agent.service.capture.CapturePipelineException;
 
 import org.junit.jupiter.api.Test;
@@ -12,125 +11,102 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RoutingAiClientTest {
 
     @Test
     void routesByConfiguredRouteKey() {
-        FakeProviderClient deepSeekClient = new FakeProviderClient(AiProvider.DEEPSEEK);
-        FakeProviderClient kimiClient = new FakeProviderClient(AiProvider.KIMI);
-        FakeProviderClient geminiClient = new FakeProviderClient(AiProvider.GEMINI);
+        FakeProviderClient gatewayClient = new FakeProviderClient(AiProvider.OPENAI_COMPATIBLE);
         FakeProviderClient ollamaClient = new FakeProviderClient(AiProvider.OLLAMA);
         AiProperties properties = new AiProperties(
-            AiProvider.DEEPSEEK,
+            AiProvider.OPENAI_COMPATIBLE,
             Duration.ofSeconds(20),
             Map.of(
-                "capture-analysis", new AiProperties.Route(AiProvider.KIMI, "kimi-route-model"),
-                "note-analysis", new AiProperties.Route(AiProvider.GEMINI, "gemini-route-model")
+                "capture-analysis", new AiProperties.Route(null, "gateway-route-model", null),
+                "note-analysis", new AiProperties.Route(null, "note-route-model", null)
             ),
-            new AiProperties.DeepSeek("https://api.deepseek.com", "deepseek-key", "deepseek-chat"),
-            new AiProperties.Kimi("https://api.moonshot.cn/v1", "kimi-key", "kimi-model"),
-            new AiProperties.Gemini("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-key", "gemini-model"),
+            new AiProperties.OpenAiCompatible(null, "https://gateway.example.com/v1", "gateway-key", "gateway-default-model", Map.of()),
             new AiProperties.Ollama("http://localhost:11434", "llama-test")
         );
-        RoutingAiClient client = new RoutingAiClient(properties, List.of(deepSeekClient, kimiClient, geminiClient, ollamaClient));
+        RoutingAiClient client = new RoutingAiClient(properties, List.of(gatewayClient, ollamaClient));
         AiRequest request = sampleRequest("note-analysis");
-        AiResponse response = new AiResponse(AiProvider.GEMINI, "gemini-route-model", "{}", 10);
-        geminiClient.response = response;
+        AiResponse response = new AiResponse(AiProvider.OPENAI_COMPATIBLE, "note-route-model", "{}", 10);
+        gatewayClient.response = response;
 
         AiResponse result = client.analyze(request);
 
         assertThat(result).isSameAs(response);
-        assertThat(geminiClient.lastRequest).isEqualTo(request);
-        assertThat(geminiClient.lastRoute).isEqualTo(new AiProperties.ResolvedRoute(AiProvider.GEMINI, "gemini-route-model"));
+        assertThat(gatewayClient.lastRequest).isEqualTo(request);
+        assertThat(gatewayClient.lastRoute).isEqualTo(new AiProperties.ResolvedRoute(AiProvider.OPENAI_COMPATIBLE, null, "note-route-model"));
     }
 
     @Test
-    void usesProviderOverrideWhenProvided() {
-        FakeProviderClient deepSeekClient = new FakeProviderClient(AiProvider.DEEPSEEK);
-        FakeProviderClient kimiClient = new FakeProviderClient(AiProvider.KIMI);
+    void passesConfiguredOpenAiEndpointToProvider() {
+        FakeProviderClient gatewayClient = new FakeProviderClient(AiProvider.OPENAI_COMPATIBLE);
         AiProperties properties = new AiProperties(
-            AiProvider.DEEPSEEK,
+            AiProvider.OPENAI_COMPATIBLE,
             Duration.ofSeconds(20),
-            Map.of("capture-analysis", new AiProperties.Route(AiProvider.DEEPSEEK, "deepseek-chat")),
-            new AiProperties.DeepSeek("https://api.deepseek.com", "deepseek-key", "deepseek-chat"),
-            new AiProperties.Kimi("https://api.moonshot.cn/v1", "kimi-key", "kimi-model"),
-            new AiProperties.Gemini("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-key", "gemini-model"),
+            Map.of("search-enhancement", new AiProperties.Route("deepseek", "deepseek-r1", null)),
+            new AiProperties.OpenAiCompatible(
+                "kimi",
+                "https://fallback.example.com/v1",
+                "unused-key",
+                "fallback-model",
+                Map.of(
+                    "kimi", new AiProperties.Endpoint("https://kimi.example.com/v1", "kimi-key", "kimi-k2"),
+                    "deepseek", new AiProperties.Endpoint("https://deepseek.example.com/v1", "deepseek-key", "deepseek-chat")
+                )
+            ),
             new AiProperties.Ollama("http://localhost:11434", "llama-test")
         );
-        RoutingAiClient client = new RoutingAiClient(properties, List.of(deepSeekClient, kimiClient));
-        AiRequest request = new AiRequest(
-            UUID.randomUUID(),
-            UUID.randomUUID(),
-            "capture-analysis",
-            "CAPTURE_ANALYSIS",
-            "capture.analysis",
-            "system",
-            "user",
-            AiResponseMode.JSON_OBJECT,
-            Map.of(),
-            Map.of(),
-            AiProvider.KIMI,
-            "kimi-override-model"
-        );
-        AiResponse response = new AiResponse(AiProvider.KIMI, "kimi-override-model", "{}", 10);
-        kimiClient.response = response;
+        RoutingAiClient client = new RoutingAiClient(properties, List.of(gatewayClient));
+        AiRequest request = sampleRequest("search-enhancement");
+        gatewayClient.response = new AiResponse(AiProvider.OPENAI_COMPATIBLE, "deepseek-r1", "{}", 10);
 
-        AiResponse result = client.analyze(request);
+        client.analyze(request);
 
-        assertThat(result).isSameAs(response);
-        assertThat(kimiClient.lastRoute).isEqualTo(new AiProperties.ResolvedRoute(AiProvider.KIMI, "kimi-override-model"));
+        assertThat(gatewayClient.lastRoute).isEqualTo(new AiProperties.ResolvedRoute(AiProvider.OPENAI_COMPATIBLE, "deepseek", "deepseek-r1"));
     }
 
     @Test
-    void fallsBackToNextProviderWhenPrimaryProviderFails() {
-        FakeProviderClient deepSeekClient = new FakeProviderClient(AiProvider.DEEPSEEK);
-        FakeProviderClient kimiClient = new FakeProviderClient(AiProvider.KIMI);
+    void usesRouteProviderWhenExplicitlyConfigured() {
+        FakeProviderClient gatewayClient = new FakeProviderClient(AiProvider.OPENAI_COMPATIBLE);
+        FakeProviderClient ollamaClient = new FakeProviderClient(AiProvider.OLLAMA);
         AiProperties properties = new AiProperties(
-            AiProvider.DEEPSEEK,
+            AiProvider.OPENAI_COMPATIBLE,
             Duration.ofSeconds(20),
-            Map.of("capture-analysis", new AiProperties.Route(AiProvider.KIMI, "kimi-route-model")),
-            new AiProperties.DeepSeek("https://api.deepseek.com", "deepseek-key", "deepseek-chat"),
-            new AiProperties.Kimi("https://api.moonshot.cn/v1", "kimi-key", "kimi-model"),
-            new AiProperties.Gemini("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-key", "gemini-model"),
-            new AiProperties.Ollama("http://localhost:11434", "llama-test")
+            Map.of("capture-analysis", new AiProperties.Route(null, "ollama-route-model", AiProvider.OLLAMA)),
+            new AiProperties.OpenAiCompatible(null, "https://gateway.example.com/v1", "gateway-key", "gateway-default-model", Map.of()),
+            new AiProperties.Ollama("http://localhost:11434", "ollama-default-model")
         );
-        RoutingAiClient client = new RoutingAiClient(properties, List.of(deepSeekClient, kimiClient));
+        RoutingAiClient client = new RoutingAiClient(properties, List.of(gatewayClient, ollamaClient));
         AiRequest request = sampleRequest("capture-analysis");
-        kimiClient.failure = new CapturePipelineException(CaptureFailureReason.LLM_CALL_FAILED, "primary provider failed");
-        AiResponse response = new AiResponse(AiProvider.DEEPSEEK, "deepseek-chat", "{}", 8);
-        deepSeekClient.response = response;
+        AiResponse response = new AiResponse(AiProvider.OLLAMA, "ollama-route-model", "{}", 8);
+        ollamaClient.response = response;
 
         AiResponse result = client.analyze(request);
 
         assertThat(result).isSameAs(response);
-        assertThat(deepSeekClient.lastRoute).isEqualTo(new AiProperties.ResolvedRoute(AiProvider.DEEPSEEK, "deepseek-chat"));
-        assertThat(kimiClient.lastRoute).isEqualTo(new AiProperties.ResolvedRoute(AiProvider.KIMI, "kimi-route-model"));
+        assertThat(gatewayClient.lastRoute).isNull();
+        assertThat(ollamaClient.lastRoute).isEqualTo(new AiProperties.ResolvedRoute(AiProvider.OLLAMA, null, "ollama-route-model"));
     }
 
     @Test
-    void skipsBlankPrimaryModelAndUsesNextConfiguredProvider() {
-        FakeProviderClient deepSeekClient = new FakeProviderClient(AiProvider.DEEPSEEK);
-        FakeProviderClient kimiClient = new FakeProviderClient(AiProvider.KIMI);
+    void throwsWhenResolvedProviderClientIsMissing() {
         AiProperties properties = new AiProperties(
-            AiProvider.DEEPSEEK,
+            AiProvider.OPENAI_COMPATIBLE,
             Duration.ofSeconds(20),
-            Map.of("capture-analysis", new AiProperties.Route(AiProvider.DEEPSEEK, null)),
-            new AiProperties.DeepSeek("https://api.deepseek.com", "deepseek-key", null),
-            new AiProperties.Kimi("https://api.moonshot.cn/v1", "kimi-key", "kimi-model"),
-            new AiProperties.Gemini("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-key", "gemini-model"),
-            new AiProperties.Ollama("http://localhost:11434", "llama-test")
+            Map.of("capture-analysis", new AiProperties.Route(null, "gateway-route-model", null)),
+            new AiProperties.OpenAiCompatible(null, "https://gateway.example.com/v1", "gateway-key", "gateway-default-model", Map.of()),
+            new AiProperties.Ollama("http://localhost:11434", "ollama-model")
         );
-        RoutingAiClient client = new RoutingAiClient(properties, List.of(deepSeekClient, kimiClient));
+        RoutingAiClient client = new RoutingAiClient(properties, List.of(new FakeProviderClient(AiProvider.OLLAMA)));
         AiRequest request = sampleRequest("capture-analysis");
-        AiResponse response = new AiResponse(AiProvider.KIMI, "kimi-model", "{}", 10);
-        kimiClient.response = response;
 
-        AiResponse result = client.analyze(request);
-
-        assertThat(result).isSameAs(response);
-        assertThat(deepSeekClient.lastRoute).isNull();
-        assertThat(kimiClient.lastRoute).isEqualTo(new AiProperties.ResolvedRoute(AiProvider.KIMI, "kimi-model"));
+        assertThatThrownBy(() -> client.analyze(request))
+            .isInstanceOf(CapturePipelineException.class)
+            .hasMessageContaining("no ai provider client is available");
     }
 
     private AiRequest sampleRequest(String routeKey) {
@@ -145,7 +121,6 @@ class RoutingAiClientTest {
             AiResponseMode.JSON_OBJECT,
             Map.of(),
             Map.of("source_type", "TEXT"),
-            null,
             null
         );
     }

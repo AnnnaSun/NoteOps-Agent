@@ -22,24 +22,24 @@ management:
 
 noteops:
   ai:
-    default-provider: OLLAMA
+    default-provider: OPENAI_COMPATIBLE
     request-timeout: PT60S
     routes:
       capture-analysis:
-        provider: OLLAMA
+        endpoint: default
         model: deepseek-r1:8b
-    deepseek:
-      base-url: https://api.deepseek.com
-      api-key: ${NOTEOPS_AI_DEEPSEEK_API_KEY:${DEEPSEEK_API_KEY:${OPENAI_API_KEY:}}}
-      model: deepseek-chat
-    kimi:
-      base-url: https://api.moonshot.cn/v1
-      api-key: ${NOTEOPS_AI_KIMI_API_KEY:${KIMI_API_KEY:${MOONSHOT_API_KEY:}}}
-      model: kimi-k2
-    gemini:
-      base-url: https://generativelanguage.googleapis.com/v1beta/openai
-      api-key: ${NOTEOPS_AI_GEMINI_API_KEY:${GEMINI_API_KEY:}}
-      model: gemini-2.0-flash
+      search-enhancement:
+        endpoint: default
+        model: deepseek-r1:8b
+    openai-compatible:
+      # 这里要求上游兼容 OpenAI chat completions 协议。
+      # 如果目标 API 不兼容该协议，应在网关层先做归一，或新增协议型 provider。
+      default-endpoint: default
+      endpoints:
+        default:
+          base-url: ${NOTEOPS_AI_BASE_URL:http://localhost:11434/v1}
+          api-key: ${NOTEOPS_AI_API_KEY:${OPENAI_API_KEY:}}
+          model: ${NOTEOPS_AI_MODEL:deepseek-r1:8b}
     ollama:
       base-url: http://localhost:11434
       model: deepseek-r1:8b

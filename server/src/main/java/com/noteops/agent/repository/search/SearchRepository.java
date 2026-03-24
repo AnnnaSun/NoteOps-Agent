@@ -14,6 +14,9 @@ public interface SearchRepository {
         String title,
         String currentSummary,
         List<String> currentKeyPoints,
+        List<String> currentTags,
+        String sourceUri,
+        String latestContentType,
         String latestContent,
         Instant updatedAt
     ) {

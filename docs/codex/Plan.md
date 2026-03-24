@@ -54,8 +54,8 @@ Phase 3 的目标不是做 Trend，而是把 Phase 2 已有的 Note / Search / R
     - `COMPLETED`
     - `FAILED`
 - `TEXT` 走原文规整提取，`URL` 走最小 HTTP 快照提取
-- `ANALYZING` 阶段支持 `DEEPSEEK / KIMI / GEMINI / OLLAMA` 四个 provider 的真实结构化 JSON 调用
-- provider/router 已抽到共享 `service.ai` 平台，当前只有 `capture-analysis` 接入，未顺势扩到 `note/task/search/review`
+- `ANALYZING` 阶段支持真实结构化 JSON 调用，AI 层已收敛为协议型 provider：`OPENAI_COMPATIBLE / OLLAMA`
+- provider/router 已抽到共享 `service.ai` 平台，默认走统一 AI 网关，route 以 `endpoint + model` 选型为主；请求级 `providerOverride` 已移除，当前已接入 `capture-analysis` 与 `search-enhancement`
 - 服务端对 `CaptureAnalysisResult` 做强校验
 - consolidate 默认新建 Note，原始输入落 `CAPTURE_RAW`，AI 结果仅写 Note 当前解释层与 `analysis_result`
 - 写入 `agent_traces`、`tool_invocation_logs`、`user_action_events`、结构化日志
@@ -69,6 +69,34 @@ Phase 3 的目标不是做 Trend，而是把 Phase 2 已有的 Note / Search / R
 
 ### 下一正式里程碑
 - 完成前置补丁后，继续按 Idea 主线推进，从 `Step 3.1` / `Step 3.2` 继续，不把 Capture 补丁误判为 Phase 3 全量开始
+
+## 用户定向补丁：Search AI 最小增强（已完成）
+### 目标
+在不改变 Search 三分栏冻结语义的前提下，为 `related_matches` 和 `external_supplements` 增加最小可演示 AI 解释能力，并补齐 evidence / proposal 治理动作。
+
+### 实际已完成
+- `GET /api/v1/search` 保持三分栏：
+    - `exact_matches`
+    - `related_matches`
+    - `external_supplements`
+- `related_matches.relation_reason` 由共享 `service.ai` 路由做最小解释增强，失败时回退到规则可解释短句
+- `external_supplements` 增加：
+    - `relation_label`
+    - `keywords`
+    - `summary_snippet`
+- 新增 Search 治理入口：
+    - `POST /api/v1/search/notes/{noteId}/evidence`
+    - `POST /api/v1/search/notes/{noteId}/change-proposals`
+- 保存 evidence 只追加 `note_contents.content_type = EVIDENCE`
+- 从 Search 生成的解释层更新只允许落到 `ChangeProposal`
+- Search 查询、AI 增强、evidence 保存、proposal 生成均写入 `agent_traces`、`tool_invocation_logs`、`user_action_events`
+
+### 明确不扩张
+- 不引入真实外部 provider 抓取
+- 不让 Search 直接更新 `notes.current_summary / current_key_points / current_tags`
+- 不做 Search ranking learning
+- 不做 Search 偏好学习
+- 不做 Search -> Idea 正式自动转化
 
 ## Step 3.1：锁定 Idea 领域模型与状态机
 ### 目标

@@ -29,62 +29,28 @@ public class RoutingAiClient implements AiClient {
     }
 
     @Override
-    // 按路由优先级逐个尝试 provider，遇到可恢复失败时切换下一个候选。
+    // 统一网关场景下，每个 route 只解析一个目标 provider/model，不再做跨 provider fallback。
     public AiResponse analyze(AiRequest request) {
-        List<AiProperties.ResolvedRoute> routes = properties.resolveRoutes(
+        AiProperties.ResolvedRoute route = properties.resolveRoute(
             request.routeKey(),
-            request.providerOverride(),
             request.modelOverride()
         );
-        CapturePipelineException lastFailure = null;
-        for (AiProperties.ResolvedRoute route : routes) {
-            AiProviderClient providerClient = providerClients.get(route.provider());
-            if (providerClient == null) {
-                log.warn(
-                    "module=RoutingAiClient action=llm_provider_missing result=SKIPPED trace_id={} user_id={} route_key={} provider={} model={}",
-                    request.traceId(),
-                    request.userId(),
-                    request.routeKey(),
-                    route.provider(),
-                    route.model()
-                );
-                continue;
-            }
-            try {
-                if (lastFailure != null) {
-                    log.info(
-                        "module=RoutingAiClient action=llm_provider_fallback result=RETRYING trace_id={} user_id={} route_key={} provider={} model={}",
-                        request.traceId(),
-                        request.userId(),
-                        request.routeKey(),
-                        route.provider(),
-                        route.model()
-                    );
-                }
-                return providerClient.analyze(request, route);
-            } catch (CapturePipelineException exception) {
-                if (!isFallbackable(exception)) {
-                    throw exception;
-                }
-                lastFailure = exception;
-                log.warn(
-                    "module=RoutingAiClient action=llm_provider_fallback result=FAILED trace_id={} user_id={} route_key={} provider={} model={} error_code={} error_message={}",
-                    request.traceId(),
-                    request.userId(),
-                    request.routeKey(),
-                    route.provider(),
-                    route.model(),
-                    exception.failureReason().name(),
-                    exception.getMessage()
-                );
-            }
+        AiProviderClient providerClient = providerClients.get(route.provider());
+        if (providerClient != null) {
+            return providerClient.analyze(request, route);
         }
-        if (lastFailure != null) {
-            throw lastFailure;
-        }
+        log.warn(
+            "module=RoutingAiClient action=llm_provider_missing result=FAILED trace_id={} user_id={} route_key={} provider={} endpoint={} model={}",
+            request.traceId(),
+            request.userId(),
+            request.routeKey(),
+            route.provider(),
+            route.endpoint(),
+            route.model()
+        );
         throw new CapturePipelineException(
             CaptureFailureReason.LLM_CALL_FAILED,
-            "no ai provider candidate is available for route_key=" + request.routeKey()
+            "no ai provider client is available for route_key=" + request.routeKey()
         );
     }
 
@@ -97,12 +63,5 @@ public class RoutingAiClient implements AiClient {
             }
         }
         return value;
-    }
-
-    private boolean isFallbackable(CapturePipelineException exception) {
-        return switch (exception.failureReason()) {
-            case LLM_CALL_FAILED, LLM_OUTPUT_INVALID -> true;
-            default -> false;
-        };
     }
 }

@@ -39,19 +39,21 @@ abstract class AbstractOpenAiCompatibleAiProviderClient implements AiProviderCli
     // 执行 OpenAI 兼容 provider 调用，并记录成功/失败日志。
     public AiResponse analyze(AiRequest request, AiProperties.ResolvedRoute route) {
         String model = route.model();
-        String apiKey = apiKey();
-        if (model == null || apiKey == null) {
-            throw llmFailure(model, provider().name().toLowerCase() + " provider is missing api key or model", null);
+        String endpoint = route.endpoint();
+        String apiKey = apiKey(route);
+        if (model == null) {
+            throw llmFailure(model, provider().name().toLowerCase() + " provider is missing model", null);
         }
 
         long startedAt = System.nanoTime();
         log.info(
-            "module={} action=llm_call_start result=RUNNING trace_id={} user_id={} route_key={} provider={} model={}",
+            "module={} action=llm_call_start result=RUNNING trace_id={} user_id={} route_key={} provider={} endpoint={} model={}",
             clientName(),
             request.traceId(),
             request.userId(),
             request.routeKey(),
             provider(),
+            endpoint,
             model
         );
         try {
@@ -66,10 +68,12 @@ abstract class AbstractOpenAiCompatibleAiProviderClient implements AiProviderCli
             }
             addRequestBodyOverrides(request, route, requestBody);
 
-            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(resolveEndpoint(baseUrl(), endpointPath())))
+            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(resolveEndpoint(baseUrl(route), endpointPath())))
                 .timeout(requestTimeout())
-                .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json");
+            if (apiKey != null) {
+                builder.header("Authorization", "Bearer " + apiKey);
+            }
             for (Map.Entry<String, String> header : extraHeaders().entrySet()) {
                 builder.header(header.getKey(), header.getValue());
             }
@@ -80,7 +84,7 @@ abstract class AbstractOpenAiCompatibleAiProviderClient implements AiProviderCli
             );
             int durationMs = durationMs(startedAt);
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                appendFailureLog(request, model, durationMs, errorCodePrefix() + "_HTTP_" + response.statusCode(), response.body());
+                appendFailureLog(request, route, model, durationMs, errorCodePrefix() + "_HTTP_" + response.statusCode(), response.body());
                 throw llmFailure(model, provider().name().toLowerCase() + " call failed with status " + response.statusCode(), null);
             }
 
@@ -88,30 +92,39 @@ abstract class AbstractOpenAiCompatibleAiProviderClient implements AiProviderCli
             JsonNode contentNode = responseJson.path("choices").path(0).path("message").path("content");
             String content = contentNode.asText(null);
             if (content == null || content.isBlank()) {
-                appendFailureLog(request, model, durationMs, errorCodePrefix() + "_EMPTY_RESPONSE", provider().name().toLowerCase() + " response content is empty");
+                appendFailureLog(
+                    request,
+                    route,
+                    model,
+                    durationMs,
+                    errorCodePrefix() + "_EMPTY_RESPONSE",
+                    provider().name().toLowerCase() + " response content is empty"
+                );
                 throw llmFailure(model, provider().name().toLowerCase() + " response content is empty", null);
             }
 
-            appendSuccessLog(request, model, durationMs, content);
+            appendSuccessLog(request, route, model, durationMs, content);
             log.info(
-                "module={} action=llm_call_end result=SUCCESS trace_id={} user_id={} route_key={} provider={} model={} duration_ms={}",
+                "module={} action=llm_call_end result=SUCCESS trace_id={} user_id={} route_key={} provider={} endpoint={} model={} duration_ms={}",
                 clientName(),
                 request.traceId(),
                 request.userId(),
                 request.routeKey(),
                 provider(),
+                endpoint,
                 model,
                 durationMs
             );
             return new AiResponse(provider(), model, content, durationMs);
         } catch (CapturePipelineException exception) {
             log.warn(
-                "module={} action=llm_call_end result=FAILED trace_id={} user_id={} route_key={} provider={} model={} error_code={} error_message={}",
+                "module={} action=llm_call_end result=FAILED trace_id={} user_id={} route_key={} provider={} endpoint={} model={} error_code={} error_message={}",
                 clientName(),
                 request.traceId(),
                 request.userId(),
                 request.routeKey(),
                 provider(),
+                endpoint,
                 model,
                 exception.failureReason().name(),
                 exception.getMessage()
@@ -119,14 +132,15 @@ abstract class AbstractOpenAiCompatibleAiProviderClient implements AiProviderCli
             throw exception;
         } catch (Exception exception) {
             int durationMs = durationMs(startedAt);
-            appendFailureLog(request, model, durationMs, errorCodePrefix() + "_CALL_ERROR", exception.getMessage());
+            appendFailureLog(request, route, model, durationMs, errorCodePrefix() + "_CALL_ERROR", exception.getMessage());
             log.warn(
-                "module={} action=llm_call_end result=FAILED trace_id={} user_id={} route_key={} provider={} model={} duration_ms={} error_code={} error_message={}",
+                "module={} action=llm_call_end result=FAILED trace_id={} user_id={} route_key={} provider={} endpoint={} model={} duration_ms={} error_code={} error_message={}",
                 clientName(),
                 request.traceId(),
                 request.userId(),
                 request.routeKey(),
                 provider(),
+                endpoint,
                 model,
                 durationMs,
                 CaptureFailureReason.LLM_CALL_FAILED.name(),
@@ -145,6 +159,9 @@ abstract class AbstractOpenAiCompatibleAiProviderClient implements AiProviderCli
         return NO_EXTRA_HEADERS;
     }
 
+    // OPENAI_COMPATIBLE 只覆盖 OpenAI chat completions 协议族。
+    // 如果目标 API 的路径、请求体或响应体不兼容这里的固定约定，
+    // 应优先在统一网关层做协议归一；无法归一时，再新增协议型 provider。
     protected String endpointPath() {
         return "/chat/completions";
     }
@@ -153,19 +170,19 @@ abstract class AbstractOpenAiCompatibleAiProviderClient implements AiProviderCli
 
     protected abstract String errorCodePrefix();
 
-    protected abstract String baseUrl();
+    protected abstract String baseUrl(AiProperties.ResolvedRoute route);
 
-    protected abstract String apiKey();
+    protected abstract String apiKey(AiProperties.ResolvedRoute route);
 
     protected abstract java.time.Duration requestTimeout();
 
-    private void appendSuccessLog(AiRequest request, String model, int durationMs, String content) {
+    private void appendSuccessLog(AiRequest request, AiProperties.ResolvedRoute route, String model, int durationMs, String content) {
         toolInvocationLogRepository.append(
             request.userId(),
             request.traceId(),
             toolName(request),
             "SUCCESS",
-            inputDigest(model, request),
+            inputDigest(route, model, request),
             Map.of(
                 "result", "SUCCESS",
                 "response_chars", content.length()
@@ -176,13 +193,18 @@ abstract class AbstractOpenAiCompatibleAiProviderClient implements AiProviderCli
         );
     }
 
-    private void appendFailureLog(AiRequest request, String model, int durationMs, String errorCode, String errorMessage) {
+    private void appendFailureLog(AiRequest request,
+                                  AiProperties.ResolvedRoute route,
+                                  String model,
+                                  int durationMs,
+                                  String errorCode,
+                                  String errorMessage) {
         toolInvocationLogRepository.append(
             request.userId(),
             request.traceId(),
             toolName(request),
             "FAILED",
-            inputDigest(model, request),
+            inputDigest(route, model, request),
             Map.of("result", "FAILED"),
             durationMs,
             errorCode,
@@ -190,11 +212,14 @@ abstract class AbstractOpenAiCompatibleAiProviderClient implements AiProviderCli
         );
     }
 
-    private Map<String, Object> inputDigest(String model, AiRequest request) {
+    private Map<String, Object> inputDigest(AiProperties.ResolvedRoute route, String model, AiRequest request) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("provider", provider().name());
         payload.put("request_type", request.requestType());
         payload.put("route_key", request.routeKey());
+        if (route.endpoint() != null) {
+            payload.put("endpoint", route.endpoint());
+        }
         if (model != null) {
             payload.put("model", model);
         }

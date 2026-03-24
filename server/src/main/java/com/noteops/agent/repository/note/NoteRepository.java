@@ -50,6 +50,16 @@ public interface NoteRepository {
         throw new UnsupportedOperationException("updateInterpretation is not implemented");
     }
 
+    default UUID appendEvidence(UUID noteId,
+                                UUID userId,
+                                String sourceUri,
+                                String rawText,
+                                String cleanText,
+                                Map<String, Object> sourceSnapshot,
+                                Map<String, Object> analysisResult) {
+        throw new UnsupportedOperationException("appendEvidence is not implemented");
+    }
+
     record NoteCreationResult(UUID noteId, UUID contentId) {
     }
 }

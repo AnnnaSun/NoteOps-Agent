@@ -208,6 +208,40 @@ public class JdbcNoteRepository implements NoteRepository {
             .update();
     }
 
+    @Override
+    // 追加一条 evidence block，只写 note_contents，不直接覆盖 Note 当前解释层。
+    public UUID appendEvidence(UUID noteId,
+                               UUID userId,
+                               String sourceUri,
+                               String rawText,
+                               String cleanText,
+                               Map<String, Object> sourceSnapshot,
+                               Map<String, Object> analysisResult) {
+        UUID contentId = UUID.randomUUID();
+        jdbcClient.sql("""
+            insert into note_contents (
+                id, user_id, note_id, content_type, source_uri, canonical_uri, source_snapshot, raw_text, clean_text,
+                analysis_result, is_current_view_source
+            ) values (
+                :id, :userId, :noteId, :contentType, :sourceUri, :canonicalUri, cast(:sourceSnapshot as jsonb),
+                :rawText, :cleanText, cast(:analysisResult as jsonb), :isCurrentViewSource
+            )
+            """)
+            .param("id", contentId)
+            .param("userId", userId)
+            .param("noteId", noteId)
+            .param("contentType", NoteContentType.EVIDENCE.name())
+            .param("sourceUri", sourceUri)
+            .param("canonicalUri", sourceUri)
+            .param("sourceSnapshot", jsonSupport.write(sourceSnapshot == null ? Map.of() : sourceSnapshot))
+            .param("rawText", rawText)
+            .param("cleanText", cleanText)
+            .param("analysisResult", jsonSupport.write(analysisResult == null ? Map.of() : analysisResult))
+            .param("isCurrentViewSource", false)
+            .update();
+        return contentId;
+    }
+
     private Instant asInstant(Timestamp timestamp) {
         return timestamp.toInstant();
     }

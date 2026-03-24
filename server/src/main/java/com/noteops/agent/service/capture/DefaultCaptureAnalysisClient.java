@@ -32,7 +32,6 @@ public class DefaultCaptureAnalysisClient implements CaptureAnalysisClient {
             AiResponseMode.JSON_OBJECT,
             CaptureAnalysisJsonSchema.schema(),
             inputMetadata(request),
-            null,
             null
         ));
         return new AnalyzeResponse(response.provider(), response.model(), response.rawText(), response.durationMs());

@@ -14,7 +14,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,10 +29,10 @@ class SearchApplicationServiceTest {
         UUID relatedId = UUID.randomUUID();
 
         InMemorySearchRepository repository = new InMemorySearchRepository();
-        repository.store(candidate(userId, exactTitleId, "Kickoff alpha", "Old summary", List.of("owners aligned"), "phase one notes", Instant.parse("2026-03-16T01:00:00Z")));
-        repository.store(candidate(userId, exactSummaryId, "Project brief", "Kickoff alpha recap", List.of("owners aligned"), "phase two notes", Instant.parse("2026-03-16T02:00:00Z")));
-        repository.store(candidate(userId, relatedId, "Kickoff review", "Team coordination", List.of("alignment"), "phase follow-up", Instant.parse("2026-03-16T03:00:00Z")));
-        repository.store(candidate(UUID.randomUUID(), UUID.randomUUID(), "Other user's note", "Kickoff alpha", List.of("ignore"), "ignore", Instant.parse("2026-03-16T04:00:00Z")));
+        repository.store(candidate(userId, exactTitleId, "Kickoff alpha", "Old summary", List.of("owners aligned"), List.of("planning"), "phase one notes", Instant.parse("2026-03-16T01:00:00Z")));
+        repository.store(candidate(userId, exactSummaryId, "Project brief", "Kickoff alpha recap", List.of("owners aligned"), List.of("planning"), "phase two notes", Instant.parse("2026-03-16T02:00:00Z")));
+        repository.store(candidate(userId, relatedId, "Kickoff review", "Team coordination", List.of("alignment"), List.of("kickoff"), "phase follow-up", Instant.parse("2026-03-16T03:00:00Z")));
+        repository.store(candidate(UUID.randomUUID(), UUID.randomUUID(), "Other user's note", "Kickoff alpha", List.of("ignore"), List.of("ignore"), "ignore", Instant.parse("2026-03-16T04:00:00Z")));
 
         SearchApplicationService service = new SearchApplicationService(repository);
         SearchApplicationService.SearchView result = service.search(userId.toString(), "kickoff alpha");
@@ -43,13 +42,87 @@ class SearchApplicationServiceTest {
             .containsExactly(exactTitleId, exactSummaryId);
         assertThat(result.relatedMatches()).extracting(SearchApplicationService.SearchRelatedMatchView::noteId)
             .containsExactly(relatedId);
-        assertThat(result.relatedMatches().getFirst().relationReason()).isEqualTo("TITLE_TOKEN_OVERLAP");
+        assertThat(result.relatedMatches().getFirst().relationReason()).startsWith("共享");
         assertThat(result.exactMatches()).extracting(SearchApplicationService.SearchExactMatchView::noteId)
             .doesNotContain(relatedId);
         assertThat(result.externalSupplements()).hasSize(2);
         assertThat(result.externalSupplements().getFirst().sourceName()).isEqualTo("Search Stub Background");
         assertThat(result.externalSupplements().getFirst().keywords()).containsExactly("kickoff", "alpha");
         assertThat(result.externalSupplements().getFirst().relationTags()).containsExactly("BACKGROUND");
+        assertThat(result.externalSupplements().getFirst().relationLabel()).isEqualTo("背景补充");
+        assertThat(result.externalSupplements().getFirst().summarySnippet()).isNotBlank();
+    }
+
+    @Test
+    void appliesAiEnhancementWhenAvailable() {
+        UUID userId = UUID.randomUUID();
+        UUID relatedId = UUID.randomUUID();
+
+        InMemorySearchRepository repository = new InMemorySearchRepository();
+        repository.store(candidate(userId, UUID.randomUUID(), "Kickoff alpha", "Exact summary", List.of("owners aligned"), List.of("planning"), "alpha details", Instant.parse("2026-03-16T01:00:00Z")));
+        repository.store(candidate(userId, relatedId, "Kickoff review", "Team coordination", List.of("alignment"), List.of("kickoff"), "phase follow-up", Instant.parse("2026-03-16T03:00:00Z")));
+
+        SearchAiEnhancer enhancer = request -> new SearchAiEnhancer.SearchAiEnhancementResult(
+            Map.of(relatedId, new SearchAiEnhancer.RelatedEnhancement("共享工作流链路：kickoff review")),
+            Map.of(
+                "stub://search/background?q=kickoff+alpha",
+                new SearchAiEnhancer.ExternalEnhancement("可能更新", List.of("kickoff", "alpha", "review"), "外部线索提示 kickoff 计划有新增进展")
+            )
+        );
+
+        SearchApplicationService service = new SearchApplicationService(
+            repository,
+            enhancer,
+            new RecordingAgentTraceRepository(),
+            new RecordingToolInvocationLogRepository(),
+            new RecordingUserActionEventRepository()
+        );
+
+        SearchApplicationService.SearchView result = service.search(userId.toString(), "kickoff alpha");
+
+        assertThat(result.relatedMatches().getFirst().relationReason()).isEqualTo("共享工作流链路：kickoff review");
+        assertThat(result.externalSupplements().getFirst().relationLabel()).isEqualTo("可能更新");
+        assertThat(result.externalSupplements().getFirst().keywords()).containsExactly("kickoff", "alpha", "review");
+        assertThat(result.externalSupplements().getFirst().summarySnippet()).isEqualTo("外部线索提示 kickoff 计划有新增进展");
+    }
+
+    @Test
+    void degradesGracefullyWhenAiEnhancementFails() {
+        UUID userId = UUID.randomUUID();
+        UUID relatedId = UUID.randomUUID();
+
+        InMemorySearchRepository repository = new InMemorySearchRepository();
+        repository.store(candidate(userId, UUID.randomUUID(), "Kickoff alpha", "Exact summary", List.of("owners aligned"), List.of("planning"), "alpha details", Instant.parse("2026-03-16T01:00:00Z")));
+        repository.store(candidate(userId, relatedId, "Kickoff review", "Team coordination", List.of("alignment"), List.of("kickoff"), "phase follow-up", Instant.parse("2026-03-16T03:00:00Z")));
+
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
+        RecordingUserActionEventRepository userActionEventRepository = new RecordingUserActionEventRepository();
+
+        SearchApplicationService service = new SearchApplicationService(
+            repository,
+            request -> {
+                throw new RuntimeException("simulated ai failure");
+            },
+            traceRepository,
+            toolInvocationLogRepository,
+            userActionEventRepository
+        );
+
+        SearchApplicationService.SearchView result = service.search(userId.toString(), "kickoff alpha");
+
+        assertThat(result.relatedMatches().getFirst().relationReason()).startsWith("共享");
+        assertThat(result.externalSupplements().getFirst().relationLabel()).isEqualTo("背景补充");
+        assertThat(traceRepository.completed.orchestratorState()).containsEntry("ai_enhancement_status", "DEGRADED");
+        assertThat(userActionEventRepository.events).extracting(UserActionEventRecord::eventType)
+            .contains("SEARCH_AI_ENHANCEMENT_DEGRADED", "SEARCH_EXECUTED", "SEARCH_EXTERNAL_SUPPLEMENTS_GENERATED");
+        assertThat(toolInvocationLogRepository.logs).extracting(ToolInvocationLogRecord::toolName)
+            .contains("search.ai-enhancement", "search.execute", "search.external-supplement-generator");
+        ToolInvocationLogRecord aiLog = toolInvocationLogRepository.logs.stream()
+            .filter(log -> log.toolName().equals("search.ai-enhancement"))
+            .findFirst()
+            .orElseThrow();
+        assertThat(aiLog.status()).isEqualTo("FAILED");
     }
 
     @Test
@@ -60,9 +133,9 @@ class SearchApplicationServiceTest {
         UUID relatedId = UUID.randomUUID();
 
         InMemorySearchRepository repository = new InMemorySearchRepository();
-        repository.store(candidate(userId, exactTitleId, "Kickoff alpha", "Old summary", List.of("owners aligned"), "phase one notes", Instant.parse("2026-03-16T01:00:00Z")));
-        repository.store(candidate(userId, exactSummaryId, "Project brief", "Kickoff alpha recap", List.of("owners aligned"), "phase two notes", Instant.parse("2026-03-16T02:00:00Z")));
-        repository.store(candidate(userId, relatedId, "Kickoff review", "Team coordination", List.of("alignment"), "phase follow-up", Instant.parse("2026-03-16T03:00:00Z")));
+        repository.store(candidate(userId, exactTitleId, "Kickoff alpha", "Old summary", List.of("owners aligned"), List.of("planning"), "phase one notes", Instant.parse("2026-03-16T01:00:00Z")));
+        repository.store(candidate(userId, exactSummaryId, "Project brief", "Kickoff alpha recap", List.of("owners aligned"), List.of("planning"), "phase two notes", Instant.parse("2026-03-16T02:00:00Z")));
+        repository.store(candidate(userId, relatedId, "Kickoff review", "Team coordination", List.of("alignment"), List.of("kickoff"), "phase follow-up", Instant.parse("2026-03-16T03:00:00Z")));
 
         RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
         RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
@@ -70,6 +143,7 @@ class SearchApplicationServiceTest {
 
         SearchApplicationService service = new SearchApplicationService(
             repository,
+            request -> new SearchAiEnhancer.SearchAiEnhancementResult(Map.of(), Map.of()),
             traceRepository,
             toolInvocationLogRepository,
             userActionEventRepository
@@ -84,18 +158,11 @@ class SearchApplicationServiceTest {
         assertThat(traceRepository.created.orchestratorState()).containsEntry("query", "kickoff alpha");
         assertThat(traceRepository.completed.traceId()).isEqualTo(traceRepository.traceId);
         assertThat(traceRepository.completed.resultSummary()).contains("2 exact matches", "1 related matches", "2 external supplements");
-        assertThat(userActionEventRepository.events).hasSize(1);
-        assertThat(userActionEventRepository.events.getFirst().eventType()).isEqualTo("SEARCH_EXTERNAL_SUPPLEMENTS_GENERATED");
-        assertThat(userActionEventRepository.events.getFirst().entityType()).isEqualTo("SEARCH_QUERY");
-        assertThat(userActionEventRepository.events.getFirst().traceId()).isEqualTo(traceRepository.traceId);
-        assertThat(userActionEventRepository.events.getFirst().payload()).containsEntry("exact_count", 2);
-        assertThat(userActionEventRepository.events.getFirst().payload()).containsEntry("related_count", 1);
-        assertThat(userActionEventRepository.events.getFirst().payload()).containsEntry("external_count", 2);
-        assertThat(toolInvocationLogRepository.logs).hasSize(1);
-        assertThat(toolInvocationLogRepository.logs.getFirst().toolName()).isEqualTo("search.external-supplement-stub");
-        assertThat(toolInvocationLogRepository.logs.getFirst().status()).isEqualTo("COMPLETED");
-        assertThat(toolInvocationLogRepository.logs.getFirst().inputDigest()).containsEntry("query", "kickoff alpha");
-        assertThat(toolInvocationLogRepository.logs.getFirst().outputDigest()).containsEntry("external_count", 2);
+        assertThat(userActionEventRepository.events).extracting(UserActionEventRecord::eventType)
+            .containsExactly("SEARCH_EXECUTED", "SEARCH_EXTERNAL_SUPPLEMENTS_GENERATED");
+        assertThat(toolInvocationLogRepository.logs).extracting(ToolInvocationLogRecord::toolName)
+            .containsExactly("search.ai-enhancement", "search.execute", "search.external-supplement-generator");
+        assertThat(toolInvocationLogRepository.logs.get(1).outputDigest()).containsEntry("exact_count", 2);
     }
 
     @Test
@@ -121,9 +188,21 @@ class SearchApplicationServiceTest {
                                                        String title,
                                                        String currentSummary,
                                                        List<String> currentKeyPoints,
+                                                       List<String> currentTags,
                                                        String latestContent,
                                                        Instant updatedAt) {
-        return new SearchRepository.SearchCandidate(noteId, userId, title, currentSummary, currentKeyPoints, latestContent, updatedAt);
+        return new SearchRepository.SearchCandidate(
+            noteId,
+            userId,
+            title,
+            currentSummary,
+            currentKeyPoints,
+            currentTags,
+            "stub://note/" + noteId,
+            "CAPTURE_RAW",
+            latestContent,
+            updatedAt
+        );
     }
 
     private static final class InMemorySearchRepository implements SearchRepository {

@@ -122,7 +122,9 @@ export type SearchExternalSupplement = {
   source_uri: string;
   summary: string;
   keywords: string[];
+  relation_label: string;
   relation_tags: string[];
+  summary_snippet: string;
 };
 
 export type SearchResult = {
@@ -169,4 +171,12 @@ export type ChangeProposal = {
   status: string;
   created_at: string;
   updated_at: string;
+};
+
+export type SearchEvidenceResult = {
+  note_id: string;
+  content_id: string;
+  content_type: string;
+  source_uri: string;
+  relation_label: string;
 };
