@@ -53,3 +53,14 @@ venv/
 .npm/
 .pnpm-store/
 .yarn/
+
+# block accidental UI/UX skill dataset outputs
+design-system/*.csv
+design-system/**/*.csv
+tmp/uiux/**
+artifacts/uiux/**
+*.design.csv
+*.palette.csv
+*.typography.csv
+*.styles.csv
+.codex
