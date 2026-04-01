@@ -1,0 +1,7 @@
+noteops:
+  ai:
+    # local profile 默认走 Ollama native API，便于本地联调和无外网测试。
+    default-provider: OLLAMA
+    ollama:
+      base-url: ${NOTEOPS_AI_OLLAMA_BASE_URL:http://localhost:11434}
+      model: ${NOTEOPS_AI_OLLAMA_MODEL:deepseek-r1:8b}

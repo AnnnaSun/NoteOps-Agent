@@ -40,6 +40,7 @@ class JdbcSearchRepositoryIntegrationTest {
                 title varchar(255) not null,
                 current_summary text,
                 current_key_points jsonb not null default '[]',
+                current_tags jsonb not null default '[]',
                 latest_content_id uuid,
                 updated_at timestamp with time zone not null default current_timestamp
             )
@@ -50,6 +51,7 @@ class JdbcSearchRepositoryIntegrationTest {
                 user_id uuid not null,
                 note_id uuid not null,
                 content_type varchar(32) not null,
+                source_uri varchar(1024),
                 raw_text text,
                 clean_text text,
                 created_at timestamp with time zone not null default current_timestamp
@@ -83,17 +85,20 @@ class JdbcSearchRepositoryIntegrationTest {
         assertThat(candidates).extracting(SearchRepository.SearchCandidate::noteId)
             .containsExactly(newerNoteId, olderNoteId);
         assertThat(candidates.getFirst().latestContent()).isEqualTo("two clean");
+        assertThat(candidates.getFirst().currentTags()).containsExactly("phase-3");
+        assertThat(candidates.getFirst().sourceUri()).isEqualTo("stub://source/" + latestContentTwo);
         assertThat(candidates.getLast().latestContent()).isEqualTo("one clean");
     }
 
     private void insertContent(UUID id, UUID userId, UUID noteId, String rawText, String cleanText) {
         jdbcClient.sql("""
-            insert into note_contents (id, user_id, note_id, content_type, raw_text, clean_text)
-            values (:id, :userId, :noteId, 'CAPTURE_RAW', :rawText, :cleanText)
+            insert into note_contents (id, user_id, note_id, content_type, source_uri, raw_text, clean_text)
+            values (:id, :userId, :noteId, 'CAPTURE_RAW', :sourceUri, :rawText, :cleanText)
             """)
             .param("id", id)
             .param("userId", userId)
             .param("noteId", noteId)
+            .param("sourceUri", "stub://source/" + id)
             .param("rawText", rawText)
             .param("cleanText", cleanText)
             .update();
@@ -102,14 +107,15 @@ class JdbcSearchRepositoryIntegrationTest {
     private void insertNote(UUID id, UUID userId, String title, String currentSummary, List<String> currentKeyPoints,
                             UUID latestContentId, Instant updatedAt) {
         jdbcClient.sql("""
-            insert into notes (id, user_id, title, current_summary, current_key_points, latest_content_id, updated_at)
-            values (:id, :userId, :title, :currentSummary, cast(:currentKeyPoints as jsonb), :latestContentId, :updatedAt)
+            insert into notes (id, user_id, title, current_summary, current_key_points, current_tags, latest_content_id, updated_at)
+            values (:id, :userId, :title, :currentSummary, cast(:currentKeyPoints as jsonb), cast(:currentTags as jsonb), :latestContentId, :updatedAt)
             """)
             .param("id", id)
             .param("userId", userId)
             .param("title", title)
             .param("currentSummary", currentSummary)
             .param("currentKeyPoints", "[\"" + String.join("\",\"", currentKeyPoints) + "\"]")
+            .param("currentTags", "[\"phase-3\"]")
             .param("latestContentId", latestContentId)
             .param("updatedAt", updatedAt)
             .update();

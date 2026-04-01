@@ -32,9 +32,11 @@ PostgreSQL example local settings:
 
 ## Start Server
 
+Local development defaults to the `local` profile and uses `OLLAMA`.
+
 ```bash
 cd server
-mvn spring-boot:run
+mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
 Server runs on `http://localhost:8080`.
@@ -44,6 +46,88 @@ Health check:
 ```bash
 curl http://localhost:8080/api/v1/health
 ```
+
+Production-like startup example:
+
+```bash
+cd server
+SPRING_PROFILES_ACTIVE=prod mvn spring-boot:run
+```
+
+## AI Configuration
+
+The server keeps protocol-level providers only:
+
+- `OPENAI_COMPATIBLE`
+- `OLLAMA`
+
+Current profile convention:
+
+- `local`: defaults to `OLLAMA`
+- `prod`: defaults to `OPENAI_COMPATIBLE`
+
+`OPENAI_COMPATIBLE` is configured through an endpoint registry. Each route can choose:
+
+- `endpoint`
+- `model`
+
+Minimal local default:
+
+```yaml
+noteops:
+  ai:
+    default-provider: OLLAMA
+    ollama:
+      base-url: http://localhost:11434
+      model: deepseek-r1:8b
+```
+
+Example OpenAI-compatible endpoint registry for `kimi / deepseek / gemini / openrouter`:
+
+```yaml
+noteops:
+  ai:
+    default-provider: OPENAI_COMPATIBLE
+    request-timeout: PT60S
+    routes:
+      capture-analysis:
+        endpoint: kimi
+        model: kimi-k2
+      search-enhancement:
+        endpoint: deepseek
+        model: deepseek-r1
+      note-summary:
+        endpoint: gemini
+        model: gemini-2.5-flash
+      idea-assess:
+        endpoint: openrouter
+        model: anthropic/claude-3.7-sonnet
+    openai-compatible:
+      default-endpoint: kimi
+      endpoints:
+        kimi:
+          base-url: https://api.moonshot.cn/v1
+          api-key: ${KIMI_API_KEY}
+          model: kimi-k2
+        deepseek:
+          base-url: https://api.deepseek.com/v1
+          api-key: ${DEEPSEEK_API_KEY}
+          model: deepseek-chat
+        gemini:
+          base-url: https://generativelanguage.googleapis.com/v1beta/openai
+          api-key: ${GEMINI_API_KEY}
+          model: gemini-2.5-flash
+        openrouter:
+          base-url: https://openrouter.ai/api/v1
+          api-key: ${OPENROUTER_API_KEY}
+          model: anthropic/claude-3.7-sonnet
+```
+
+Rules:
+
+- Use `route.provider: OLLAMA` only when a route must explicitly go through Ollama native API.
+- Keep non-compatible APIs out of `OPENAI_COMPATIBLE`.
+- If an upstream is not OpenAI-compatible, normalize it in your gateway first or add a new protocol provider.
 
 ## Start Web
 

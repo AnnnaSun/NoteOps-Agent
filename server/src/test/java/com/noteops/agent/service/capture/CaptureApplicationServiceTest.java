@@ -202,12 +202,10 @@ class CaptureApplicationServiceTest {
 
         private TestFixture() {
             AiProperties properties = new AiProperties(
-                AiProvider.DEEPSEEK,
+                AiProvider.OPENAI_COMPATIBLE,
                 Duration.ofSeconds(20),
-                Map.of(CaptureAnalysisClient.ROUTE_KEY, new AiProperties.Route(AiProvider.DEEPSEEK, null)),
-                new AiProperties.DeepSeek("https://api.deepseek.com", "test-key", "deepseek-chat"),
-                new AiProperties.Kimi("https://api.moonshot.cn/v1", "kimi-test-key", "kimi-test-model"),
-                new AiProperties.Gemini("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-test-key", "gemini-test-model"),
+                Map.of(CaptureAnalysisClient.ROUTE_KEY, new AiProperties.Route(null, null, null)),
+                new AiProperties.OpenAiCompatible(null, "https://gateway.example.com/v1", "test-key", "gateway-model", Map.of()),
                 new AiProperties.Ollama("http://localhost:11434", "llama-test")
             );
             CaptureAnalysisWorker analysisWorker = new CaptureAnalysisWorker(analysisClient, new ObjectMapper());
@@ -538,7 +536,7 @@ class CaptureApplicationServiceTest {
                 null,
                 null
             );
-            return new AnalyzeResponse(AiProvider.DEEPSEEK, "fake-model", rawJson, 7);
+            return new AnalyzeResponse(AiProvider.OPENAI_COMPATIBLE, "fake-model", rawJson, 7);
         }
     }
 }

@@ -1,0 +1,11 @@
+noteops:
+  ai:
+    # prod profile 默认走统一 AI 网关，要求该网关兼容 OpenAI chat completions 协议。
+    default-provider: OPENAI_COMPATIBLE
+    openai-compatible:
+      default-endpoint: default
+      endpoints:
+        default:
+          base-url: ${NOTEOPS_AI_BASE_URL}
+          api-key: ${NOTEOPS_AI_API_KEY:${OPENAI_API_KEY:}}
+          model: ${NOTEOPS_AI_MODEL:deepseek-r1:8b}

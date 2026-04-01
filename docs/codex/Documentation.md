@@ -5,6 +5,7 @@
 
 当前仓库进入 **Phase 3：Idea 正式闭环**。
 但在正式推进 Idea 工作台前，已先落地一个 **Phase 3 前置补丁：Capture AI 最小闭环**，用于提供第一条真实可演示的 AI 主链路。
+在此基础上，仓库又增加了一个 **用户定向补丁：Search AI 最小增强**，用于让 Search 结果具备最小解释能力与治理动作。
 
 本阶段目标是承接 Phase 2 已完成的 Note / Search / Review / Task 主链路，把“知识沉淀”推进到“想法评估与执行规划”。
 
@@ -52,19 +53,14 @@
 - `warnings`
 
 ### 当前 provider 配置
-- `noteops.ai.default-provider=OLLAMA`
-- `noteops.ai.request-timeout=PT20S`
-- `noteops.ai.routes.capture-analysis.provider=OLLAMA`
+- `noteops.ai.default-provider=OPENAI_COMPATIBLE`
+- `noteops.ai.request-timeout=PT60S`
+- `noteops.ai.routes.capture-analysis.endpoint=default`
 - `noteops.ai.routes.capture-analysis.model=deepseek-r1:8b`
-- `noteops.ai.deepseek.base-url=https://api.deepseek.com`
-- `noteops.ai.deepseek.api-key` 通过环境变量或 secret manager 注入
-- `noteops.ai.deepseek.model=deepseek-chat`
-- `noteops.ai.kimi.base-url=https://api.moonshot.cn/v1`
-- `noteops.ai.kimi.api-key` 通过环境变量或 secret manager 注入
-- `noteops.ai.kimi.model=kimi-k2`
-- `noteops.ai.gemini.base-url=https://generativelanguage.googleapis.com/v1beta/openai`
-- `noteops.ai.gemini.api-key` 通过环境变量或 secret manager 注入
-- `noteops.ai.gemini.model=gemini-2.0-flash`
+- `noteops.ai.openai-compatible.default-endpoint=default`
+- `noteops.ai.openai-compatible.endpoints.<name>.base-url`
+- `noteops.ai.openai-compatible.endpoints.<name>.api-key`
+- `noteops.ai.openai-compatible.endpoints.<name>.model`
 - `noteops.ai.ollama.base-url=http://localhost:11434`
 - `noteops.ai.ollama.model=deepseek-r1:8b`
 - `noteops.capture.url.connect-timeout=PT5S`
@@ -73,19 +69,48 @@
 - `noteops.capture.url.max-text-length=4000`
 - `noteops.capture.url.user-agent=NoteOps-Agent/0.0.1`
 
-运行时默认 provider 现在固定为 `OLLAMA`，`capture-analysis` 通过共享 `service.ai` 路由平台按 `routeKey` 选 provider/model。非敏感配置已收敛进 `application.yml`，只把 `api-key`、数据库密码这类敏感值留给环境变量或 secret manager。若要切换 `capture-analysis` 的 AI 连接，直接改 `noteops.ai.routes.capture-analysis.provider/model` 即可。
+环境级 profile 约定：
+- `application-local.yml`：本地测试默认走 `OLLAMA`
+- `application-prod.yml`：生产默认走 `OPENAI_COMPATIBLE`
+- 协议切换优先通过 `spring.profiles.active=local|prod` 完成，而不是在业务请求里临时覆盖 provider
 
-fallback 顺序由 `AiProperties.java` 里的 provider 优先级列表手工维护，不按价格自动推断；当某个 provider/model 为空或调用失败时，路由会按这个顺序继续尝试后续候选。调整模型优先级时，请同步更新这里的顺序说明，因为不同模型价格不同。
+运行时默认 provider 现在固定为 `OPENAI_COMPATIBLE`，`capture-analysis` 通过共享 `service.ai` 路由平台按 `routeKey` 选 `endpoint + model`。非敏感配置已收敛进 `application.yml`，只把 `api-key`、数据库密码这类敏感值留给环境变量或 secret manager。若要切换 `capture-analysis` 的目标上游或模型，直接改 `noteops.ai.routes.capture-analysis.endpoint/model` 即可。
+
+当前不再做跨 provider fallback。统一网关场景下，每个 route 只解析一个最终 `provider/model` 组合；只有在协议确实不同的场景下，才显式使用 `route.provider=OLLAMA` 覆盖默认协议。
+
+### `OPENAI_COMPATIBLE` 的明确边界
+`OPENAI_COMPATIBLE` 不是“任意 AI API 的总适配器”，它只覆盖 **OpenAI chat completions 协议族**。当前代码固定假设：
+- 路径使用 `/chat/completions`
+- 请求体使用 OpenAI-compatible `model + messages`
+- 响应体从 `choices[0].message.content` 读取文本
+
+这意味着：
+- 如果只是不同厂商、不同网关、不同模型，但协议仍兼容 OpenAI，则通过 endpoint registry 切：
+  - `noteops.ai.openai-compatible.endpoints.<name>.*`
+  - `noteops.ai.routes.<route>.endpoint`
+  - `noteops.ai.routes.<route>.model`
+- 如果目标 API 不兼容上述约定，例如：
+  - 路径不是 `/chat/completions`
+  - 请求/响应结构不是 OpenAI-compatible
+  - 需要特殊鉴权、特殊 body、或私有字段
+  - 走的是 Ollama `/api/chat` 或其他非兼容协议
+  则不能继续塞进 `OPENAI_COMPATIBLE`
+
+处理原则固定为：
+1. 优先在统一网关层做协议归一，让仓库内部继续看到 OpenAI-compatible 接口
+2. 如果网关层无法归一，再新增协议型 provider
+3. 不在业务请求层临时拼接特殊 API 适配逻辑
 
 ### AI Router 边界
 当前 router 已从 `capture` 内部实现抽成共享 `service.ai` 平台：
 - provider transport、provider 注册和 route 选择位于共享层
 - `capture` 只负责 prompt、结构化结果校验、状态推进与落库
-- route 目前按 `routeKey` 配置 provider/model，`capture` 首个接入的 route 为 `capture-analysis`
+- route 目前按 `routeKey` 配置 `endpoint + model`，必要时才补 `provider` 覆盖；`capture` 首个接入的 route 为 `capture-analysis`
 
 这意味着后续补 `note/task/search/review` 的 AI 能力时，不需要再复制 provider/router 代码，但当前仍不是通用多模型平台：
-- route 配置虽然已支持动态 key，但 provider 配置结构仍是显式字段
-- fallback 顺序仍需要手工维护，适合按价格或稳定性调整
+- route 配置虽然已支持动态 key 和 endpoint registry，但 `OPENAI_COMPATIBLE` 仍只覆盖同一协议族
+- 只保留协议型 provider：`OPENAI_COMPATIBLE / OLLAMA`
+- 已移除请求级 `providerOverride`，避免业务代码绕开环境约束直接切协议
 - 还不支持复杂的权重路由、成本/延迟策略路由
 - 还没有通用 prompt registry；业务 prompt 仍保留在各自业务模块
 
@@ -136,6 +161,60 @@ Capture 响应 data 字段为：
 - 完整偏好画像学习
 - 高级推荐与打分系统
 - 多端适配与高级工作台形态
+
+## 1.2 Search AI 最小增强补丁（已完成）
+
+这一步不是 Search 的正式 AI 闭环，只是在既有三分栏上补最小解释增强和 evidence / proposal 治理动作。
+
+### 当前真实能力
+- `GET /api/v1/search`
+- `POST /api/v1/search/notes/{noteId}/evidence`
+- `POST /api/v1/search/notes/{noteId}/change-proposals`
+- Search 结果仍保持：
+  - `exact_matches`
+  - `related_matches`
+  - `external_supplements`
+
+### Search AI 的边界
+- AI 只允许插在两个点：
+  - `related_matches.relation_reason`
+  - `external_supplements.relation_label / keywords / summary_snippet`
+- AI 不替代内部检索排序
+- AI 不直接决定最终写库更新
+- AI 不直接覆盖 `notes.current_summary / current_key_points / current_tags`
+- 外部补充只可：
+  - 保存为 `EVIDENCE`
+  - 生成 `ChangeProposal`
+
+### Search 返回字段
+`related_matches` 额外保证：
+- `relation_reason`
+
+`external_supplements` 当前字段：
+- `source_name`
+- `source_uri`
+- `summary`
+- `keywords`
+- `relation_tags`
+- `relation_label`
+- `summary_snippet`
+
+### Search evidence / proposal 语义
+- `POST /api/v1/search/notes/{noteId}/evidence`
+  - 只追加一条 `note_contents.content_type = EVIDENCE`
+  - 不修改 `notes.current_*`
+- `POST /api/v1/search/notes/{noteId}/change-proposals`
+  - 只生成 proposal 候选
+  - 对解释层的变更仍需通过 proposal apply 才会生效
+
+### Search AI 路由
+- `noteops.ai.routes.search-enhancement.endpoint=default`
+- `noteops.ai.routes.search-enhancement.model=deepseek-r1:8b`
+
+Search 继续复用共享 `service.ai` 平台：
+- provider transport、provider 注册与 route 选择仍在共享层
+- Search 只负责 prompt、结构化结果校验、降级和治理动作
+- AI 失败时 Search 不报整体失败，而是降级回规则解释
 
 ## 2. 核心领域语义
 
@@ -279,6 +358,10 @@ Phase 3 最小工作台至少包含：
 - 状态迁移
 - Archive / Reopen
 - 关键字段更新
+- Search executed
+- Search external supplement generated
+- Search evidence saved
+- Search proposal generated
 
 ### user_action_event 建议
 - `entity_type = IDEA`
@@ -299,6 +382,7 @@ Phase 3 不要求所有 Idea 变更都强制经过完整 proposal 流程。
 2. 至少保留 before / after 摘要
 3. 关键评估写回应保留 trace 与 decision summary
 4. 若仓库已有成熟 proposal 机制，优先沿用
+5. Search 外部补充如影响解释层，只能走 `EVIDENCE` 或 `ChangeProposal`
 
 ## 5.3 结构化日志
 
@@ -312,6 +396,10 @@ Phase 3 不要求所有 Idea 变更都强制经过完整 proposal 流程。
 - archive / reopen
 - trace / event write failure
 - external dependency failure（如本阶段涉及）
+- search execute
+- search ai enhancement success / failure / degrade
+- search evidence save
+- search proposal generate
 
 ### 最小日志字段
 - `trace_id`
@@ -330,7 +418,7 @@ Phase 3 不要求所有 Idea 变更都强制经过完整 proposal 流程。
 ## 6.1 已完成基础（来自前置阶段）
 - Note 主链路
 - Review 双池
-- Search 三分栏
+- Search 三分栏 + Search AI 最小解释增强
 - Today / Upcoming
 - Task 基础闭环
 - Proposal / Trace / Event 最小治理链路
@@ -373,9 +461,11 @@ Phase 3 不要求所有 Idea 变更都强制经过完整 proposal 流程。
 7. 基于 preference 的 Idea 排序与推荐
 8. 旧 Note 匹配与合并策略
 9. `UPDATE / APPEND / CONFLICT` 全量决策
-10. Search 的 AI relation / evidence 闭环
-11. Review 的 AI recall / extension 闭环
-12. Task 的 AI 派生策略
-13. Idea candidate 的正式生命周期
-14. URL extraction robustness
-15. 多模型路由与 prompt 模板治理
+10. Search 的真实外部抓取与 provider 接入
+11. Search ranking learning / preference 融合
+12. Search richer relation taxonomy 与冲突解释
+13. Review 的 AI recall / extension 闭环
+14. Task 的 AI 派生策略
+15. Idea candidate 的正式生命周期
+16. URL extraction robustness
+17. 多模型路由与 prompt 模板治理

@@ -27,6 +27,9 @@ public class JdbcSearchRepository implements SearchRepository {
                    n.title,
                    n.current_summary,
                    n.current_key_points,
+                   n.current_tags,
+                   nc.source_uri,
+                   nc.content_type as latest_content_type,
                    coalesce(nc.clean_text, nc.raw_text, '') as latest_content,
                    n.updated_at
             from notes n
@@ -41,6 +44,9 @@ public class JdbcSearchRepository implements SearchRepository {
                 rs.getString("title"),
                 rs.getString("current_summary"),
                 jsonSupport.readStringList(rs.getString("current_key_points")),
+                jsonSupport.readStringList(rs.getString("current_tags")),
+                rs.getString("source_uri"),
+                rs.getString("latest_content_type"),
                 blankToNull(rs.getString("latest_content")),
                 rs.getTimestamp("updated_at").toInstant()
             ))

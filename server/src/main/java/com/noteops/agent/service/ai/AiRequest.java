@@ -14,7 +14,6 @@ public record AiRequest(
     AiResponseMode responseMode,
     Map<String, Object> responseSchema,
     Map<String, Object> inputMetadata,
-    AiProvider providerOverride,
     String modelOverride
 ) {
 

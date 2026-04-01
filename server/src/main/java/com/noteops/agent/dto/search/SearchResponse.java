@@ -88,8 +88,12 @@ public record SearchResponse(
         String sourceUri,
         String summary,
         List<String> keywords,
+        @JsonProperty("relation_label")
+        String relationLabel,
         @JsonProperty("relation_tags")
-        List<String> relationTags
+        List<String> relationTags,
+        @JsonProperty("summary_snippet")
+        String summarySnippet
     ) {
 
         public static ExternalSupplementResponse from(SearchApplicationService.ExternalSupplementView view) {
@@ -98,7 +102,9 @@ public record SearchResponse(
                 view.sourceUri(),
                 view.summary(),
                 view.keywords(),
-                view.relationTags()
+                view.relationLabel(),
+                view.relationTags(),
+                view.summarySnippet()
             );
         }
     }
