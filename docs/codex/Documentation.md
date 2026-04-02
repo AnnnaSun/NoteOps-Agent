@@ -42,6 +42,15 @@
 - 不做旧 Note 匹配 / 合并策略
 - 不做 `UPDATE / APPEND / CONFLICT`
 
+### Web 侧交互约束
+- Capture 提交期间，前端必须展示显式 loading 状态：
+  - 提交按钮显示转圈与“AI 分析中...”
+  - 提交按钮在请求完成前禁止重复点击
+  - 页面需给出“正在调用 AI 分析并写入 Note，请稍候”的可见提示，避免误判为无响应
+- 当前仍保持同步提交语义：
+  - `POST /api/v1/captures` 返回前，前端不会先行轮询 `capture_job_id`
+  - 如后续要改为真正异步任务流，需单独补 API / 轮询 / 状态文档
+
 ### CaptureAnalysisResult 字段
 - `title_candidate`
 - `summary`
@@ -180,6 +189,10 @@ Capture 响应 data 字段为：
   - `related_matches.relation_reason`
   - `external_supplements.relation_label / keywords / summary_snippet`
 - AI 不替代内部检索排序
+- AI 候选集总预算固定为最多 20 条：
+  - 固定 external supplement seed 继续占用外部候选位
+  - `related_matches` 候选按“最近更新时间 + `review_states.SCHEDULE.next_review_at/mastery_score`”混合抽样
+  - 超出预算时只把选中的子集送入 `search-enhancement` prompt，避免候选量随 Note 数线性膨胀
 - AI 不直接决定最终写库更新
 - AI 不直接覆盖 `notes.current_summary / current_key_points / current_tags`
 - 外部补充只可：
@@ -187,8 +200,15 @@ Capture 响应 data 字段为：
   - 生成 `ChangeProposal`
 
 ### Search 返回字段
+顶层额外返回：
+- `ai_enhancement_status`
+  - `COMPLETED`
+  - `DEGRADED`
+  - `SKIPPED`
+
 `related_matches` 额外保证：
 - `relation_reason`
+- `is_ai_enhanced`
 
 `external_supplements` 当前字段：
 - `source_name`
@@ -198,13 +218,28 @@ Capture 响应 data 字段为：
 - `relation_tags`
 - `relation_label`
 - `summary_snippet`
+- `is_ai_enhanced`
+
+当 `ai_enhancement_status=DEGRADED` 或条目级 `is_ai_enhanced=false` 时，调用方必须把该结果视为 fallback 结果，而不是 AI 成功增强后的结果。
+Web 当前交互约束固定为：
+- fallback `external supplement` 允许“保存证据”
+- fallback `external supplement` 禁止“生成更新建议”
+- `DEGRADED` 时必须展示统一告警，避免误判 Search AI 主链路已成功
+- 外部补充动作必须显式绑定一个目标 Note：
+  - 用户未先打开目标 Note 时，前端必须禁用“保存证据 / 生成更新建议”
+  - 页面需展示明确原因，而不是只表现为不可点击
+- 前端必须清晰展示条目级增强状态：
+  - `AI 增强` 表示 `is_ai_enhanced=true`
+  - `规则回退` 表示 `is_ai_enhanced=false`
 
 ### Search evidence / proposal 语义
 - `POST /api/v1/search/notes/{noteId}/evidence`
   - 只追加一条 `note_contents.content_type = EVIDENCE`
   - 不修改 `notes.current_*`
+  - Web 侧必须能在 `GET /api/v1/notes/{id}` 的 `evidence_blocks` 中看到已保存的证据，避免用户误判为“只有按钮，没有效果”
 - `POST /api/v1/search/notes/{noteId}/change-proposals`
   - 只生成 proposal 候选
+  - 当前仅允许对 `is_ai_enhanced=true` 的 external supplement 发起
   - 对解释层的变更仍需通过 proposal apply 才会生效
 
 ### Search AI 路由
@@ -215,6 +250,7 @@ Search 继续复用共享 `service.ai` 平台：
 - provider transport、provider 注册与 route 选择仍在共享层
 - Search 只负责 prompt、结构化结果校验、降级和治理动作
 - AI 失败时 Search 不报整体失败，而是降级回规则解释
+- Search query、AI 增强降级、external supplement 生成继续写入 `user_action_events`
 
 ## 2. 核心领域语义
 

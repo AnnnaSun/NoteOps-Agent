@@ -23,7 +23,7 @@ management:
 noteops:
   ai:
     default-provider: OPENAI_COMPATIBLE
-    request-timeout: PT60S
+    request-timeout: PT80S
     routes:
       capture-analysis:
         endpoint: default

@@ -14,7 +14,9 @@ public record SearchResponse(
     @JsonProperty("related_matches")
     List<RelatedMatchResponse> relatedMatches,
     @JsonProperty("external_supplements")
-    List<ExternalSupplementResponse> externalSupplements
+    List<ExternalSupplementResponse> externalSupplements,
+    @JsonProperty("ai_enhancement_status")
+    String aiEnhancementStatus
 ) {
 
     public static SearchResponse from(SearchApplicationService.SearchView view) {
@@ -22,7 +24,8 @@ public record SearchResponse(
             view.query(),
             view.exactMatches().stream().map(ExactMatchResponse::from).toList(),
             view.relatedMatches().stream().map(RelatedMatchResponse::from).toList(),
-            view.externalSupplements().stream().map(ExternalSupplementResponse::from).toList()
+            view.externalSupplements().stream().map(ExternalSupplementResponse::from).toList(),
+            view.aiEnhancementStatus()
         );
     }
 
@@ -65,7 +68,9 @@ public record SearchResponse(
         @JsonProperty("relation_reason")
         String relationReason,
         @JsonProperty("updated_at")
-        Instant updatedAt
+        Instant updatedAt,
+        @JsonProperty("is_ai_enhanced")
+        boolean aiEnhanced
     ) {
 
         public static RelatedMatchResponse from(SearchApplicationService.SearchRelatedMatchView view) {
@@ -76,7 +81,8 @@ public record SearchResponse(
                 view.currentKeyPoints(),
                 view.latestContent(),
                 view.relationReason(),
-                view.updatedAt()
+                view.updatedAt(),
+                view.aiEnhanced()
             );
         }
     }
@@ -93,7 +99,9 @@ public record SearchResponse(
         @JsonProperty("relation_tags")
         List<String> relationTags,
         @JsonProperty("summary_snippet")
-        String summarySnippet
+        String summarySnippet,
+        @JsonProperty("is_ai_enhanced")
+        boolean aiEnhanced
     ) {
 
         public static ExternalSupplementResponse from(SearchApplicationService.ExternalSupplementView view) {
@@ -104,7 +112,8 @@ public record SearchResponse(
                 view.keywords(),
                 view.relationLabel(),
                 view.relationTags(),
-                view.summarySnippet()
+                view.summarySnippet(),
+                view.aiEnhanced()
             );
         }
     }

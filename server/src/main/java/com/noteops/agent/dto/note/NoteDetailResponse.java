@@ -28,7 +28,9 @@ public record NoteDetailResponse(
     @JsonProperty("created_at")
     Instant createdAt,
     @JsonProperty("updated_at")
-    Instant updatedAt
+    Instant updatedAt,
+    @JsonProperty("evidence_blocks")
+    List<NoteEvidenceBlockResponse> evidenceBlocks
 ) {
 
     public static NoteDetailResponse from(NoteQueryService.NoteDetailView view) {
@@ -44,7 +46,39 @@ public record NoteDetailResponse(
             view.rawText(),
             view.cleanText(),
             view.createdAt(),
-            view.updatedAt()
+            view.updatedAt(),
+            view.evidenceBlocks().stream()
+                .map(NoteEvidenceBlockResponse::from)
+                .toList()
         );
+    }
+
+    public record NoteEvidenceBlockResponse(
+        String id,
+        @JsonProperty("content_type")
+        String contentType,
+        @JsonProperty("source_uri")
+        String sourceUri,
+        @JsonProperty("source_name")
+        String sourceName,
+        @JsonProperty("relation_label")
+        String relationLabel,
+        @JsonProperty("summary_snippet")
+        String summarySnippet,
+        @JsonProperty("created_at")
+        Instant createdAt
+    ) {
+
+        static NoteEvidenceBlockResponse from(NoteQueryService.NoteEvidenceView view) {
+            return new NoteEvidenceBlockResponse(
+                view.id().toString(),
+                view.contentType(),
+                view.sourceUri(),
+                view.sourceName(),
+                view.relationLabel(),
+                view.summarySnippet(),
+                view.createdAt()
+            );
+        }
     }
 }

@@ -250,7 +250,8 @@ class ChangeProposalTransactionIntegrationTest {
                     rs.getString("raw_text"),
                     rs.getString("clean_text"),
                     rs.getTimestamp("created_at").toInstant(),
-                    rs.getTimestamp("updated_at").toInstant()
+                    rs.getTimestamp("updated_at").toInstant(),
+                    List.of()
                 ))
                 .optional();
         }

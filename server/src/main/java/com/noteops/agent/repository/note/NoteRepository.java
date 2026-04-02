@@ -46,6 +46,10 @@ public interface NoteRepository {
 
     List<NoteQueryService.NoteSummaryView> findAllByUserId(UUID userId);
 
+    default List<NoteQueryService.NoteEvidenceView> findEvidenceByNoteIdAndUserId(UUID noteId, UUID userId) {
+        return List.of();
+    }
+
     default void updateInterpretation(UUID noteId, UUID userId, String currentSummary, List<String> currentKeyPoints) {
         throw new UnsupportedOperationException("updateInterpretation is not implemented");
     }

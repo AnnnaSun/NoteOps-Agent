@@ -46,9 +46,53 @@ class NoteQueryServiceTest {
             .containsExactly("First", "Second");
     }
 
+    @Test
+    void getsNoteDetailWithEvidenceBlocks() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        UUID contentId = UUID.randomUUID();
+        UUID evidenceId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.detail = Optional.of(new NoteQueryService.NoteDetailView(
+            noteId,
+            userId,
+            "Detailed note",
+            "Summary text",
+            List.of("point-1"),
+            contentId,
+            "CAPTURE_RAW",
+            "https://example.com",
+            "raw text",
+            "clean text",
+            Instant.parse("2026-03-15T09:00:00Z"),
+            Instant.parse("2026-03-15T10:00:00Z"),
+            List.of()
+        ));
+        noteRepository.evidenceBlocks = List.of(
+            new NoteQueryService.NoteEvidenceView(
+                evidenceId,
+                "EVIDENCE",
+                "https://evidence.example.com",
+                "外部补充来源",
+                "背景补充",
+                "这是证据摘要",
+                Instant.parse("2026-03-15T11:00:00Z")
+            )
+        );
+
+        NoteQueryService service = new NoteQueryService(noteRepository);
+
+        NoteQueryService.NoteDetailView detail = service.get(noteId.toString(), userId.toString());
+
+        assertThat(detail.evidenceBlocks()).hasSize(1);
+        assertThat(detail.evidenceBlocks().getFirst().relationLabel()).isEqualTo("背景补充");
+    }
+
     private static final class InMemoryNoteRepository implements NoteRepository {
 
         private final List<NoteQueryService.NoteSummaryView> summaries = new ArrayList<>();
+        private Optional<NoteQueryService.NoteDetailView> detail = Optional.empty();
+        private List<NoteQueryService.NoteEvidenceView> evidenceBlocks = List.of();
 
         @Override
         public NoteCreationResult create(UUID userId,
@@ -65,7 +109,7 @@ class NoteQueryServiceTest {
 
         @Override
         public Optional<NoteQueryService.NoteDetailView> findByIdAndUserId(UUID noteId, UUID userId) {
-            return Optional.empty();
+            return detail;
         }
 
         @Override
@@ -73,6 +117,11 @@ class NoteQueryServiceTest {
             return summaries.stream()
                 .filter(view -> view.userId().equals(userId))
                 .toList();
+        }
+
+        @Override
+        public List<NoteQueryService.NoteEvidenceView> findEvidenceByNoteIdAndUserId(UUID noteId, UUID userId) {
+            return evidenceBlocks;
         }
     }
 }

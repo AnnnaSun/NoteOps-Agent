@@ -129,7 +129,8 @@ class ChangeProposalApplicationServiceTest {
             cleanText,
             cleanText,
             Instant.parse("2026-03-16T01:00:00Z"),
-            Instant.parse("2026-03-16T01:00:00Z")
+            Instant.parse("2026-03-16T01:00:00Z"),
+            List.of()
         );
     }
 
@@ -197,7 +198,8 @@ class ChangeProposalApplicationServiceTest {
                 existing.rawText(),
                 existing.cleanText(),
                 existing.createdAt(),
-                Instant.now()
+                Instant.now(),
+                existing.evidenceBlocks()
             ));
         }
     }

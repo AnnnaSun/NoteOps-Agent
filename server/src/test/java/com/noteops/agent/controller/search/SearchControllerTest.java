@@ -66,7 +66,8 @@ class SearchControllerTest {
                         List.of("point-2"),
                         "Related content",
                         "共享标题主题：kickoff",
-                        Instant.parse("2026-03-16T02:00:00Z")
+                        Instant.parse("2026-03-16T02:00:00Z"),
+                        true
                     )
                 ),
                 List.of(
@@ -77,9 +78,11 @@ class SearchControllerTest {
                         List.of("kickoff", "alpha"),
                         List.of("BACKGROUND"),
                         "背景补充",
-                        "背景资料聚焦 kickoff alpha"
+                        "背景资料聚焦 kickoff alpha",
+                        false
                     )
-                )
+                ),
+                "DEGRADED"
             ));
 
         mockMvc.perform(get("/api/v1/search")
@@ -91,9 +94,12 @@ class SearchControllerTest {
             .andExpect(jsonPath("$.data.query").value("kickoff alpha"))
             .andExpect(jsonPath("$.data.exact_matches[0].note_id").value(noteId.toString()))
             .andExpect(jsonPath("$.data.related_matches[0].relation_reason").value("共享标题主题：kickoff"))
+            .andExpect(jsonPath("$.data.related_matches[0].is_ai_enhanced").value(true))
             .andExpect(jsonPath("$.data.external_supplements[0].source_name").value("Search Stub Background"))
             .andExpect(jsonPath("$.data.external_supplements[0].relation_label").value("背景补充"))
             .andExpect(jsonPath("$.data.external_supplements[0].summary_snippet").value("背景资料聚焦 kickoff alpha"))
+            .andExpect(jsonPath("$.data.external_supplements[0].is_ai_enhanced").value(false))
+            .andExpect(jsonPath("$.data.ai_enhancement_status").value("DEGRADED"))
             .andExpect(jsonPath("$.meta.server_time").exists());
     }
 

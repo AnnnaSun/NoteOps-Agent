@@ -29,6 +29,7 @@ class JdbcSearchRepositoryIntegrationTest {
 
     @BeforeEach
     void setUpSchema() {
+        jdbcClient.sql("drop table if exists review_states").update();
         jdbcClient.sql("drop table if exists note_contents").update();
         jdbcClient.sql("drop table if exists notes").update();
         jdbcClient.sql("drop domain if exists jsonb").update();
@@ -55,6 +56,16 @@ class JdbcSearchRepositoryIntegrationTest {
                 raw_text text,
                 clean_text text,
                 created_at timestamp with time zone not null default current_timestamp
+            )
+            """).update();
+        jdbcClient.sql("""
+            create table review_states (
+                id uuid primary key,
+                user_id uuid not null,
+                note_id uuid not null,
+                queue_type varchar(32) not null,
+                mastery_score numeric(5, 2),
+                next_review_at timestamp with time zone
             )
             """).update();
     }
@@ -87,6 +98,8 @@ class JdbcSearchRepositoryIntegrationTest {
         assertThat(candidates.getFirst().latestContent()).isEqualTo("two clean");
         assertThat(candidates.getFirst().currentTags()).containsExactly("phase-3");
         assertThat(candidates.getFirst().sourceUri()).isEqualTo("stub://source/" + latestContentTwo);
+        assertThat(candidates.getFirst().nextReviewAt()).isNull();
+        assertThat(candidates.getFirst().masteryScore()).isNull();
         assertThat(candidates.getLast().latestContent()).isEqualTo("one clean");
     }
 
