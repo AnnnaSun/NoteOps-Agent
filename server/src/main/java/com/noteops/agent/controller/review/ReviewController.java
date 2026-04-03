@@ -1,7 +1,9 @@
 package com.noteops.agent.controller.review;
 
 import com.noteops.agent.dto.review.CompleteReviewRequest;
+import com.noteops.agent.dto.review.ReviewFeedbackResponse;
 import com.noteops.agent.dto.review.ReviewCompletionResponse;
+import com.noteops.agent.dto.review.ReviewPrepResponse;
 import com.noteops.agent.dto.review.ReviewTodayItemResponse;
 
 import com.noteops.agent.dto.ApiEnvelope;
@@ -34,6 +36,20 @@ public class ReviewController {
             .map(ReviewTodayItemResponse::from)
             .toList();
         return ApiEnvelope.success(null, items);
+    }
+
+    // 读取单条 review 的 AI 预览态，供详情页独立展示 prep 内容。
+    @GetMapping("/{reviewItemId}/prep")
+    public ApiEnvelope<ReviewPrepResponse> prep(@PathVariable String reviewItemId,
+                                                @RequestParam("user_id") String userId) {
+        return ApiEnvelope.success(null, ReviewPrepResponse.from(reviewApplicationService.getPrep(reviewItemId, userId)));
+    }
+
+    // 读取单条 review 的 AI 完成反馈，供详情页独立展示反馈内容。
+    @GetMapping("/{reviewItemId}/feedback")
+    public ApiEnvelope<ReviewFeedbackResponse> feedback(@PathVariable String reviewItemId,
+                                                        @RequestParam("user_id") String userId) {
+        return ApiEnvelope.success(null, ReviewFeedbackResponse.from(reviewApplicationService.getFeedback(reviewItemId, userId)));
     }
 
     // 完成一次 review，并返回完成后的状态。

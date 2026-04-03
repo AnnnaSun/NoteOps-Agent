@@ -4,8 +4,10 @@ import type {
   ChangeProposal,
   NoteDetail,
   NoteSummary,
+  ReviewFeedbackResult,
   ReviewCompletionPayload,
   ReviewCompletionResult,
+  ReviewPrepResult,
   ReviewTodayItem,
   SearchEvidenceResult,
   SearchResult,
@@ -67,6 +69,24 @@ export function createCapture(input: {
 
 export function listReviewsToday(userId: string): Promise<ReviewTodayItem[]> {
   return request(`/api/v1/reviews/today?user_id=${encodeURIComponent(userId)}`);
+}
+
+function buildReviewScopedParams(userId: string): string {
+  return new URLSearchParams({
+    user_id: userId
+  }).toString();
+}
+
+export function getReviewPrep(reviewItemId: string, userId: string): Promise<ReviewPrepResult> {
+  return request(
+    `/api/v1/reviews/${encodeURIComponent(reviewItemId)}/prep?${buildReviewScopedParams(userId)}`
+  );
+}
+
+export function getReviewFeedback(reviewItemId: string, userId: string): Promise<ReviewFeedbackResult> {
+  return request(
+    `/api/v1/reviews/${encodeURIComponent(reviewItemId)}/feedback?${buildReviewScopedParams(userId)}`
+  );
 }
 
 export function listTasksToday(userId: string, timezoneOffset: string): Promise<TaskItem[]> {

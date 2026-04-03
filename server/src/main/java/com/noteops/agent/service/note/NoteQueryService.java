@@ -91,6 +91,7 @@ public class NoteQueryService {
         String title,
         String currentSummary,
         List<String> currentKeyPoints,
+        List<String> currentTags,
         UUID latestContentId,
         Instant updatedAt
     ) {

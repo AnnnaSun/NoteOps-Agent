@@ -44,6 +44,7 @@ class NoteControllerTest {
                 "A note",
                 "Summary text",
                 List.of("point-1", "point-2"),
+                List.of("tag-1"),
                 contentId,
                 Instant.parse("2026-03-15T10:00:00Z")
             )

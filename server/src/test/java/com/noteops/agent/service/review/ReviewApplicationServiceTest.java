@@ -102,6 +102,257 @@ class ReviewApplicationServiceTest {
     }
 
     @Test
+    void listTodayReturnsBaseFieldsWithoutAiEnrichment() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.notes.add(noteSummary(userId, noteId, "AI note"));
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        reviewStateRepository.create(userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.ZERO, null, NOW, 0, 0);
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        RecordingUserActionEventRepository eventRepository = new RecordingUserActionEventRepository();
+        RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
+
+        ReviewApplicationService service = newService(
+            reviewStateRepository,
+            noteRepository,
+            new InMemoryTaskRepository(),
+            traceRepository,
+            eventRepository,
+            toolInvocationLogRepository,
+            new RecordingReviewAiAssistant()
+        );
+
+        List<ReviewApplicationService.ReviewTodayItemView> items = service.listToday(userId.toString());
+
+        assertThat(items).hasSize(1);
+        assertThat(items.getFirst().title()).isEqualTo("AI note");
+        assertThat(items.getFirst().currentSummary()).isEqualTo("summary");
+        assertThat(items.getFirst().aiRecallSummary()).isNull();
+        assertThat(items.getFirst().aiReviewKeyPoints()).isEmpty();
+        assertThat(items.getFirst().aiExtensionPreview()).isNull();
+        assertThat(traceRepository.created).isNull();
+        assertThat(traceRepository.completed).isNull();
+        assertThat(toolInvocationLogRepository.logs).isEmpty();
+        assertThat(eventRepository.events).isEmpty();
+    }
+
+    @Test
+    void listTodayDoesNotInvokeAiAssistantEvenWhenOneIsConfigured() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.notes.add(noteSummary(userId, noteId, "Fallback note"));
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        reviewStateRepository.create(userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.ZERO, null, NOW, 0, 0);
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        RecordingUserActionEventRepository eventRepository = new RecordingUserActionEventRepository();
+        RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
+
+        ReviewApplicationService service = newService(
+            reviewStateRepository,
+            noteRepository,
+            new InMemoryTaskRepository(),
+            traceRepository,
+            eventRepository,
+            toolInvocationLogRepository,
+            new ThrowingReviewAiAssistant("simulated render failure")
+        );
+
+        List<ReviewApplicationService.ReviewTodayItemView> items = service.listToday(userId.toString());
+
+        assertThat(items).hasSize(1);
+        assertThat(items.getFirst().aiRecallSummary()).isNull();
+        assertThat(items.getFirst().aiReviewKeyPoints()).isEmpty();
+        assertThat(items.getFirst().aiExtensionPreview()).isNull();
+        assertThat(items.getFirst().currentSummary()).isEqualTo("summary");
+        assertThat(traceRepository.created).isNull();
+        assertThat(traceRepository.failed).isNull();
+        assertThat(toolInvocationLogRepository.logs).isEmpty();
+        assertThat(eventRepository.events).isEmpty();
+    }
+
+    @Test
+    void getPrepReturnsAiRenderAndWritesGovernanceArtifacts() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.notes.add(noteSummary(userId, noteId, "Prep note"));
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        ReviewApplicationService.ReviewStateView review = reviewStateRepository.create(
+            userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.valueOf(10), null, NOW, 0, 0
+        );
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        RecordingUserActionEventRepository eventRepository = new RecordingUserActionEventRepository();
+        RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
+
+        ReviewApplicationService service = newService(
+            reviewStateRepository,
+            noteRepository,
+            taskRepository,
+            traceRepository,
+            eventRepository,
+            toolInvocationLogRepository,
+            new RecordingReviewAiAssistant()
+        );
+
+        ReviewApplicationService.ReviewPrepView result = service.getPrep(review.id().toString(), userId.toString());
+
+        assertThat(result.reviewItemId()).isEqualTo(review.id());
+        assertThat(result.aiRecallSummary()).isEqualTo("AI recall summary");
+        assertThat(result.aiReviewKeyPoints()).containsExactly("AI point 1", "AI point 2");
+        assertThat(result.aiExtensionPreview()).isEqualTo("AI extension preview");
+        assertThat(reviewStateRepository.findByIdAndUserId(review.id(), userId)).get()
+            .extracting(ReviewApplicationService.ReviewStateView::completionStatus)
+            .isEqualTo(ReviewCompletionStatus.NOT_STARTED);
+        assertThat(traceRepository.created.entryType()).isEqualTo("REVIEW_AI_PREP");
+        assertThat(traceRepository.completed.traceId()).isEqualTo(traceRepository.traceId);
+        assertThat(toolInvocationLogRepository.logs).extracting(ReviewToolInvocationLogRecord::toolName)
+            .containsExactly("review.ai-prep");
+        assertThat(eventRepository.events).extracting(ReviewUserActionEventRecord::eventType)
+            .containsExactly("REVIEW_PREP_RENDERED");
+        assertThat(taskRepository.lastTaskId).isNull();
+    }
+
+    @Test
+    void getPrepFallsBackWhenAssistantThrows() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.notes.add(noteSummary(userId, noteId, "Prep fallback note"));
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        ReviewApplicationService.ReviewStateView review = reviewStateRepository.create(
+            userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.valueOf(10), null, NOW, 0, 0
+        );
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        RecordingUserActionEventRepository eventRepository = new RecordingUserActionEventRepository();
+        RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
+
+        ReviewApplicationService service = newService(
+            reviewStateRepository,
+            noteRepository,
+            taskRepository,
+            traceRepository,
+            eventRepository,
+            toolInvocationLogRepository,
+            new ThrowingReviewAiAssistant("simulated render failure")
+        );
+
+        ReviewApplicationService.ReviewPrepView result = service.getPrep(review.id().toString(), userId.toString());
+
+        assertThat(result.aiRecallSummary()).isNull();
+        assertThat(result.aiReviewKeyPoints()).isEmpty();
+        assertThat(result.aiExtensionPreview()).isNull();
+        assertThat(traceRepository.failed).isNotNull();
+        assertThat(toolInvocationLogRepository.logs).extracting(ReviewToolInvocationLogRecord::toolName)
+            .containsExactly("review.ai-prep");
+        assertThat(toolInvocationLogRepository.logs.getFirst().status()).isEqualTo("FAILED");
+        assertThat(eventRepository.events).extracting(ReviewUserActionEventRecord::eventType)
+            .containsExactly("REVIEW_PREP_DEGRADED");
+        assertThat(taskRepository.lastTaskId).isNull();
+    }
+
+    @Test
+    void getFeedbackReturnsAiFeedbackAndWritesGovernanceArtifacts() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.notes.add(noteSummary(userId, noteId, "Feedback note"));
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        ReviewApplicationService.ReviewStateView review = reviewStateRepository.create(
+            userId, noteId, ReviewQueueType.RECALL, ReviewCompletionStatus.PARTIAL, ReviewCompletionReason.TIME_LIMIT,
+            ReviewSelfRecallResult.VAGUE, "stuck on one point", BigDecimal.valueOf(30), NOW.minusSeconds(300), NOW, 1, 24
+        );
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        RecordingUserActionEventRepository eventRepository = new RecordingUserActionEventRepository();
+        RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
+
+        ReviewApplicationService service = newService(
+            reviewStateRepository,
+            noteRepository,
+            taskRepository,
+            traceRepository,
+            eventRepository,
+            toolInvocationLogRepository,
+            new CompletionFeedbackReviewAiAssistant()
+        );
+
+        ReviewApplicationService.ReviewFeedbackView result = service.getFeedback(review.id().toString(), userId.toString());
+
+        assertThat(result.reviewItemId()).isEqualTo(review.id());
+        assertThat(result.recallFeedbackSummary()).isEqualTo("AI feedback summary");
+        assertThat(result.nextReviewHint()).isEqualTo("AI next hint");
+        assertThat(result.extensionSuggestions()).containsExactly("AI suggestion 1", "AI suggestion 2");
+        assertThat(result.followUpTaskSuggestion()).isEqualTo("AI follow-up task suggestion");
+        assertThat(reviewStateRepository.findByIdAndUserId(review.id(), userId)).get()
+            .extracting(ReviewApplicationService.ReviewStateView::completionStatus)
+            .isEqualTo(ReviewCompletionStatus.PARTIAL);
+        assertThat(traceRepository.created.entryType()).isEqualTo("REVIEW_AI_FEEDBACK");
+        assertThat(traceRepository.completed.traceId()).isEqualTo(traceRepository.traceId);
+        assertThat(traceRepository.completed.orchestratorState()).containsEntry("ai_feedback_status", "COMPLETED");
+        assertThat(toolInvocationLogRepository.logs).extracting(ReviewToolInvocationLogRecord::toolName)
+            .containsExactly("review.ai-feedback");
+        assertThat(eventRepository.events).extracting(ReviewUserActionEventRecord::eventType)
+            .containsExactly(
+                "REVIEW_FEEDBACK_GENERATED",
+                "REVIEW_EXTENSION_SUGGESTIONS_GENERATED",
+                "REVIEW_FOLLOW_UP_TASK_SUGGESTED"
+            );
+        assertThat(taskRepository.lastTaskId).isNull();
+    }
+
+    @Test
+    void getFeedbackFallsBackToExistingFallbackWhenAssistantThrows() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.notes.add(noteSummary(userId, noteId, "Feedback fallback note"));
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        ReviewApplicationService.ReviewStateView review = reviewStateRepository.create(
+            userId, noteId, ReviewQueueType.RECALL, ReviewCompletionStatus.PARTIAL, ReviewCompletionReason.TIME_LIMIT,
+            ReviewSelfRecallResult.VAGUE, "stuck on one point", BigDecimal.valueOf(30), NOW.minusSeconds(300), NOW, 1, 24
+        );
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        RecordingUserActionEventRepository eventRepository = new RecordingUserActionEventRepository();
+        RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
+
+        ReviewApplicationService service = newService(
+            reviewStateRepository,
+            noteRepository,
+            taskRepository,
+            traceRepository,
+            eventRepository,
+            toolInvocationLogRepository,
+            new ThrowingReviewAiAssistant("simulated feedback failure")
+        );
+
+        ReviewApplicationService.ReviewFeedbackView result = service.getFeedback(review.id().toString(), userId.toString());
+
+        assertThat(result.recallFeedbackSummary()).isEqualTo("本次复习只覆盖了部分内容，重点缺口需要回到关键点继续补齐。");
+        assertThat(result.nextReviewHint()).isEqualTo("下一次先只盯住最难回忆的 1 到 2 个关键点，不要同时补全部内容。");
+        assertThat(result.extensionSuggestions()).containsExactly(
+            "回看当前关键点里最模糊的部分",
+            "补一条简短自我说明，写下卡住的位置"
+        );
+        assertThat(result.followUpTaskSuggestion()).isEqualTo("可考虑创建一条 follow-up task：回看 Feedback fallback note 中最模糊的关键点。");
+        assertThat(traceRepository.failed).isNotNull();
+        assertThat(toolInvocationLogRepository.logs).extracting(ReviewToolInvocationLogRecord::toolName)
+            .containsExactly("review.ai-feedback");
+        assertThat(toolInvocationLogRepository.logs.getFirst().status()).isEqualTo("FAILED");
+        assertThat(eventRepository.events).extracting(ReviewUserActionEventRecord::eventType)
+            .containsExactly("REVIEW_FEEDBACK_DEGRADED");
+        assertThat(taskRepository.lastTaskId).isNull();
+    }
+
+    @Test
     void completesScheduleAndKeepsNormalSchedulingPath() {
         UUID userId = UUID.randomUUID();
         UUID noteId = UUID.randomUUID();
@@ -132,13 +383,17 @@ class ReviewApplicationServiceTest {
         assertThat(result.completionStatus()).isEqualTo(ReviewCompletionStatus.COMPLETED);
         assertThat(result.nextReviewAt()).isEqualTo(NOW.plusSeconds(3 * 24 * 3600));
         assertThat(result.masteryScore()).isEqualByComparingTo("30");
+        assertThat(result.recallFeedbackSummary()).isNull();
+        assertThat(result.nextReviewHint()).isNull();
+        assertThat(result.extensionSuggestions()).isEmpty();
+        assertThat(result.followUpTaskSuggestion()).isNull();
         assertThat(reviewStateRepository.findByUserIdAndNoteIdAndQueueType(userId, noteId, ReviewQueueType.RECALL)).isEmpty();
         assertThat(traceRepository.created.entryType()).isEqualTo("REVIEW_COMPLETE");
         assertThat(traceRepository.completed.traceId()).isEqualTo(traceRepository.traceId);
-        assertThat(eventRepository.events).hasSize(1);
-        assertThat(eventRepository.events.getFirst().eventType()).isEqualTo("REVIEW_COMPLETED");
-        assertThat(toolInvocationLogRepository.logs).hasSize(1);
-        assertThat(toolInvocationLogRepository.logs.getFirst().toolName()).isEqualTo("review.complete");
+        assertThat(eventRepository.events).extracting(ReviewUserActionEventRecord::eventType)
+            .containsExactly("REVIEW_COMPLETED");
+        assertThat(toolInvocationLogRepository.logs).extracting(ReviewToolInvocationLogRecord::toolName)
+            .containsExactly("review.complete");
         assertThat(toolInvocationLogRepository.logs.getFirst().status()).isEqualTo("COMPLETED");
         assertThat(toolInvocationLogRepository.logs.getFirst().outputDigest()).doesNotContainKey("follow_up_task_id");
     }
@@ -241,19 +496,184 @@ class ReviewApplicationServiceTest {
         );
 
         assertThat(result.completionStatus()).isEqualTo(ReviewCompletionStatus.PARTIAL);
+        assertThat(result.recallFeedbackSummary()).isNull();
+        assertThat(result.nextReviewHint()).isNull();
+        assertThat(result.extensionSuggestions()).isEmpty();
+        assertThat(result.followUpTaskSuggestion()).isNull();
         assertThat(traceRepository.created.entryType()).isEqualTo("REVIEW_COMPLETE");
         assertThat(traceRepository.completed.orchestratorState()).containsEntry("completion_status", "PARTIAL");
         assertThat(traceRepository.completed.orchestratorState()).containsEntry("completion_reason", "TIME_LIMIT");
-        assertThat(eventRepository.events).hasSize(2);
         assertThat(eventRepository.events).extracting(ReviewUserActionEventRecord::eventType)
             .containsExactly("SYSTEM_TASK_CREATED_FROM_REVIEW", "REVIEW_PARTIAL");
         assertThat(eventRepository.events.getLast().payload()).containsEntry("completion_status", "PARTIAL");
         assertThat(eventRepository.events.getLast().payload()).containsEntry("completion_reason", "TIME_LIMIT");
-        assertThat(toolInvocationLogRepository.logs).hasSize(1);
-        assertThat(toolInvocationLogRepository.logs.getFirst().toolName()).isEqualTo("review.complete");
-        assertThat(toolInvocationLogRepository.logs.getFirst().status()).isEqualTo("COMPLETED");
-        assertThat(toolInvocationLogRepository.logs.getFirst().outputDigest()).containsKey("follow_up_task_id");
-        assertThat(toolInvocationLogRepository.logs.getFirst().outputDigest().get("follow_up_task_id")).isEqualTo(taskRepository.lastTaskId);
+        assertThat(toolInvocationLogRepository.logs).extracting(ReviewToolInvocationLogRecord::toolName)
+            .containsExactly("review.complete");
+        ReviewToolInvocationLogRecord completeLog = toolInvocationLogRepository.logs.stream()
+            .filter(log -> log.toolName().equals("review.complete"))
+            .findFirst()
+            .orElseThrow();
+        assertThat(completeLog.status()).isEqualTo("COMPLETED");
+        assertThat(completeLog.outputDigest()).containsKey("follow_up_task_id");
+        assertThat(completeLog.outputDigest().get("follow_up_task_id")).isEqualTo(taskRepository.lastTaskId);
+    }
+
+    @Test
+    void completeReturnsEmptyFeedbackWithoutAiInvocation() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.notes.add(noteSummary(userId, noteId, "Review note"));
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        RecordingUserActionEventRepository eventRepository = new RecordingUserActionEventRepository();
+        RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
+        ReviewApplicationService.ReviewStateView schedule = reviewStateRepository.create(
+            userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.valueOf(40), null, NOW, 0, 0
+        );
+
+        ReviewApplicationService service = newService(
+            reviewStateRepository,
+            noteRepository,
+            taskRepository,
+            traceRepository,
+            eventRepository,
+            toolInvocationLogRepository,
+            new CompletionFeedbackReviewAiAssistant()
+        );
+
+        ReviewApplicationService.ReviewCompletionView result = service.complete(
+            schedule.id().toString(),
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "PARTIAL", "TIME_LIMIT", null, null)
+        );
+
+        assertThat(result.recallFeedbackSummary()).isNull();
+        assertThat(result.nextReviewHint()).isNull();
+        assertThat(result.extensionSuggestions()).isEmpty();
+        assertThat(result.followUpTaskSuggestion()).isNull();
+        assertThat(toolInvocationLogRepository.logs).extracting(ReviewToolInvocationLogRecord::toolName)
+            .containsExactly("review.complete");
+        assertThat(eventRepository.events).extracting(ReviewUserActionEventRecord::eventType)
+            .containsExactly("SYSTEM_TASK_CREATED_FROM_REVIEW", "REVIEW_PARTIAL");
+    }
+
+    @Test
+    void completeDoesNotInvokeAiFeedbackEvenIfAssistantWouldThrow() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.notes.add(noteSummary(userId, noteId, "Failing feedback note"));
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        RecordingUserActionEventRepository eventRepository = new RecordingUserActionEventRepository();
+        RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
+        ReviewApplicationService.ReviewStateView schedule = reviewStateRepository.create(
+            userId, noteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.valueOf(50), null, NOW, 0, 0
+        );
+
+        ReviewApplicationService service = newService(
+            reviewStateRepository,
+            noteRepository,
+            taskRepository,
+            traceRepository,
+            eventRepository,
+            toolInvocationLogRepository,
+            new ThrowingReviewAiAssistant("simulated feedback failure")
+        );
+
+        ReviewApplicationService.ReviewCompletionView result = service.complete(
+            schedule.id().toString(),
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "PARTIAL", "TIME_LIMIT", null, null)
+        );
+
+        assertThat(result.completionStatus()).isEqualTo(ReviewCompletionStatus.PARTIAL);
+        assertThat(result.recallFeedbackSummary()).isNull();
+        assertThat(result.extensionSuggestions()).isEmpty();
+        assertThat(result.followUpTaskSuggestion()).isNull();
+        assertThat(toolInvocationLogRepository.logs).extracting(ReviewToolInvocationLogRecord::toolName)
+            .containsExactly("review.complete");
+        assertThat(traceRepository.completed.orchestratorState()).containsEntry("ai_feedback_status", "NOT_LOADED");
+        assertThat(eventRepository.events).extracting(ReviewUserActionEventRecord::eventType)
+            .containsExactly("SYSTEM_TASK_CREATED_FROM_REVIEW", "REVIEW_PARTIAL");
+    }
+
+    @Test
+    void completeLeavesAiFeedbackEmptyForAllStatuses() {
+        UUID userId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        InMemoryReviewStateRepository reviewStateRepository = new InMemoryReviewStateRepository();
+        InMemoryTaskRepository taskRepository = new InMemoryTaskRepository();
+        UUID completedNoteId = UUID.randomUUID();
+        UUID partialNoteId = UUID.randomUUID();
+        UUID notStartedNoteId = UUID.randomUUID();
+        UUID abandonedNoteId = UUID.randomUUID();
+        noteRepository.notes.add(noteSummary(userId, completedNoteId, "Completed note"));
+        noteRepository.notes.add(noteSummary(userId, partialNoteId, "Partial note"));
+        noteRepository.notes.add(noteSummary(userId, notStartedNoteId, "Not started note"));
+        noteRepository.notes.add(noteSummary(userId, abandonedNoteId, "Abandoned note"));
+        ReviewApplicationService.ReviewStateView completed = reviewStateRepository.create(
+            userId, completedNoteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.valueOf(30), null, NOW, 0, 0
+        );
+        ReviewApplicationService.ReviewStateView partial = reviewStateRepository.create(
+            userId, partialNoteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.valueOf(30), null, NOW, 0, 0
+        );
+        ReviewApplicationService.ReviewStateView notStarted = reviewStateRepository.create(
+            userId, notStartedNoteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.valueOf(30), null, NOW, 0, 0
+        );
+        ReviewApplicationService.ReviewStateView abandoned = reviewStateRepository.create(
+            userId, abandonedNoteId, ReviewQueueType.SCHEDULE, ReviewCompletionStatus.NOT_STARTED, null,
+            null, null, BigDecimal.valueOf(30), null, NOW, 0, 0
+        );
+        ReviewApplicationService service = newService(
+            reviewStateRepository,
+            noteRepository,
+            taskRepository,
+            new RecordingAgentTraceRepository(),
+            new RecordingUserActionEventRepository(),
+            new RecordingToolInvocationLogRepository(),
+            new ThrowingReviewAiAssistant("ai should not be invoked")
+        );
+
+        ReviewApplicationService.ReviewCompletionView completedView = service.complete(
+            completed.id().toString(),
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "COMPLETED", null, null, null)
+        );
+        ReviewApplicationService.ReviewCompletionView partialView = service.complete(
+            partial.id().toString(),
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "PARTIAL", "TIME_LIMIT", null, null)
+        );
+        ReviewApplicationService.ReviewCompletionView notStartedView = service.complete(
+            notStarted.id().toString(),
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "NOT_STARTED", "DEFERRED", null, null)
+        );
+        ReviewApplicationService.ReviewCompletionView abandonedView = service.complete(
+            abandoned.id().toString(),
+            new ReviewApplicationService.CompleteReviewCommand(userId.toString(), "ABANDONED", "TOO_HARD", null, null)
+        );
+
+        assertThat(completedView.recallFeedbackSummary()).isNull();
+        assertThat(completedView.nextReviewHint()).isNull();
+        assertThat(completedView.extensionSuggestions()).isEmpty();
+        assertThat(completedView.followUpTaskSuggestion()).isNull();
+        assertThat(partialView.recallFeedbackSummary()).isNull();
+        assertThat(partialView.nextReviewHint()).isNull();
+        assertThat(partialView.extensionSuggestions()).isEmpty();
+        assertThat(partialView.followUpTaskSuggestion()).isNull();
+        assertThat(notStartedView.recallFeedbackSummary()).isNull();
+        assertThat(notStartedView.nextReviewHint()).isNull();
+        assertThat(notStartedView.extensionSuggestions()).isEmpty();
+        assertThat(notStartedView.followUpTaskSuggestion()).isNull();
+        assertThat(abandonedView.recallFeedbackSummary()).isNull();
+        assertThat(abandonedView.nextReviewHint()).isNull();
+        assertThat(abandonedView.extensionSuggestions()).isEmpty();
+        assertThat(abandonedView.followUpTaskSuggestion()).isNull();
     }
 
     @Test
@@ -354,6 +774,9 @@ class ReviewApplicationServiceTest {
             taskRepository,
             new InMemoryAgentTraceRepository(),
             new InMemoryUserActionEventRepository(),
+            (userId, traceId, toolName, status, inputDigest, outputDigest, latencyMs, errorCode, errorMessage) -> {
+            },
+            new NoOpReviewAiAssistant(),
             Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }
@@ -364,6 +787,24 @@ class ReviewApplicationServiceTest {
                                                AgentTraceRepository agentTraceRepository,
                                                UserActionEventRepository userActionEventRepository,
                                                ToolInvocationLogRepository toolInvocationLogRepository) {
+        return newService(
+            reviewStateRepository,
+            noteRepository,
+            taskRepository,
+            agentTraceRepository,
+            userActionEventRepository,
+            toolInvocationLogRepository,
+            new NoOpReviewAiAssistant()
+        );
+    }
+
+    private ReviewApplicationService newService(InMemoryReviewStateRepository reviewStateRepository,
+                                               InMemoryNoteRepository noteRepository,
+                                               InMemoryTaskRepository taskRepository,
+                                               AgentTraceRepository agentTraceRepository,
+                                               UserActionEventRepository userActionEventRepository,
+                                               ToolInvocationLogRepository toolInvocationLogRepository,
+                                               ReviewAiAssistant reviewAiAssistant) {
         return new ReviewApplicationService(
             reviewStateRepository,
             noteRepository,
@@ -371,6 +812,7 @@ class ReviewApplicationServiceTest {
             agentTraceRepository,
             userActionEventRepository,
             toolInvocationLogRepository,
+            reviewAiAssistant,
             Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }
@@ -386,6 +828,7 @@ class ReviewApplicationServiceTest {
             title,
             "summary",
             List.of("point"),
+            List.of("tag"),
             UUID.randomUUID(),
             NOW
         );
@@ -714,6 +1157,7 @@ class ReviewApplicationServiceTest {
         private final UUID traceId = UUID.randomUUID();
         private TraceCreateRecord created;
         private TraceCompletionRecord completed;
+        private TraceCompletionRecord failed;
 
         @Override
         public UUID create(UUID userId, String entryType, String goal, String rootEntityType, UUID rootEntityId, List<String> workerSequence, Map<String, Object> orchestratorState) {
@@ -728,7 +1172,7 @@ class ReviewApplicationServiceTest {
 
         @Override
         public void markFailed(UUID traceId, String resultSummary, Map<String, Object> orchestratorState) {
-            throw new UnsupportedOperationException();
+            failed = new TraceCompletionRecord(traceId, resultSummary, orchestratorState);
         }
     }
 
@@ -799,5 +1243,72 @@ class ReviewApplicationServiceTest {
         String errorCode,
         String errorMessage
     ) {
+    }
+
+    private static final class NoOpReviewAiAssistant implements ReviewAiAssistant {
+
+        @Override
+        public ReviewRenderResult renderTodayItems(ReviewRenderRequest request) {
+            return new ReviewRenderResult(Map.of());
+        }
+
+        @Override
+        public ReviewFeedbackResult buildCompletionFeedback(ReviewFeedbackRequest request) {
+            return new ReviewFeedbackResult(null, null, List.of(), null);
+        }
+    }
+
+    private static final class RecordingReviewAiAssistant implements ReviewAiAssistant {
+
+        @Override
+        public ReviewRenderResult renderTodayItems(ReviewRenderRequest request) {
+            UUID reviewItemId = request.items().getFirst().reviewItemId();
+            return new ReviewRenderResult(Map.of(
+                reviewItemId,
+                new RenderedReviewItem(reviewItemId, "AI recall summary", List.of("AI point 1", "AI point 2"), "AI extension preview")
+            ));
+        }
+
+        @Override
+        public ReviewFeedbackResult buildCompletionFeedback(ReviewFeedbackRequest request) {
+            return new ReviewFeedbackResult("unused", "unused", List.of(), null);
+        }
+    }
+
+    private static final class CompletionFeedbackReviewAiAssistant implements ReviewAiAssistant {
+
+        @Override
+        public ReviewRenderResult renderTodayItems(ReviewRenderRequest request) {
+            return new ReviewRenderResult(Map.of());
+        }
+
+        @Override
+        public ReviewFeedbackResult buildCompletionFeedback(ReviewFeedbackRequest request) {
+            return new ReviewFeedbackResult(
+                "AI feedback summary",
+                "AI next hint",
+                List.of("AI suggestion 1", "AI suggestion 2"),
+                "AI follow-up task suggestion"
+            );
+        }
+    }
+
+    private static final class ThrowingReviewAiAssistant implements ReviewAiAssistant {
+
+        private final String message;
+
+        private ThrowingReviewAiAssistant(String message) {
+            this.message = message;
+        }
+
+        @Override
+        public ReviewRenderResult renderTodayItems(ReviewRenderRequest request) {
+            throw new RuntimeException(message);
+        }
+
+        @Override
+        public ReviewFeedbackResult buildCompletionFeedback(ReviewFeedbackRequest request) {
+            throw new RuntimeException(message);
+        }
     }
 }

@@ -252,6 +252,145 @@ Search 继续复用共享 `service.ai` 平台：
 - AI 失败时 Search 不报整体失败，而是降级回规则解释
 - Search query、AI 增强降级、external supplement 生成继续写入 `user_action_events`
 
+## 1.3 Review AI 最小增强补丁（已完成）
+
+这一步不是 Review 的正式智能调度闭环，只是在既有双池、完成语义、Today Workspace 和基础 Task 联动之上补最小 AI 辅助。
+
+### 当前真实能力
+- `GET /api/v1/reviews/today`
+- `GET /api/v1/workspace/today`
+- `GET /api/v1/reviews/{reviewItemId}/prep`
+- `GET /api/v1/reviews/{reviewItemId}/feedback`
+- `POST /api/v1/reviews/{reviewItemId}/complete`
+- Review Today 项仍保留可空 AI 展示字段以兼容既有 DTO：
+  - `ai_recall_summary`
+  - `ai_review_key_points`
+  - `ai_extension_preview`
+- Review 完成响应仍保留 AI 反馈字段以兼容既有 DTO：
+  - `recall_feedback_summary`
+  - `next_review_hint`
+  - `extension_suggestions`
+  - `follow_up_task_suggestion`
+- 当前主链语义已经调整为：
+  - `today` / `workspace today` 首屏不再同步等待 Review AI
+  - `complete` 不再同步等待 AI feedback
+  - Review prep 与 feedback 改为独立 read 接口按需获取
+
+### Review AI 的边界
+- AI 只允许插在两个点：
+  - Review 前的 recall-friendly 展示层
+  - Review 完成后的 feedback / hint / extension 建议层
+- AI 输入只允许使用 Note 当前解释层：
+  - `title`
+  - `current_summary`
+  - `current_key_points`
+  - `current_tags`
+- AI 不读取整条 `note_contents`
+- AI 不重写 raw content
+- AI 不改 Review 主状态机
+- AI 不替代 `ReviewSchedulerService`
+- AI 不直接决定 recall requeue 最终入队策略
+- AI 不直接创建或完成 Task
+- follow-up task 是否创建，继续由规则层决定；AI 只返回建议文本
+
+### Review Today 展示语义
+- `GET /api/v1/reviews/today` 和 `GET /api/v1/workspace/today` 现在优先返回稳定的基础字段：
+  - `current_summary`
+  - `current_key_points`
+- today / workspace today 的 review item 仍保留 AI 可空字段，但主查询不再同步触发 Review AI
+- 前端会在用户展开某条 review 时，再调用 `GET /api/v1/reviews/{reviewItemId}/prep` 拉取 recall-friendly AI prep
+- `ai_recall_summary` 应短于 `current_summary`，目标是帮助回忆，不是重写全文摘要
+- `ai_review_key_points` 应聚焦回忆支点，而不是复制整段正文
+- `ai_extension_preview` 只做轻量延伸提示，不做复杂推荐流
+- `listUpcoming` 当前不做 Review AI 增强
+- prep AI 失败时：
+  - today / workspace 接口仍成功返回
+  - 前端继续展示原有 `current_summary / current_key_points`
+  - `GET /api/v1/reviews/{reviewItemId}/prep` 只对当前展开项降级，不影响其他 review item
+
+### Review 完成反馈语义
+- `POST /api/v1/reviews/{reviewItemId}/complete` 先完成既有业务：
+  - Review 状态流转
+  - recall requeue / 调度规则
+  - follow-up task 规则同步
+- 当前 `complete` 主接口不再同步追加 AI feedback，主业务成功后即可返回
+- 前端会在 `complete` 成功后，再独立调用 `GET /api/v1/reviews/{reviewItemId}/feedback` 拉取反馈
+- `extension_suggestions` 当前最多返回 3 条短文本建议，不做复杂排序
+- `follow_up_task_suggestion` 只是建议文本，不驱动持久化决策
+- `complete` 响应中的 AI 字段当前用于兼容既有契约，默认返回未加载状态
+- AI feedback 失败时，Review 完成仍成功，`GET /api/v1/reviews/{reviewItemId}/feedback` 只对反馈区降级，不影响主业务结果
+
+### completion_status 差异化策略
+- `COMPLETED`
+  - 简短巩固建议
+  - 轻量下一次复习提示
+- `PARTIAL`
+  - 补漏建议
+  - 指向关键缺口或延伸阅读
+- `NOT_STARTED`
+  - 低门槛重新开始建议
+  - 避免过重动作
+- `ABANDONED`
+  - 结合 `completion_reason` 给保守建议
+  - 强调延后、拆小或降低难度
+
+如果 AI 返回结构合法但字段为空，服务层会按上述状态使用固定 fallback 文案，保证差异化建议存在；如果 AI 调用本身失败，则整体降级但不打断 Review 主链。
+
+### Review AI 路由
+- `noteops.ai.routes.review-render.endpoint=default`
+- `noteops.ai.routes.review-render.model=deepseek-r1:8b`
+- `noteops.ai.routes.review-feedback.endpoint=default`
+- `noteops.ai.routes.review-feedback.model=deepseek-r1:8b`
+
+Review 继续复用共享 `service.ai` 平台：
+- provider transport、provider 注册与 route 选择仍在共享层
+- Review 业务层只依赖统一 `ReviewAiAssistant`
+- `review-render` 当前通过 `GET /api/v1/reviews/{reviewItemId}/prep` 按单条调用
+- `review-feedback` 当前通过 `GET /api/v1/reviews/{reviewItemId}/feedback` 独立读取
+- controller / application service 不写 provider if/else
+
+### Review AI 的可观测性
+Review prep AI 会额外写入：
+- `agent_traces`
+  - `entry_type = REVIEW_AI_PREP`
+  - `goal = Render prep view for review <review_item_id>`
+  - `root_entity_type = REVIEW_STATE`
+- `tool_invocation_logs`
+  - `tool_name = review.ai-prep`
+  - `input_digest.request_type = REVIEW_RENDER`
+- `user_action_events`
+  - `REVIEW_PREP_RENDERED`
+  - `REVIEW_PREP_DEGRADED`
+- 结构化日志：
+  - `review_prep_ai_start`
+  - `review_prep_ai_success`
+  - `review_prep_ai_fail`
+
+Review 完成后的 AI feedback 当前使用独立 `REVIEW_AI_FEEDBACK` trace，并补充：
+- `tool_invocation_logs`
+  - `tool_name = review.ai-feedback`
+  - `input_digest.request_type = REVIEW_FEEDBACK`
+- `user_action_events`
+  - `REVIEW_FEEDBACK_GENERATED`
+  - `REVIEW_EXTENSION_SUGGESTIONS_GENERATED`
+  - `REVIEW_FOLLOW_UP_TASK_SUGGESTED`
+- trace state 补充：
+  - `ai_feedback_status`
+  - `extension_suggestion_count`
+  - `follow_up_task_suggestion_present`
+- 结构化日志：
+  - `review_feedback_ai_start`
+  - `review_feedback_ai_success`
+  - `review_feedback_ai_fail`
+  - `review_feedback_trace_persisted`
+- 结构化日志：
+  - `review_feedback_ai_start`
+  - `review_feedback_ai_success`
+  - `review_feedback_ai_fail`
+  - `review_extension_suggestions_built`
+  - `review_follow_up_task_suggestion_decided`
+  - `review_trace_persisted`
+
 ## 2. 核心领域语义
 
 ## 2.1 Idea
@@ -398,6 +537,11 @@ Phase 3 最小工作台至少包含：
 - Search external supplement generated
 - Search evidence saved
 - Search proposal generated
+- Review AI render
+- Review completed
+- Review feedback generated
+- Review extension suggestions generated
+- Review follow-up task suggested
 
 ### user_action_event 建议
 - `entity_type = IDEA`
@@ -436,6 +580,12 @@ Phase 3 不要求所有 Idea 变更都强制经过完整 proposal 流程。
 - search ai enhancement success / failure / degrade
 - search evidence save
 - search proposal generate
+- review ai render start / success / fail
+- review complete received
+- review feedback ai start / success / fail
+- review extension suggestions built
+- review follow-up task suggestion decided
+- trace persisted
 
 ### 最小日志字段
 - `trace_id`
@@ -454,6 +604,7 @@ Phase 3 不要求所有 Idea 变更都强制经过完整 proposal 流程。
 ## 6.1 已完成基础（来自前置阶段）
 - Note 主链路
 - Review 双池
+- Review AI recall render / feedback 最小增强
 - Search 三分栏 + Search AI 最小解释增强
 - Today / Upcoming
 - Task 基础闭环
@@ -500,8 +651,13 @@ Phase 3 不要求所有 Idea 变更都强制经过完整 proposal 流程。
 10. Search 的真实外部抓取与 provider 接入
 11. Search ranking learning / preference 融合
 12. Search richer relation taxonomy 与冲突解释
-13. Review 的 AI recall / extension 闭环
-14. Task 的 AI 派生策略
-15. Idea candidate 的正式生命周期
-16. URL extraction robustness
-17. 多模型路由与 prompt 模板治理
+13. Review 主排序算法智能化
+14. 遗忘曲线学习与个性化调度
+15. 更复杂的 recall score 建模
+16. extension suggestion 排序优化
+17. Task 的 AI 派生策略正式化
+18. Review 与 Idea 的深层联动
+19. preference recompute / profile 注入
+20. Idea candidate 的正式生命周期
+21. URL extraction robustness
+22. 多模型路由与 prompt 模板治理

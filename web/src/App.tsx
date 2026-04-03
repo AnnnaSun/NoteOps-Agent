@@ -1,10 +1,12 @@
-import { FormEvent, useEffect, useState, useTransition } from "react";
+import { FormEvent, useEffect, useRef, useState, useTransition } from "react";
 import {
   applyChangeProposal,
   completeReview,
   createSearchChangeProposal,
   createCapture,
   createChangeProposal,
+  getReviewFeedback,
+  getReviewPrep,
   getWorkspaceToday,
   getWorkspaceUpcoming,
   getNote,
@@ -19,7 +21,10 @@ import type {
   ChangeProposal,
   NoteDetail,
   NoteSummary,
+  ReviewFeedbackResult,
+  ReviewCompletionResult,
   ReviewCompletionPayload,
+  ReviewPrepResult,
   ReviewTodayItem,
   SearchEvidenceResult,
   SearchResult,
@@ -352,6 +357,16 @@ type ReviewFormDraft = {
   note: string;
 };
 
+type ReviewFeedbackBanner = {
+  reviewId: string;
+  result: ReviewCompletionResult;
+  feedback: ReviewFeedbackResult | null;
+  isLoading: boolean;
+};
+
+type ReviewPrepState = Record<string, ReviewPrepResult>;
+type ReviewPrepLoadingState = Record<string, boolean>;
+
 function isRecallQueue(queueType: string): boolean {
   return queueType === "RECALL";
 }
@@ -385,6 +400,8 @@ export default function App() {
   const [tasksToday, setTasksToday] = useState<TaskItem[]>([]);
   const [upcomingReviews, setUpcomingReviews] = useState<ReviewTodayItem[]>([]);
   const [upcomingTasks, setUpcomingTasks] = useState<TaskItem[]>([]);
+  const [reviewPrepById, setReviewPrepById] = useState<ReviewPrepState>({});
+  const [reviewPrepLoadingById, setReviewPrepLoadingById] = useState<ReviewPrepLoadingState>({});
   const [captureResult, setCaptureResult] = useState<CaptureResponse | null>(null);
   const [captureInputType, setCaptureInputType] = useState<"TEXT" | "URL">("TEXT");
   const [captureText, setCaptureText] = useState("");
@@ -394,6 +411,7 @@ export default function App() {
   const [hasSearched, setHasSearched] = useState(false);
   const [activeReviewFormId, setActiveReviewFormId] = useState<string | null>(null);
   const [reviewFormDraft, setReviewFormDraft] = useState<ReviewFormDraft | null>(null);
+  const [lastReviewFeedback, setLastReviewFeedback] = useState<ReviewFeedbackBanner | null>(null);
   const [notesError, setNotesError] = useState<string | null>(null);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
@@ -410,6 +428,7 @@ export default function App() {
   const [isRefreshingNote, startNoteTransition] = useTransition();
   const [isSubmittingReview, startReviewTransition] = useTransition();
   const [isMutatingProposal, startProposalTransition] = useTransition();
+  const activeUserIdRef = useRef(activeUserId);
   const isDetailVisible = Boolean(selectedNoteId || noteError || isRefreshingNote);
   const upcomingItemCount = upcomingReviews.length + upcomingTasks.length;
   const upcomingReviewGroups = groupUpcomingReviewsByNote(upcomingReviews);
@@ -417,6 +436,20 @@ export default function App() {
   const relatedMatches = searchResult?.related_matches ?? [];
   const externalSupplements = searchResult?.external_supplements ?? [];
   const searchAiEnhancementStatus = searchResult?.ai_enhancement_status ?? "SKIPPED";
+  const lastReviewFeedbackView = lastReviewFeedback
+    ? {
+        reviewId: lastReviewFeedback.reviewId,
+        completionStatus: lastReviewFeedback.result.completion_status,
+        recallFeedbackSummary:
+          lastReviewFeedback.feedback?.recall_feedback_summary ?? lastReviewFeedback.result.recall_feedback_summary,
+        nextReviewHint: lastReviewFeedback.feedback?.next_review_hint ?? lastReviewFeedback.result.next_review_hint,
+        extensionSuggestions:
+          lastReviewFeedback.feedback?.extension_suggestions ?? lastReviewFeedback.result.extension_suggestions,
+        followUpTaskSuggestion:
+          lastReviewFeedback.feedback?.follow_up_task_suggestion ?? lastReviewFeedback.result.follow_up_task_suggestion,
+        isLoading: lastReviewFeedback.isLoading
+      }
+    : null;
 
   function applyWorkspaceSnapshot(snapshot: WorkspaceSnapshot) {
     setReviewsToday(snapshot.today.today_reviews);
@@ -446,12 +479,19 @@ export default function App() {
   }, [activeUserId]);
 
   useEffect(() => {
+    activeUserIdRef.current = activeUserId;
+  }, [activeUserId]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function bootstrap() {
       setIsBootstrapping(true);
       setNotesError(null);
       setWorkspaceError(null);
+      setReviewPrepById({});
+      setReviewPrepLoadingById({});
+      setLastReviewFeedback(null);
       try {
         const [noteItems, workspaceSnapshot] = await Promise.all([
           listNotes(activeUserId),
@@ -558,6 +598,9 @@ export default function App() {
     setCaptureResult(null);
     resetSearchState();
     closeReviewForm();
+    setLastReviewFeedback(null);
+    setReviewPrepById({});
+    setReviewPrepLoadingById({});
     setActiveUserId(nextUserId);
   }
 
@@ -749,6 +792,68 @@ export default function App() {
     })();
   }
 
+  async function loadReviewPrep(review: ReviewTodayItem) {
+    if (reviewPrepById[review.id] || reviewPrepLoadingById[review.id]) {
+      return;
+    }
+
+    const requestUserId = activeUserIdRef.current;
+    setReviewPrepLoadingById((current) => ({
+      ...current,
+      [review.id]: true
+    }));
+
+    try {
+      const prep = await getReviewPrep(review.id, requestUserId);
+      if (activeUserIdRef.current !== requestUserId) {
+        return;
+      }
+      setReviewPrepById((current) => ({
+        ...current,
+        [review.id]: prep
+      }));
+    } catch {
+      // prep 失败时静默降级，继续用基础字段渲染。
+    } finally {
+      setReviewPrepLoadingById((current) => ({
+        ...current,
+        [review.id]: false
+      }));
+    }
+  }
+
+  async function loadReviewFeedback(reviewId: string) {
+    const requestUserId = activeUserIdRef.current;
+
+    try {
+      const feedback = await getReviewFeedback(reviewId, requestUserId);
+      if (activeUserIdRef.current !== requestUserId) {
+        return;
+      }
+      setLastReviewFeedback((current) =>
+        current && current.reviewId === reviewId
+          ? {
+              ...current,
+              feedback,
+              isLoading: false
+            }
+          : current
+      );
+    } catch {
+      if (activeUserIdRef.current !== requestUserId) {
+        return;
+      }
+      setLastReviewFeedback((current) =>
+        current && current.reviewId === reviewId
+          ? {
+              ...current,
+              isLoading: false
+            }
+          : current
+      );
+    }
+  }
+
   function handleReviewFormToggle(review: ReviewTodayItem) {
     if (activeReviewFormId === review.id) {
       closeReviewForm();
@@ -757,6 +862,9 @@ export default function App() {
     setActiveReviewFormId(review.id);
     setReviewFormDraft(createReviewFormDraft(review.queue_type));
     setReviewFormError(null);
+    if (!reviewPrepById[review.id] && !reviewPrepLoadingById[review.id]) {
+      void loadReviewPrep(review);
+    }
   }
 
   function handleReviewDraftChange(field: keyof ReviewFormDraft, value: string) {
@@ -819,10 +927,23 @@ export default function App() {
       void (async () => {
         setReviewFormError(null);
         try {
-          await completeReview(review.id, buildReviewCompletionPayload(review, reviewFormDraft));
-          const workspaceSnapshot = await fetchWorkspaceSnapshot(activeUserId);
-          applyWorkspaceSnapshot(workspaceSnapshot);
-          setWorkspaceError(null);
+          const result = await completeReview(review.id, buildReviewCompletionPayload(review, reviewFormDraft));
+          setLastReviewFeedback({
+            reviewId: review.id,
+            result,
+            feedback: null,
+            isLoading: true
+          });
+          void loadReviewFeedback(review.id);
+          try {
+            const workspaceSnapshot = await fetchWorkspaceSnapshot(activeUserId);
+            applyWorkspaceSnapshot(workspaceSnapshot);
+            setWorkspaceError(null);
+          } catch (workspaceRefreshError) {
+            setWorkspaceError(
+              workspaceRefreshError instanceof Error ? workspaceRefreshError.message : "刷新工作台失败"
+            );
+          }
           closeReviewForm();
         } catch (error) {
           setReviewFormError(error instanceof Error ? error.message : "提交复习结果失败");
@@ -1252,105 +1373,171 @@ export default function App() {
                       <span className="meta-chip">{reviewsToday.length}</span>
                     </div>
                     <p className="subpanel-description">聚焦当前理解不稳或需要回忆强化的 Note。</p>
+                    {lastReviewFeedbackView ? (
+                      <div className="status-card">
+                        <div className="status-card-header">
+                          <strong>最近一次 Review AI 反馈</strong>
+                          <span className="meta-chip">
+                            {lastReviewFeedbackView.isLoading
+                              ? "反馈加载中..."
+                              : getReviewCompletionStatusLabel(lastReviewFeedbackView.completionStatus)}
+                          </span>
+                        </div>
+                        {lastReviewFeedbackView.recallFeedbackSummary ? (
+                          <p>{lastReviewFeedbackView.recallFeedbackSummary}</p>
+                        ) : null}
+                        {lastReviewFeedbackView.nextReviewHint ? (
+                          <p className="search-result-detail">{lastReviewFeedbackView.nextReviewHint}</p>
+                        ) : null}
+                        {lastReviewFeedbackView.extensionSuggestions.length > 0 ? (
+                          <div className="note-card-points">
+                            {lastReviewFeedbackView.extensionSuggestions.map((suggestion: string) => (
+                              <span
+                                key={`${lastReviewFeedbackView.reviewId}-${suggestion}`}
+                                className="note-card-point"
+                              >
+                                {suggestion}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                        {lastReviewFeedbackView.followUpTaskSuggestion ? (
+                          <p className="search-result-detail">{lastReviewFeedbackView.followUpTaskSuggestion}</p>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {reviewsToday.length === 0 ? <p className="status-message">今天没有待复习项。</p> : null}
-                    {reviewsToday.map((review) => (
-                      <div key={review.id} className="list-row review-list-row">
-                        <div className="list-row-content">
-                          <strong>{review.title}</strong>
-                          <p>{review.current_summary}</p>
-                          <div className="row-meta row-meta-inline">
-                            <span className={getReviewMetaTone(review.queue_type)}>{getReviewQueueLabel(review.queue_type)}</span>
-                            <span className={getReviewMetaTone(review.completion_status)}>{getReviewCompletionStatusLabel(review.completion_status)}</span>
-                            <span className="tone-slate">未完成 {review.unfinished_count}</span>
-                            <span className="tone-slate">{getReviewTimingLabel(review)}</span>
-                          </div>
-                          <div className="form-actions">
-                            <button
-                              type="button"
-                              className="ghost-button"
-                              onClick={() => handleReviewFormToggle(review)}
-                              disabled={isSubmittingReview && activeReviewFormId === review.id}
-                            >
-                              {activeReviewFormId === review.id ? "收起表单" : "完成 / 提交结果"}
-                            </button>
-                          </div>
-                          {activeReviewFormId === review.id && reviewFormDraft ? (
-                            <form className="review-form" onSubmit={(event) => handleReviewSubmit(event, review)}>
-                              <label className="field-stack">
-                                <span className="detail-label">completion_status</span>
-                                <select
-                                  value={reviewFormDraft.completionStatus}
-                                  onChange={(event) => handleReviewDraftChange("completionStatus", event.target.value)}
-                                >
-                                  {REVIEW_COMPLETION_STATUS_OPTIONS.map((status) => (
-                                    <option key={status} value={status}>
-                                      {getReviewCompletionStatusLabel(status)}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              {requiresCompletionReason(reviewFormDraft.completionStatus) ? (
+                    {reviewsToday.map((review) => {
+                      const prepState = reviewPrepById[review.id];
+                      const reviewPrepLoading = reviewPrepLoadingById[review.id] ?? false;
+                      const recallSummary = prepState?.ai_recall_summary ?? review.current_summary;
+                      const recallKeyPoints =
+                        prepState?.ai_review_key_points.length ? prepState.ai_review_key_points : review.current_key_points;
+                      const extensionPreview = prepState?.ai_extension_preview?.trim() || null;
+
+                      return (
+                        <div key={review.id} className="list-row review-list-row">
+                          <div className="list-row-content">
+                            <strong>{review.title}</strong>
+                            {reviewPrepLoading ? <p className="status-message">正在加载 AI 预览...</p> : null}
+                            <div className="review-prep-card">
+                              <section className="review-prep-section review-prep-section-primary">
+                                <p className="review-prep-label">{prepState ? "AI 回忆摘要" : "基础摘要"}</p>
+                                <p className="review-prep-summary">{recallSummary}</p>
+                              </section>
+                              {recallKeyPoints.length > 0 ? (
+                                <section className="review-prep-section review-prep-section-secondary">
+                                  <p className="review-prep-label">{prepState ? "回忆支点" : "基础关键点"}</p>
+                                  <div className="note-card-points review-prep-points">
+                                    {recallKeyPoints.slice(0, 4).map((point) => (
+                                      <span key={`${review.id}-${point}`} className="note-card-point">
+                                        {point}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </section>
+                              ) : null}
+                              {extensionPreview ? (
+                                <section className="review-prep-section review-prep-section-tertiary">
+                                  <p className="review-prep-label">{prepState ? "必要延伸" : "基础延伸"}</p>
+                                  <p className="review-prep-extension">{extensionPreview}</p>
+                                </section>
+                              ) : null}
+                            </div>
+                            <div className="row-meta row-meta-inline">
+                              <span className={getReviewMetaTone(review.queue_type)}>{getReviewQueueLabel(review.queue_type)}</span>
+                              <span className={getReviewMetaTone(review.completion_status)}>{getReviewCompletionStatusLabel(review.completion_status)}</span>
+                              <span className="tone-slate">未完成 {review.unfinished_count}</span>
+                              <span className="tone-slate">{getReviewTimingLabel(review)}</span>
+                            </div>
+                            <div className="form-actions">
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                onClick={() => handleReviewFormToggle(review)}
+                                disabled={isSubmittingReview && activeReviewFormId === review.id}
+                              >
+                                {activeReviewFormId === review.id ? "收起表单" : "完成 / 提交结果"}
+                              </button>
+                            </div>
+                            {activeReviewFormId === review.id && reviewFormDraft ? (
+                              <form className="review-form" onSubmit={(event) => handleReviewSubmit(event, review)}>
                                 <label className="field-stack">
-                                  <span className="detail-label">completion_reason</span>
+                                  <span className="detail-label">completion_status</span>
                                   <select
-                                    value={reviewFormDraft.completionReason}
-                                    onChange={(event) => handleReviewDraftChange("completionReason", event.target.value)}
+                                    value={reviewFormDraft.completionStatus}
+                                    onChange={(event) => handleReviewDraftChange("completionStatus", event.target.value)}
                                   >
-                                    <option value="">选择 completion_reason</option>
-                                    {REVIEW_COMPLETION_REASON_OPTIONS.map((reason) => (
-                                      <option key={reason} value={reason}>
-                                        {getReviewCompletionReasonLabel(reason)}
+                                    {REVIEW_COMPLETION_STATUS_OPTIONS.map((status) => (
+                                      <option key={status} value={status}>
+                                        {getReviewCompletionStatusLabel(status)}
                                       </option>
                                     ))}
                                   </select>
                                 </label>
-                              ) : null}
-                              {isRecallQueue(review.queue_type) ? (
-                                <>
+                                {requiresCompletionReason(reviewFormDraft.completionStatus) ? (
                                   <label className="field-stack">
-                                    <span className="detail-label">self_recall_result</span>
+                                    <span className="detail-label">completion_reason</span>
                                     <select
-                                      value={reviewFormDraft.selfRecallResult}
-                                      onChange={(event) => handleReviewDraftChange("selfRecallResult", event.target.value)}
+                                      value={reviewFormDraft.completionReason}
+                                      onChange={(event) => handleReviewDraftChange("completionReason", event.target.value)}
                                     >
-                                      {REVIEW_SELF_RECALL_RESULT_OPTIONS.map((result) => (
-                                        <option key={result} value={result}>
-                                          {getSelfRecallResultLabel(result)}
+                                      <option value="">选择 completion_reason</option>
+                                      {REVIEW_COMPLETION_REASON_OPTIONS.map((reason) => (
+                                        <option key={reason} value={reason}>
+                                          {getReviewCompletionReasonLabel(reason)}
                                         </option>
                                       ))}
                                     </select>
                                   </label>
-                                  <label className="field-stack">
-                                    <span className="detail-label">note</span>
-                                    <textarea
-                                      className="compact-textarea"
-                                      placeholder="可选补充：本次回忆的简短备注"
-                                      value={reviewFormDraft.note}
-                                      onChange={(event) => handleReviewDraftChange("note", event.target.value)}
-                                    />
-                                  </label>
-                                </>
-                              ) : null}
-                              {reviewFormError ? <p className="status-message error">{reviewFormError}</p> : null}
-                              <div className="form-actions">
-                                <button
-                                  type="submit"
-                                  disabled={
-                                    (isSubmittingReview && activeReviewFormId === review.id) ||
-                                    !isReviewFormValid(review, reviewFormDraft)
-                                  }
-                                >
-                                  {isSubmittingReview && activeReviewFormId === review.id ? "提交中..." : "提交结果"}
-                                </button>
-                                <button type="button" className="ghost-button" onClick={closeReviewForm}>
-                                  取消
-                                </button>
-                              </div>
-                            </form>
-                          ) : null}
+                                ) : null}
+                                {isRecallQueue(review.queue_type) ? (
+                                  <>
+                                    <label className="field-stack">
+                                      <span className="detail-label">self_recall_result</span>
+                                      <select
+                                        value={reviewFormDraft.selfRecallResult}
+                                        onChange={(event) => handleReviewDraftChange("selfRecallResult", event.target.value)}
+                                      >
+                                        {REVIEW_SELF_RECALL_RESULT_OPTIONS.map((result) => (
+                                          <option key={result} value={result}>
+                                            {getSelfRecallResultLabel(result)}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <label className="field-stack">
+                                      <span className="detail-label">note</span>
+                                      <textarea
+                                        className="compact-textarea"
+                                        placeholder="可选补充：本次回忆的简短备注"
+                                        value={reviewFormDraft.note}
+                                        onChange={(event) => handleReviewDraftChange("note", event.target.value)}
+                                      />
+                                    </label>
+                                  </>
+                                ) : null}
+                                {reviewFormError ? <p className="status-message error">{reviewFormError}</p> : null}
+                                <div className="form-actions">
+                                  <button
+                                    type="submit"
+                                    disabled={
+                                      (isSubmittingReview && activeReviewFormId === review.id) ||
+                                      !isReviewFormValid(review, reviewFormDraft)
+                                    }
+                                  >
+                                    {isSubmittingReview && activeReviewFormId === review.id ? "提交中..." : "提交结果"}
+                                  </button>
+                                  <button type="button" className="ghost-button" onClick={closeReviewForm}>
+                                    取消
+                                  </button>
+                                </div>
+                              </form>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </section>
                   <section className="subpanel task-panel">
                     <div className="subpanel-heading">

@@ -176,6 +176,7 @@ class ChangeProposalApplicationServiceTest {
                     note.title(),
                     note.currentSummary(),
                     note.currentKeyPoints(),
+                    List.of(),
                     note.latestContentId(),
                     note.updatedAt()
                 ))

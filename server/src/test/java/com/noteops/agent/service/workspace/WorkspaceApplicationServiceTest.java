@@ -39,7 +39,11 @@ class WorkspaceApplicationServiceTest {
                 1,
                 "Recall note",
                 "summary",
-                List.of("point")
+                List.of("point"),
+                List.of("tag-1"),
+                null,
+                List.of(),
+                null
             )
         ));
         when(taskApplicationService.listToday("11111111-1111-1111-1111-111111111111", "+08:00")).thenReturn(List.of(

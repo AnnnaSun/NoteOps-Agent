@@ -27,7 +27,15 @@ public record ReviewCompletionResponse(
     @JsonProperty("unfinished_count")
     int unfinishedCount,
     @JsonProperty("mastery_score")
-    BigDecimal masteryScore
+    BigDecimal masteryScore,
+    @JsonProperty("recall_feedback_summary")
+    String recallFeedbackSummary,
+    @JsonProperty("next_review_hint")
+    String nextReviewHint,
+    @JsonProperty("extension_suggestions")
+    java.util.List<String> extensionSuggestions,
+    @JsonProperty("follow_up_task_suggestion")
+    String followUpTaskSuggestion
 ) {
 
     public static ReviewCompletionResponse from(ReviewApplicationService.ReviewCompletionView view) {
@@ -42,7 +50,11 @@ public record ReviewCompletionResponse(
             view.nextReviewAt(),
             view.retryAfterHours(),
             view.unfinishedCount(),
-            view.masteryScore()
+            view.masteryScore(),
+            view.recallFeedbackSummary(),
+            view.nextReviewHint(),
+            view.extensionSuggestions(),
+            view.followUpTaskSuggestion()
         );
     }
 }
