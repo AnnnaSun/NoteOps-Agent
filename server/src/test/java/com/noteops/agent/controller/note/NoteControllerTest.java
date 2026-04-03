@@ -94,7 +94,18 @@ class NoteControllerTest {
                 "raw text",
                 "clean text",
                 Instant.parse("2026-03-15T09:00:00Z"),
-                Instant.parse("2026-03-15T10:00:00Z")
+                Instant.parse("2026-03-15T10:00:00Z"),
+                List.of(
+                    new NoteQueryService.NoteEvidenceView(
+                        UUID.randomUUID(),
+                        "EVIDENCE",
+                        "https://evidence.example.com",
+                        "外部来源",
+                        "背景补充",
+                        "证据摘要",
+                        Instant.parse("2026-03-15T11:00:00Z")
+                    )
+                )
             )
         );
 
@@ -106,6 +117,8 @@ class NoteControllerTest {
             .andExpect(jsonPath("$.data.user_id").value(userId.toString()))
             .andExpect(jsonPath("$.data.latest_content_type").value("CAPTURE_RAW"))
             .andExpect(jsonPath("$.data.clean_text").value("clean text"))
+            .andExpect(jsonPath("$.data.evidence_blocks[0].content_type").value("EVIDENCE"))
+            .andExpect(jsonPath("$.data.evidence_blocks[0].relation_label").value("背景补充"))
             .andExpect(jsonPath("$.meta.server_time").exists());
     }
 

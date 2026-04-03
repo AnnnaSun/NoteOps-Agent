@@ -45,7 +45,7 @@ function getTimezoneOffsetLabel(): string {
 
 function formatDateTime(value: string | null): string {
   if (!value) {
-    return "N/A";
+    return "暂无";
   }
   return new Intl.DateTimeFormat("zh-CN", {
     dateStyle: "medium",
@@ -104,6 +104,181 @@ function canApplyProposal(status: string): boolean {
   return status === "PENDING" || status === "PENDING_REVIEW";
 }
 
+function getCaptureStatusLabel(status: string): string {
+  switch (status) {
+    case "RECEIVED":
+      return "已接收";
+    case "EXTRACTING":
+      return "提取中";
+    case "ANALYZING":
+      return "分析中";
+    case "CONSOLIDATING":
+      return "写入中";
+    case "COMPLETED":
+      return "已完成";
+    case "FAILED":
+      return "失败";
+    default:
+      return status;
+  }
+}
+
+function getCaptureFailureReasonLabel(reason: string | null): string {
+  switch (reason) {
+    case null:
+      return "暂无";
+    case "EXTRACTION_FAILED":
+      return "内容提取失败";
+    case "LLM_CALL_FAILED":
+      return "AI 调用失败";
+    case "LLM_OUTPUT_INVALID":
+      return "AI 输出无效";
+    case "CONSOLIDATION_FAILED":
+      return "写入 Note 失败";
+    default:
+      return reason;
+  }
+}
+
+function getSearchAiStatusLabel(status: string): string {
+  switch (status) {
+    case "COMPLETED":
+      return "已增强";
+    case "DEGRADED":
+      return "已降级";
+    case "SKIPPED":
+      return "未触发";
+    default:
+      return status;
+  }
+}
+
+function getAiEnhancementLabel(isAiEnhanced: boolean): string {
+  return isAiEnhanced ? "AI 增强" : "规则回退";
+}
+
+function getReviewQueueLabel(value: string): string {
+  switch (value) {
+    case "RECALL":
+      return "回忆补强";
+    case "SCHEDULE":
+      return "计划复习";
+    default:
+      return value;
+  }
+}
+
+function getReviewCompletionStatusLabel(value: string): string {
+  switch (value) {
+    case "COMPLETED":
+      return "已完成";
+    case "PARTIAL":
+      return "部分完成";
+    case "NOT_STARTED":
+      return "未开始";
+    case "ABANDONED":
+      return "已放弃";
+    default:
+      return value;
+  }
+}
+
+function getReviewCompletionReasonLabel(value: string): string {
+  switch (value) {
+    case "TIME_LIMIT":
+      return "时间不够";
+    case "TOO_HARD":
+      return "内容太难";
+    case "VAGUE_MEMORY":
+      return "记忆模糊";
+    case "DEFERRED":
+      return "暂缓处理";
+    default:
+      return value;
+  }
+}
+
+function getSelfRecallResultLabel(value: string): string {
+  switch (value) {
+    case "GOOD":
+      return "回忆良好";
+    case "VAGUE":
+      return "回忆模糊";
+    case "FAILED":
+      return "回忆失败";
+    default:
+      return value;
+  }
+}
+
+function getTaskSourceLabel(value: string): string {
+  switch (value) {
+    case "SYSTEM":
+      return "系统任务";
+    case "USER":
+      return "用户任务";
+    default:
+      return value;
+  }
+}
+
+function getTaskStatusLabel(value: string): string {
+  switch (value) {
+    case "TODO":
+      return "待开始";
+    case "IN_PROGRESS":
+      return "进行中";
+    case "DONE":
+      return "已完成";
+    case "SKIPPED":
+      return "已跳过";
+    case "CANCELLED":
+      return "已取消";
+    default:
+      return value;
+  }
+}
+
+function getProposalStatusLabel(value: string): string {
+  switch (value) {
+    case "PENDING":
+    case "PENDING_REVIEW":
+      return "待审核";
+    case "APPLIED":
+      return "已应用";
+    case "ROLLED_BACK":
+      return "已回滚";
+    default:
+      return value;
+  }
+}
+
+function getProposalTargetLayerLabel(value: string): string {
+  switch (value) {
+    case "INTERPRETATION":
+      return "解释层";
+    case "METADATA":
+      return "元数据层";
+    case "RELATION":
+      return "关系层";
+    default:
+      return value;
+  }
+}
+
+function getProposalRiskLabel(value: string): string {
+  switch (value) {
+    case "LOW":
+      return "低风险";
+    case "MEDIUM":
+      return "中风险";
+    case "HIGH":
+      return "高风险";
+    default:
+      return value;
+  }
+}
+
 function readStoredUserId(): string {
   if (typeof window === "undefined") {
     return DEFAULT_USER_ID;
@@ -143,13 +318,13 @@ function getReviewTimingLabel(review: ReviewTodayItem): string {
 }
 
 function getTaskTimingLabel(task: TaskItem): string {
-  return task.due_at ? `截止 ${formatDateTime(task.due_at)}` : "无 due_at";
+  return task.due_at ? `截止 ${formatDateTime(task.due_at)}` : "未设置截止时间";
 }
 
 function getUpcomingReviewQueueDescription(review: ReviewTodayItem): string {
   return review.queue_type === "RECALL"
-    ? "短期 recall 回补队列，用来快速追踪未掌握内容。"
-    : "长期 schedule 节奏队列，用来保留正常复习周期。";
+    ? "短期回忆补强队列，用来快速追踪未掌握内容。"
+    : "长期计划复习队列，用来保留正常复习周期。";
 }
 
 function groupUpcomingReviewsByNote(reviews: ReviewTodayItem[]): UpcomingReviewGroup[] {
@@ -228,9 +403,9 @@ export default function App() {
   const [searchActionMessage, setSearchActionMessage] = useState<string | null>(null);
   const [reviewFormError, setReviewFormError] = useState<string | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
-  const [isSubmittingCapture, startCaptureTransition] = useTransition();
-  const [isSearching, startSearchTransition] = useTransition();
-  const [isMutatingSearchAction, startSearchActionTransition] = useTransition();
+  const [isSubmittingCapture, setIsSubmittingCapture] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isMutatingSearchAction, setIsMutatingSearchAction] = useState(false);
   const [isRefreshingWorkspace, startWorkspaceTransition] = useTransition();
   const [isRefreshingNote, startNoteTransition] = useTransition();
   const [isSubmittingReview, startReviewTransition] = useTransition();
@@ -241,6 +416,7 @@ export default function App() {
   const exactMatches = searchResult?.exact_matches ?? [];
   const relatedMatches = searchResult?.related_matches ?? [];
   const externalSupplements = searchResult?.external_supplements ?? [];
+  const searchAiEnhancementStatus = searchResult?.ai_enhancement_status ?? "SKIPPED";
 
   function applyWorkspaceSnapshot(snapshot: WorkspaceSnapshot) {
     setReviewsToday(snapshot.today.today_reviews);
@@ -291,7 +467,7 @@ export default function App() {
         if (cancelled) {
           return;
         }
-        const message = error instanceof Error ? error.message : "Failed to load data";
+        const message = error instanceof Error ? error.message : "加载初始数据失败";
         setNotesError(message);
         setWorkspaceError(message);
         setNotes([]);
@@ -341,7 +517,7 @@ export default function App() {
           if (cancelled) {
             return;
           }
-          const message = error instanceof Error ? error.message : "Failed to load note detail";
+          const message = error instanceof Error ? error.message : "加载笔记详情失败";
           setNoteError(message);
           setProposalError(message);
           setSelectedNote(null);
@@ -387,36 +563,37 @@ export default function App() {
 
   function handleCaptureSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    startCaptureTransition(() => {
-      void (async () => {
-        setCaptureError(null);
-        try {
-          const result = await createCapture({
-            userId: activeUserId,
-            sourceType: captureInputType,
-            rawText: captureInputType === "TEXT" ? captureText : undefined,
-            sourceUrl: captureInputType === "URL" ? captureSourceUri : undefined
-          });
-          setCaptureResult(result);
-          setCaptureText("");
-          setCaptureSourceUri("");
-          await refreshNotes(result.note_id ?? undefined);
-          startWorkspaceTransition(() => {
-            void (async () => {
-              try {
-                const workspaceSnapshot = await fetchWorkspaceSnapshot(activeUserId);
-                applyWorkspaceSnapshot(workspaceSnapshot);
-                setWorkspaceError(null);
-              } catch (error) {
-                setWorkspaceError(error instanceof Error ? error.message : "Failed to refresh workspace");
-              }
-            })();
-          });
-        } catch (error) {
-          setCaptureError(error instanceof Error ? error.message : "Failed to submit capture");
-        }
-      })();
-    });
+    void (async () => {
+      setIsSubmittingCapture(true);
+      setCaptureError(null);
+      try {
+        const result = await createCapture({
+          userId: activeUserId,
+          sourceType: captureInputType,
+          rawText: captureInputType === "TEXT" ? captureText : undefined,
+          sourceUrl: captureInputType === "URL" ? captureSourceUri : undefined
+        });
+        setCaptureResult(result);
+        setCaptureText("");
+        setCaptureSourceUri("");
+        await refreshNotes(result.note_id ?? undefined);
+        startWorkspaceTransition(() => {
+          void (async () => {
+            try {
+              const workspaceSnapshot = await fetchWorkspaceSnapshot(activeUserId);
+              applyWorkspaceSnapshot(workspaceSnapshot);
+              setWorkspaceError(null);
+            } catch (error) {
+              setWorkspaceError(error instanceof Error ? error.message : "刷新工作台失败");
+            }
+          })();
+        });
+      } catch (error) {
+        setCaptureError(error instanceof Error ? error.message : "提交采集失败");
+      } finally {
+        setIsSubmittingCapture(false);
+      }
+    })();
   }
 
   function handleProposalCreate() {
@@ -431,7 +608,7 @@ export default function App() {
           const proposalItems = await listChangeProposals(selectedNoteId, activeUserId);
           setProposals(proposalItems);
         } catch (error) {
-          setProposalError(error instanceof Error ? error.message : "Failed to create proposal");
+          setProposalError(error instanceof Error ? error.message : "生成更新建议失败");
         }
       })();
     });
@@ -448,7 +625,7 @@ export default function App() {
           await applyChangeProposal(selectedNoteId, proposalId, activeUserId);
           await refreshNotes(selectedNoteId);
         } catch (error) {
-          setProposalError(error instanceof Error ? error.message : "Failed to apply proposal");
+          setProposalError(error instanceof Error ? error.message : "应用更新建议失败");
         }
       })();
     });
@@ -462,7 +639,7 @@ export default function App() {
           await rollbackChangeProposal(proposalId, activeUserId);
           await refreshNotes(selectedNoteId ?? undefined);
         } catch (error) {
-          setProposalError(error instanceof Error ? error.message : "Failed to rollback proposal");
+          setProposalError(error instanceof Error ? error.message : "回滚更新建议失败");
         }
       })();
     });
@@ -476,7 +653,7 @@ export default function App() {
           const workspaceSnapshot = await fetchWorkspaceSnapshot(activeUserId);
           applyWorkspaceSnapshot(workspaceSnapshot);
         } catch (error) {
-          setWorkspaceError(error instanceof Error ? error.message : "Failed to refresh workspace");
+          setWorkspaceError(error instanceof Error ? error.message : "刷新工作台失败");
         }
       })();
     });
@@ -489,77 +666,87 @@ export default function App() {
       return;
     }
     setHasSearched(true);
-    startSearchTransition(() => {
-      void (async () => {
-        setSearchError(null);
-        setSearchActionMessage(null);
-        try {
-          const result = await searchNotes(activeUserId, query);
-          setSearchResult(result);
-        } catch (error) {
-          setSearchResult(null);
-          setSearchError(error instanceof Error ? error.message : "Failed to search notes");
-        }
-      })();
-    });
+    void (async () => {
+      setIsSearching(true);
+      setSearchError(null);
+      setSearchActionMessage(null);
+      try {
+        const result = await searchNotes(activeUserId, query);
+        setSearchResult(result);
+      } catch (error) {
+        setSearchResult(null);
+        setSearchError(error instanceof Error ? error.message : "执行搜索失败");
+      } finally {
+        setIsSearching(false);
+      }
+    })();
   }
 
   function handleSearchEvidenceSave(item: SearchResult["external_supplements"][number]) {
     if (!selectedNoteId || !searchResult) {
+      setSearchActionMessage("请先打开一个目标笔记，再保存证据或生成更新建议。");
       return;
     }
-    startSearchActionTransition(() => {
-      void (async () => {
-        setSearchError(null);
-        setSearchActionMessage(null);
-        try {
-          const result: SearchEvidenceResult = await saveSearchEvidence(selectedNoteId, {
-            userId: activeUserId,
-            query: searchResult.query,
-            sourceName: item.source_name,
-            sourceUri: item.source_uri,
-            summary: item.summary,
-            keywords: item.keywords,
-            relationLabel: item.relation_label,
-            relationTags: item.relation_tags,
-            summarySnippet: item.summary_snippet
-          });
-          await refreshNotes(selectedNoteId);
-          setSearchActionMessage(`已写入 EVIDENCE：${result.content_id}`);
-        } catch (error) {
-          setSearchError(error instanceof Error ? error.message : "Failed to save search evidence");
-        }
-      })();
-    });
+    void (async () => {
+      setIsMutatingSearchAction(true);
+      setSearchError(null);
+      setSearchActionMessage(null);
+      try {
+        const result: SearchEvidenceResult = await saveSearchEvidence(selectedNoteId, {
+          userId: activeUserId,
+          query: searchResult.query,
+          sourceName: item.source_name,
+          sourceUri: item.source_uri,
+          summary: item.summary,
+          keywords: item.keywords,
+          relationLabel: item.relation_label,
+          relationTags: item.relation_tags,
+          summarySnippet: item.summary_snippet
+        });
+        await refreshNotes(selectedNoteId);
+        setSearchActionMessage(`已写入 EVIDENCE：${result.content_id}`);
+      } catch (error) {
+        setSearchError(error instanceof Error ? error.message : "保存搜索证据失败");
+      } finally {
+        setIsMutatingSearchAction(false);
+      }
+    })();
   }
 
   function handleSearchProposalCreate(item: SearchResult["external_supplements"][number]) {
     if (!selectedNoteId || !searchResult) {
+      setSearchActionMessage("请先打开一个目标笔记，再保存证据或生成更新建议。");
       return;
     }
-    startSearchActionTransition(() => {
-      void (async () => {
-        setSearchError(null);
-        setSearchActionMessage(null);
-        try {
-          await createSearchChangeProposal(selectedNoteId, {
-            userId: activeUserId,
-            query: searchResult.query,
-            sourceName: item.source_name,
-            sourceUri: item.source_uri,
-            summary: item.summary,
-            keywords: item.keywords,
-            relationLabel: item.relation_label,
-            relationTags: item.relation_tags,
-            summarySnippet: item.summary_snippet
-          });
-          await refreshNotes(selectedNoteId);
-          setSearchActionMessage("已生成 Search proposal。");
-        } catch (error) {
-          setSearchError(error instanceof Error ? error.message : "Failed to generate search proposal");
-        }
-      })();
-    });
+    // 只有 AI 成功增强过的 external supplement 才允许进入 proposal 治理链路。
+    if (!item.is_ai_enhanced) {
+      setSearchActionMessage("规则回退的外部补充仅允许保存为证据，不允许直接生成更新建议。");
+      return;
+    }
+    void (async () => {
+      setIsMutatingSearchAction(true);
+      setSearchError(null);
+      setSearchActionMessage(null);
+      try {
+        await createSearchChangeProposal(selectedNoteId, {
+          userId: activeUserId,
+          query: searchResult.query,
+          sourceName: item.source_name,
+          sourceUri: item.source_uri,
+          summary: item.summary,
+          keywords: item.keywords,
+          relationLabel: item.relation_label,
+          relationTags: item.relation_tags,
+          summarySnippet: item.summary_snippet
+        });
+        await refreshNotes(selectedNoteId);
+        setSearchActionMessage("已生成搜索更新建议。");
+      } catch (error) {
+        setSearchError(error instanceof Error ? error.message : "生成搜索更新建议失败");
+      } finally {
+        setIsMutatingSearchAction(false);
+      }
+    })();
   }
 
   function handleReviewFormToggle(review: ReviewTodayItem) {
@@ -638,7 +825,7 @@ export default function App() {
           setWorkspaceError(null);
           closeReviewForm();
         } catch (error) {
-          setReviewFormError(error instanceof Error ? error.message : "Failed to complete review");
+          setReviewFormError(error instanceof Error ? error.message : "提交复习结果失败");
         }
       })();
     });
@@ -648,15 +835,15 @@ export default function App() {
     <main className="app-shell">
       <section className="hero-panel">
         <div>
-          <p className="eyebrow">Phase 3 前置补丁 / Capture AI</p>
-          <h1>Capture 已接上最小真实 AI 主链路。</h1>
+          <p className="eyebrow">Phase 3 前置补丁 / AI 采集</p>
+          <h1>采集链路已接上最小真实 AI 主链路。</h1>
           <p className="hero-copy">
-            当前单页保留既有 Note、Proposal、Search、Review、Workspace 页面，并把 Capture 升级为
-            TEXT / URL 提取、结构化 AI 分析与默认新建 Note 的最小可演示闭环。
+            当前单页保留既有笔记、更新建议、搜索、复习、工作台页面，并把采集升级为
+            TEXT / URL 提取、结构化 AI 分析与默认新建笔记的最小可演示闭环。
           </p>
         </div>
         <form className="user-form" onSubmit={handleUserIdApply}>
-          <label htmlFor="user-id">Active user_id</label>
+          <label htmlFor="user-id">当前 user_id</label>
           <input
             id="user-id"
             value={userIdInput}
@@ -667,26 +854,26 @@ export default function App() {
         </form>
       </section>
 
-      <section className="workspace-overview" aria-label="Workspace overview">
+      <section className="workspace-overview" aria-label="工作台概览">
         <article className="overview-card">
-          <span className="overview-label">Notes</span>
+          <span className="overview-label">笔记</span>
           <strong>{notes.length}</strong>
           <p>当前解释层可浏览条目</p>
         </article>
         <article className="overview-card">
-          <span className="overview-label">Today Reviews</span>
+          <span className="overview-label">今日复习</span>
           <strong>{reviewsToday.length}</strong>
           <p>今日复习项</p>
         </article>
         <article className="overview-card">
-          <span className="overview-label">Today Tasks</span>
+          <span className="overview-label">今日任务</span>
           <strong>{tasksToday.length}</strong>
           <p>待办与跟进任务</p>
         </article>
         <article className="overview-card overview-card-wide">
-          <span className="overview-label">Upcoming Queue</span>
+          <span className="overview-label">后续队列</span>
           <strong>{upcomingItemCount}</strong>
-          <p>未来待处理的 Review 与 Task</p>
+          <p>未来待处理的复习与任务</p>
         </article>
       </section>
 
@@ -695,12 +882,12 @@ export default function App() {
           <article className="panel">
               <div className="panel-heading">
                 <div>
-                  <p className="panel-kicker">Capture</p>
+                  <p className="panel-kicker">采集</p>
                   <h2>提交一条新输入并触发 AI 分析</h2>
                 </div>
               </div>
             <form className="capture-form" onSubmit={handleCaptureSubmit}>
-              <div className="segmented-control" role="tablist" aria-label="Capture input type">
+              <div className="segmented-control" role="tablist" aria-label="采集输入类型">
                 <button
                   type="button"
                   className={captureInputType === "TEXT" ? "active" : ""}
@@ -734,34 +921,43 @@ export default function App() {
               <div className="form-actions">
                 <button
                   type="submit"
+                  className={isSubmittingCapture ? "is-loading" : ""}
                   disabled={
                     isSubmittingCapture ||
                     (captureInputType === "TEXT" ? !captureText.trim() : !captureSourceUri.trim())
                   }
                 >
-                  {isSubmittingCapture ? "提交中..." : "提交 Capture"}
+                  {isSubmittingCapture ? (
+                    <>
+                      <span className="button-spinner" aria-hidden="true" />
+                      AI 分析中...
+                    </>
+                  ) : (
+                    "提交采集"
+                  )}
                 </button>
-                <span className="meta-chip">user_id: {activeUserId}</span>
+                <span className="meta-chip">当前 user_id: {activeUserId}</span>
               </div>
             </form>
+            {isSubmittingCapture ? <p className="status-message">正在调用 AI 分析并写入 Note，请稍候。</p> : null}
             {captureError ? <p className="status-message error">{captureError}</p> : null}
             {captureResult ? (
               <div className="status-card">
                 <div className="status-card-header">
-                  <strong>最近提交：{captureResult.status}</strong>
+                  <strong>最近提交：{getCaptureStatusLabel(captureResult.status)}</strong>
                   {captureResult.note_id ? (
                     <button
                       type="button"
                       className="ghost-button"
                       onClick={() => setSelectedNoteId(captureResult.note_id)}
                     >
-                      查看新 Note
+                      查看新笔记
                     </button>
                   ) : null}
                 </div>
                 <p>capture_job_id: {captureResult.capture_job_id}</p>
-                <p>note_id: {captureResult.note_id ?? "N/A"}</p>
-                <p>failure_reason: {captureResult.failure_reason ?? "N/A"}</p>
+                <p>note_id: {captureResult.note_id ?? "暂无"}</p>
+                <p>failure_reason: {getCaptureFailureReasonLabel(captureResult.failure_reason)}</p>
                 {captureResult.analysis_preview ? (
                   <>
                     <p>title_candidate: {captureResult.analysis_preview.title_candidate}</p>
@@ -775,37 +971,45 @@ export default function App() {
           <article className="panel">
             <div className="panel-heading">
               <div>
-                <p className="panel-kicker">Search</p>
+                <p className="panel-kicker">搜索</p>
                 <h2>三分栏结果</h2>
               </div>
               <span className="meta-chip">API: /api/v1/search</span>
             </div>
             <form className="search-form" onSubmit={handleSearchSubmit}>
               <input
-                placeholder="输入 query，例如 kickoff alpha"
+                placeholder="输入查询词，例如 测试"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 spellCheck={false}
               />
               <div className="form-actions">
-                <button type="submit" disabled={isSearching || !searchQuery.trim()}>
-                  {isSearching ? "查询中..." : "执行 Search"}
+                <button type="submit" className={isSearching ? "is-loading" : ""} disabled={isSearching || !searchQuery.trim()}>
+                  {isSearching ? (
+                    <>
+                      <span className="button-spinner" aria-hidden="true" />
+                      AI 检索中...
+                    </>
+                  ) : (
+                    "执行搜索"
+                  )}
                 </button>
-                {searchResult ? <span className="meta-chip">query: {searchResult.query}</span> : null}
+                {searchResult ? <span className="meta-chip">查询词：{searchResult.query}</span> : null}
               </div>
             </form>
             {searchError ? <p className="status-message error">{searchError}</p> : null}
+            {isSearching ? <p className="status-message">正在执行检索并等待 AI 增强，请稍候。</p> : null}
             {!hasSearched ? (
-              <p className="status-message">输入 query 后执行 Search，结果会按 exact / related / external 三分栏展示。</p>
+              <p className="status-message">输入查询词后执行搜索，结果会按精确匹配 / 相关结果 / 外部补充分栏展示。</p>
             ) : (
               <div className="search-grid">
                 <section className="subpanel search-panel-exact">
                   <div className="subpanel-heading">
-                    <h3>Exact Matches</h3>
+                    <h3>精确匹配</h3>
                     <span className="meta-chip">{exactMatches.length}</span>
                   </div>
-                  <p className="subpanel-description">命中当前 Note 解释层或最新内容的直接匹配。</p>
-                  {exactMatches.length === 0 ? <p className="status-message">本次查询没有 exact match。</p> : null}
+                  <p className="subpanel-description">命中当前笔记解释层或最新内容的直接匹配。</p>
+                  {exactMatches.length === 0 ? <p className="status-message">本次查询没有精确匹配结果。</p> : null}
                   {exactMatches.map((match) => (
                     <div key={match.note_id} className="list-row">
                       <div className="list-row-content">
@@ -826,7 +1030,7 @@ export default function App() {
                         </div>
                         <div className="form-actions">
                           <button type="button" className="ghost-button" onClick={() => setSelectedNoteId(match.note_id)}>
-                            打开 Note
+                            打开笔记
                           </button>
                         </div>
                       </div>
@@ -836,11 +1040,16 @@ export default function App() {
 
                 <section className="subpanel search-panel-related">
                   <div className="subpanel-heading">
-                    <h3>Related Matches</h3>
+                    <h3>相关结果</h3>
                     <span className="meta-chip">{relatedMatches.length}</span>
                   </div>
-                  <p className="subpanel-description">展示与 query 存在 token 关联的内部 Note。</p>
-                  {relatedMatches.length === 0 ? <p className="status-message">本次查询没有 related match。</p> : null}
+                  <p className="subpanel-description">
+                    展示与查询词存在内部关联的笔记。标签 `AI 增强` 表示 `is_ai_enhanced=true`，`规则回退` 表示 `false`。
+                  </p>
+                  {searchAiEnhancementStatus === "DEGRADED" ? (
+                    <p className="status-message">本次搜索 AI 增强已降级，相关结果说明可能来自规则回退。</p>
+                  ) : null}
+                  {relatedMatches.length === 0 ? <p className="status-message">本次查询没有相关结果。</p> : null}
                   {relatedMatches.map((match) => (
                     <div key={match.note_id} className="list-row">
                       <div className="list-row-content">
@@ -858,11 +1067,14 @@ export default function App() {
                         <p className="search-result-detail">{match.latest_content}</p>
                         <div className="row-meta row-meta-inline">
                           <span className="tone-blue">{match.relation_reason}</span>
+                          <span className={match.is_ai_enhanced ? "tone-cyan" : "tone-slate"}>
+                            {getAiEnhancementLabel(match.is_ai_enhanced)}
+                          </span>
                           <span className="tone-slate">{formatDateTime(match.updated_at)}</span>
                         </div>
                         <div className="form-actions">
                           <button type="button" className="ghost-button" onClick={() => setSelectedNoteId(match.note_id)}>
-                            打开 Note
+                            打开笔记
                           </button>
                         </div>
                       </div>
@@ -872,19 +1084,27 @@ export default function App() {
 
                 <section className="subpanel search-panel-external">
                   <div className="subpanel-heading">
-                    <h3>External Supplements</h3>
+                    <h3>外部补充</h3>
                     <span className="meta-chip">{externalSupplements.length}</span>
                   </div>
                   <p className="subpanel-description">
-                    外部补充只可保存为 `EVIDENCE` 或生成 `ChangeProposal`，不会直接覆盖当前 Note 解释层。
+                    外部补充只可保存为 `EVIDENCE` 或生成 `ChangeProposal`，不会直接覆盖当前笔记解释层。
                   </p>
+                  <p className="section-hint">标签 `AI 增强` 表示 `is_ai_enhanced=true`，`规则回退` 表示 `false`。</p>
                   <div className="row-meta row-meta-inline">
                     <span className="meta-chip">
-                      target note: {selectedNote ? selectedNote.title : selectedNoteId ?? "未选择"}
+                      目标笔记：{selectedNote ? selectedNote.title : selectedNoteId ?? "未选择"}
                     </span>
+                    <span className="meta-chip">AI 状态：{getSearchAiStatusLabel(searchAiEnhancementStatus)}</span>
                   </div>
-                  {externalSupplements.length === 0 ? <p className="status-message">本次查询没有 external supplement。</p> : null}
+                  {externalSupplements.length === 0 ? <p className="status-message">本次查询没有外部补充。</p> : null}
                   {searchActionMessage ? <p className="status-message">{searchActionMessage}</p> : null}
+                  {!selectedNoteId && externalSupplements.length > 0 ? (
+                    <p className="status-message">请先从左侧笔记列表、精确匹配或相关结果中打开一个目标笔记，再保存证据或生成更新建议。</p>
+                  ) : null}
+                  {searchAiEnhancementStatus === "DEGRADED" ? (
+                    <p className="status-message">当前外部补充可能是规则回退结果，不代表 AI 增强链路已成功。</p>
+                  ) : null}
                   {externalSupplements.map((item) => (
                     <div key={`${item.source_uri}-${item.summary}`} className="list-row">
                       <div className="list-row-content">
@@ -903,28 +1123,50 @@ export default function App() {
                         ) : null}
                         <div className="row-meta row-meta-inline">
                           <span className="tone-blue">{item.relation_label}</span>
+                          <span className={item.is_ai_enhanced ? "tone-cyan" : "tone-slate"}>
+                            {getAiEnhancementLabel(item.is_ai_enhanced)}
+                          </span>
                           {item.relation_tags.map((tag) => (
                             <span key={`${item.source_uri}-${tag}`} className="tone-cyan">
                               {tag}
                             </span>
                           ))}
                         </div>
+                        {!item.is_ai_enhanced ? (
+                          <p className="status-message">
+                            当前条目为规则回退结果：允许保存为证据，但不允许直接生成更新建议。
+                          </p>
+                        ) : null}
                         <div className="form-actions">
                           <button
                             type="button"
-                            className="ghost-button"
+                            className={`ghost-button ${isMutatingSearchAction ? "is-loading" : ""}`}
                             disabled={!selectedNoteId || isMutatingSearchAction}
                             onClick={() => handleSearchEvidenceSave(item)}
                           >
-                            {isMutatingSearchAction ? "处理中..." : "保存证据"}
+                            {isMutatingSearchAction ? (
+                              <>
+                                <span className="button-spinner" aria-hidden="true" />
+                                处理中...
+                              </>
+                            ) : (
+                              "保存为证据"
+                            )}
                           </button>
                           <button
                             type="button"
-                            className="ghost-button"
-                            disabled={!selectedNoteId || isMutatingSearchAction}
+                            className={`ghost-button ${isMutatingSearchAction ? "is-loading" : ""}`}
+                            disabled={!selectedNoteId || isMutatingSearchAction || !item.is_ai_enhanced}
                             onClick={() => handleSearchProposalCreate(item)}
                           >
-                            {isMutatingSearchAction ? "处理中..." : "生成更新建议"}
+                            {isMutatingSearchAction ? (
+                              <>
+                                <span className="button-spinner" aria-hidden="true" />
+                                处理中...
+                              </>
+                            ) : (
+                              "生成更新建议"
+                            )}
                           </button>
                         </div>
                       </div>
@@ -938,16 +1180,16 @@ export default function App() {
           <article className="panel">
             <div className="panel-heading">
               <div>
-                <p className="panel-kicker">Notes</p>
+                <p className="panel-kicker">笔记</p>
                 <h2>当前解释层列表</h2>
               </div>
-              <span className="meta-chip">{notes.length} items</span>
+              <span className="meta-chip">{notes.length} 条</span>
             </div>
-            <p className="section-hint">点击 Note 查看详情，再次点击当前项或右侧关闭按钮可收起详情面板。</p>
-            {isBootstrapping ? <p className="status-message">正在加载 Note 列表...</p> : null}
+            <p className="section-hint">点击笔记查看详情，再次点击当前项或右侧关闭按钮可收起详情面板。</p>
+            {isBootstrapping ? <p className="status-message">正在加载笔记列表...</p> : null}
             {notesError ? <p className="status-message error">{notesError}</p> : null}
             {!isBootstrapping && !notesError && notes.length === 0 ? (
-              <p className="status-message">当前 `user_id` 还没有 Note。先提交一条 TEXT capture。</p>
+              <p className="status-message">当前 `user_id` 还没有笔记。先提交一条 TEXT 采集。</p>
             ) : null}
             <div className="note-list">
               {notes.map((note) => (
@@ -959,7 +1201,7 @@ export default function App() {
                 >
                   <span className="note-card-row">
                     <span className="note-card-title">{note.title}</span>
-                    <span className="note-card-pill">{selectedNoteId === note.id ? "OPEN" : "VIEW"}</span>
+                    <span className="note-card-pill">{selectedNoteId === note.id ? "已打开" : "查看"}</span>
                   </span>
                   <span className="note-card-summary">{note.current_summary}</span>
                   {note.current_key_points.length > 0 ? (
@@ -971,7 +1213,7 @@ export default function App() {
                       ))}
                     </span>
                   ) : null}
-                  <span className="note-card-meta">updated {formatDateTime(note.updated_at)}</span>
+                  <span className="note-card-meta">更新于 {formatDateTime(note.updated_at)}</span>
                 </button>
               ))}
             </div>
@@ -980,8 +1222,8 @@ export default function App() {
           <article className="panel">
             <div className="panel-heading">
               <div>
-                <p className="panel-kicker">Workspace</p>
-                <h2>Today + Upcoming</h2>
+                <p className="panel-kicker">工作台</p>
+                <h2>今日 + 后续</h2>
               </div>
               <button
                 type="button"
@@ -997,16 +1239,16 @@ export default function App() {
               <section className="workspace-cluster">
                 <div className="workspace-cluster-header">
                   <div>
-                    <p className="panel-kicker">Today</p>
+                    <p className="panel-kicker">今日</p>
                     <h3>当前工作台</h3>
                   </div>
-                  <span className="meta-chip">{reviewsToday.length + tasksToday.length} items</span>
+                  <span className="meta-chip">{reviewsToday.length + tasksToday.length} 项</span>
                 </div>
-                <p className="section-hint">由 `GET /api/v1/workspace/today` 聚合返回，并保持 Review / Task 分区。</p>
+                <p className="section-hint">由 `GET /api/v1/workspace/today` 聚合返回，并保持复习 / 任务分区。</p>
                 <div className="today-grid">
                   <section className="subpanel review-panel">
                     <div className="subpanel-heading">
-                      <h3>Reviews</h3>
+                      <h3>复习</h3>
                       <span className="meta-chip">{reviewsToday.length}</span>
                     </div>
                     <p className="subpanel-description">聚焦当前理解不稳或需要回忆强化的 Note。</p>
@@ -1017,9 +1259,9 @@ export default function App() {
                           <strong>{review.title}</strong>
                           <p>{review.current_summary}</p>
                           <div className="row-meta row-meta-inline">
-                            <span className={getReviewMetaTone(review.queue_type)}>{review.queue_type}</span>
-                            <span className={getReviewMetaTone(review.completion_status)}>{review.completion_status}</span>
-                            <span className="tone-slate">{review.unfinished_count} unfinished</span>
+                            <span className={getReviewMetaTone(review.queue_type)}>{getReviewQueueLabel(review.queue_type)}</span>
+                            <span className={getReviewMetaTone(review.completion_status)}>{getReviewCompletionStatusLabel(review.completion_status)}</span>
+                            <span className="tone-slate">未完成 {review.unfinished_count}</span>
                             <span className="tone-slate">{getReviewTimingLabel(review)}</span>
                           </div>
                           <div className="form-actions">
@@ -1042,7 +1284,7 @@ export default function App() {
                                 >
                                   {REVIEW_COMPLETION_STATUS_OPTIONS.map((status) => (
                                     <option key={status} value={status}>
-                                      {status}
+                                      {getReviewCompletionStatusLabel(status)}
                                     </option>
                                   ))}
                                 </select>
@@ -1057,7 +1299,7 @@ export default function App() {
                                     <option value="">选择 completion_reason</option>
                                     {REVIEW_COMPLETION_REASON_OPTIONS.map((reason) => (
                                       <option key={reason} value={reason}>
-                                        {reason}
+                                        {getReviewCompletionReasonLabel(reason)}
                                       </option>
                                     ))}
                                   </select>
@@ -1073,7 +1315,7 @@ export default function App() {
                                     >
                                       {REVIEW_SELF_RECALL_RESULT_OPTIONS.map((result) => (
                                         <option key={result} value={result}>
-                                          {result}
+                                          {getSelfRecallResultLabel(result)}
                                         </option>
                                       ))}
                                     </select>
@@ -1082,7 +1324,7 @@ export default function App() {
                                     <span className="detail-label">note</span>
                                     <textarea
                                       className="compact-textarea"
-                                      placeholder="可选补充：本次 recall 的简短备注"
+                                      placeholder="可选补充：本次回忆的简短备注"
                                       value={reviewFormDraft.note}
                                       onChange={(event) => handleReviewDraftChange("note", event.target.value)}
                                     />
@@ -1112,7 +1354,7 @@ export default function App() {
                   </section>
                   <section className="subpanel task-panel">
                     <div className="subpanel-heading">
-                      <h3>Tasks</h3>
+                      <h3>任务</h3>
                       <span className="meta-chip">{tasksToday.length}</span>
                     </div>
                     <p className="subpanel-description">展示用户任务与系统派生的跟进动作。</p>
@@ -1123,8 +1365,8 @@ export default function App() {
                           <strong>{task.title}</strong>
                           <p>{task.description || task.task_type}</p>
                           <div className="row-meta row-meta-inline">
-                            <span className={getTaskMetaTone(task.task_source)}>{task.task_source}</span>
-                            <span className={getTaskMetaTone(task.status)}>{task.status}</span>
+                            <span className={getTaskMetaTone(task.task_source)}>{getTaskSourceLabel(task.task_source)}</span>
+                            <span className={getTaskMetaTone(task.status)}>{getTaskStatusLabel(task.status)}</span>
                             <span className="tone-slate">P{task.priority}</span>
                             <span className="tone-slate">{getTaskTimingLabel(task)}</span>
                           </div>
@@ -1138,23 +1380,23 @@ export default function App() {
               <section className="workspace-cluster">
                 <div className="workspace-cluster-header">
                   <div>
-                    <p className="panel-kicker">Upcoming</p>
+                    <p className="panel-kicker">后续</p>
                     <h3>基础列表工作台</h3>
                   </div>
-                  <span className="meta-chip">{upcomingItemCount} items</span>
+                  <span className="meta-chip">{upcomingItemCount} 项</span>
                 </div>
                 <p className="section-hint">由 `GET /api/v1/workspace/upcoming` 聚合返回，按后端排序展示未来到期项。</p>
                 <div className="today-grid">
                   <section className="subpanel review-panel">
                     <div className="subpanel-heading">
-                      <h3>Upcoming Reviews</h3>
+                    <h3>后续复习</h3>
                       <div className="meta-chip-stack">
-                        <span className="meta-chip">{upcomingReviewGroups.length} notes</span>
-                        <span className="meta-chip">{upcomingReviews.length} queues</span>
+                        <span className="meta-chip">{upcomingReviewGroups.length} 个笔记</span>
+                        <span className="meta-chip">{upcomingReviews.length} 个队列</span>
                       </div>
                     </div>
-                    <p className="subpanel-description">同一 Note 的 recall / schedule 会按 `note_id` 分组展示，避免误判成重复条目。</p>
-                    {upcomingReviews.length === 0 ? <p className="status-message">当前没有 upcoming review。</p> : null}
+                  <p className="subpanel-description">同一 Note 的回忆补强 / 计划复习会按 `note_id` 分组展示，避免误判成重复条目。</p>
+                    {upcomingReviews.length === 0 ? <p className="status-message">当前没有后续复习项。</p> : null}
                     {upcomingReviewGroups.map((group) => (
                       <section key={group.noteId} className="review-group">
                         <div className="review-group-header">
@@ -1164,21 +1406,21 @@ export default function App() {
                             <p>{group.currentSummary}</p>
                           </div>
                           <button type="button" className="ghost-button compact-button" onClick={() => setSelectedNoteId(group.noteId)}>
-                            打开 Note
+                            打开笔记
                           </button>
                         </div>
                         <div className="review-group-list">
                           {group.reviews.map((review) => (
                             <div key={review.id} className="list-row review-group-item">
                               <div className="list-row-content">
-                                <strong>{review.queue_type} queue</strong>
+                                <strong>{getReviewQueueLabel(review.queue_type)}</strong>
                                 <p>{getUpcomingReviewQueueDescription(review)}</p>
                                 <div className="row-meta row-meta-inline">
-                                  <span className={getReviewMetaTone(review.queue_type)}>{review.queue_type}</span>
-                                  <span className={getReviewMetaTone(review.completion_status)}>{review.completion_status}</span>
-                                  <span className="tone-slate">{review.completion_reason ?? "未设 reason"}</span>
+                                  <span className={getReviewMetaTone(review.queue_type)}>{getReviewQueueLabel(review.queue_type)}</span>
+                                  <span className={getReviewMetaTone(review.completion_status)}>{getReviewCompletionStatusLabel(review.completion_status)}</span>
+                                  <span className="tone-slate">{review.completion_reason ? getReviewCompletionReasonLabel(review.completion_reason) : "未设置原因"}</span>
                                   <span className="tone-slate">{getReviewTimingLabel(review)}</span>
-                                  <span className="tone-slate">unfinished {review.unfinished_count}</span>
+                                  <span className="tone-slate">未完成 {review.unfinished_count}</span>
                                 </div>
                               </div>
                             </div>
@@ -1189,19 +1431,19 @@ export default function App() {
                   </section>
                   <section className="subpanel task-panel">
                     <div className="subpanel-heading">
-                      <h3>Upcoming Tasks</h3>
+                      <h3>后续任务</h3>
                       <span className="meta-chip">{upcomingTasks.length}</span>
                     </div>
                     <p className="subpanel-description">展示带 `due_at` 的后续动作，保留 `task_source` 区分。</p>
-                    {upcomingTasks.length === 0 ? <p className="status-message">当前没有 upcoming task。</p> : null}
+                    {upcomingTasks.length === 0 ? <p className="status-message">当前没有后续任务。</p> : null}
                     {upcomingTasks.map((task) => (
                       <div key={task.id} className="list-row">
                         <div className="list-row-content">
                           <strong>{task.title}</strong>
                           <p>{task.description || task.task_type}</p>
                           <div className="row-meta row-meta-inline">
-                            <span className={getTaskMetaTone(task.task_source)}>{task.task_source}</span>
-                            <span className={getTaskMetaTone(task.status)}>{task.status}</span>
+                            <span className={getTaskMetaTone(task.task_source)}>{getTaskSourceLabel(task.task_source)}</span>
+                            <span className={getTaskMetaTone(task.status)}>{getTaskStatusLabel(task.status)}</span>
                             <span className="tone-slate">{task.related_entity_type}</span>
                             <span className="tone-slate">{getTaskTimingLabel(task)}</span>
                           </div>
@@ -1220,11 +1462,11 @@ export default function App() {
             <div className="detail-header-shell">
               <div className="panel-heading detail-panel-heading">
                 <div>
-                  <p className="panel-kicker">Note Detail</p>
-                  <h2>{selectedNote?.title ?? "正在加载详情"}</h2>
+                  <p className="panel-kicker">笔记详情</p>
+                  <h2>{selectedNote?.title ?? "正在加载笔记详情"}</h2>
                 </div>
                 <div className="detail-toolbar">
-                  {selectedNote ? <span className="meta-chip">{selectedNote.latest_content_type ?? "N/A"}</span> : null}
+                  {selectedNote ? <span className="meta-chip">{selectedNote.latest_content_type ?? "暂无"}</span> : null}
                   <button
                     type="button"
                     className="ghost-button"
@@ -1240,13 +1482,13 @@ export default function App() {
                   </button>
                 </div>
               </div>
-              {isRefreshingNote ? <p className="status-message">正在加载 Note 详情...</p> : null}
+              {isRefreshingNote ? <p className="status-message">正在加载笔记详情...</p> : null}
               {noteError ? <p className="status-message error">{noteError}</p> : null}
             </div>
             {selectedNote ? (
               <>
                 <section className="detail-section">
-                  <h3>Interpretation</h3>
+                  <h3>当前解释层</h3>
                   <p className="summary-block">{selectedNote.current_summary}</p>
                   <ul className="key-point-list">
                     {selectedNote.current_key_points.map((point) => (
@@ -1257,7 +1499,7 @@ export default function App() {
                 <section className="detail-section detail-meta-grid">
                   <div>
                     <span className="detail-label">source_uri</span>
-                    <p>{selectedNote.source_uri ?? "N/A"}</p>
+                    <p>{selectedNote.source_uri ?? "暂无"}</p>
                   </div>
                   <div>
                     <span className="detail-label">created_at</span>
@@ -1269,16 +1511,48 @@ export default function App() {
                   </div>
                 </section>
                 <section className="detail-section">
-                  <h3>Raw / Clean Content</h3>
+                  <h3>原始内容 / 清洗内容</h3>
                   <div className="content-grid">
-                    <pre>{selectedNote.raw_text ?? "N/A"}</pre>
-                    <pre>{selectedNote.clean_text ?? "N/A"}</pre>
+                    <pre>{selectedNote.raw_text ?? "暂无"}</pre>
+                    <pre>{selectedNote.clean_text ?? "暂无"}</pre>
                   </div>
                 </section>
                 <section className="detail-section">
                   <div className="panel-heading compact">
                     <div>
-                      <p className="panel-kicker">Proposal</p>
+                      <p className="panel-kicker">证据</p>
+                      <h3>证据记录</h3>
+                    </div>
+                    <span className="meta-chip">{selectedNote.evidence_blocks.length} 条</span>
+                  </div>
+                  <p className="section-hint">这里展示已保存的 `EVIDENCE` 块，便于确认“保存为证据”已经真正落库。</p>
+                  {selectedNote.evidence_blocks.length === 0 ? (
+                    <p className="status-message">当前还没有证据记录。</p>
+                  ) : (
+                    <div className="proposal-list">
+                      {selectedNote.evidence_blocks.map((evidence) => (
+                        <div key={evidence.id} className="list-row">
+                          <div className="list-row-content">
+                            <strong>{evidence.source_name ?? "外部补充来源"}</strong>
+                            <p>{evidence.summary_snippet ?? "暂无摘要"}</p>
+                            {evidence.source_uri ? (
+                              <p className="search-result-detail">{evidence.source_uri}</p>
+                            ) : null}
+                            <div className="row-meta row-meta-inline">
+                              <span className="tone-cyan">{evidence.content_type}</span>
+                              <span className="tone-blue">{evidence.relation_label ?? "未标注关联类型"}</span>
+                              <span className="tone-slate">{formatDateTime(evidence.created_at)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+                <section className="detail-section">
+                  <div className="panel-heading compact">
+                    <div>
+                      <p className="panel-kicker">建议</p>
                       <h3>基础展示位</h3>
                     </div>
                     <button
@@ -1287,12 +1561,12 @@ export default function App() {
                       onClick={handleProposalCreate}
                       disabled={isMutatingProposal}
                     >
-                      {isMutatingProposal ? "处理中..." : "生成 Proposal"}
+                      {isMutatingProposal ? "处理中..." : "生成建议"}
                     </button>
                   </div>
                   {proposalError ? <p className="status-message error">{proposalError}</p> : null}
                   {proposals.length === 0 ? (
-                    <p className="status-message">当前 Note 暂无 proposal。</p>
+                    <p className="status-message">当前笔记暂无更新建议。</p>
                   ) : (
                     <div className="proposal-list">
                       {proposals.map((proposal) => (
@@ -1302,21 +1576,21 @@ export default function App() {
                               <strong>{proposal.proposal_type}</strong>
                               <p>{proposal.diff_summary}</p>
                             </div>
-                            <span className={`status-pill ${getProposalStatusClass(proposal.status)}`}>{proposal.status}</span>
+                            <span className={`status-pill ${getProposalStatusClass(proposal.status)}`}>{getProposalStatusLabel(proposal.status)}</span>
                           </div>
                           <div className="proposal-meta">
-                            <span>{proposal.target_layer}</span>
-                            <span>{proposal.risk_level}</span>
+                            <span>{getProposalTargetLayerLabel(proposal.target_layer)}</span>
+                            <span>{getProposalRiskLabel(proposal.risk_level)}</span>
                             <span>{formatDateTime(proposal.updated_at)}</span>
                           </div>
                           <div className="proposal-summary-grid">
                             <div className="proposal-summary-card">
-                              <span className="detail-label">before summary</span>
-                              <p>{String(proposal.before_snapshot.current_summary ?? "N/A")}</p>
+                              <span className="detail-label">变更前摘要</span>
+                              <p>{String(proposal.before_snapshot.current_summary ?? "暂无")}</p>
                             </div>
                             <div className="proposal-summary-card">
-                              <span className="detail-label">after summary</span>
-                              <p>{String(proposal.after_snapshot.current_summary ?? "N/A")}</p>
+                              <span className="detail-label">变更后摘要</span>
+                              <p>{String(proposal.after_snapshot.current_summary ?? "暂无")}</p>
                             </div>
                           </div>
                           <div className="form-actions">
@@ -1326,7 +1600,7 @@ export default function App() {
                                 onClick={() => handleProposalApply(proposal.id)}
                                 disabled={isMutatingProposal}
                               >
-                                Apply
+                                应用
                               </button>
                             ) : null}
                             {proposal.status === "APPLIED" ? (
@@ -1336,20 +1610,20 @@ export default function App() {
                                 onClick={() => handleProposalRollback(proposal.id)}
                                 disabled={isMutatingProposal}
                               >
-                                Rollback
+                                回滚
                               </button>
                             ) : null}
-                            <span className="meta-chip">trace_id: {proposal.trace_id ?? "N/A"}</span>
+                            <span className="meta-chip">trace_id: {proposal.trace_id ?? "暂无"}</span>
                           </div>
                           <details className="proposal-details">
-                            <summary>查看 before / after snapshots</summary>
+                            <summary>查看变更前后快照</summary>
                             <div className="proposal-snapshots">
                               <div>
-                                <span className="detail-label">before</span>
+                                <span className="detail-label">变更前</span>
                                 <pre>{JSON.stringify(proposal.before_snapshot, null, 2)}</pre>
                               </div>
                               <div>
-                                <span className="detail-label">after</span>
+                                <span className="detail-label">变更后</span>
                                 <pre>{JSON.stringify(proposal.after_snapshot, null, 2)}</pre>
                               </div>
                             </div>

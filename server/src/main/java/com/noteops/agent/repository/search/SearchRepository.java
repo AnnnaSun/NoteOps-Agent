@@ -1,5 +1,6 @@
 package com.noteops.agent.repository.search;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -18,7 +19,9 @@ public interface SearchRepository {
         String sourceUri,
         String latestContentType,
         String latestContent,
-        Instant updatedAt
+        Instant updatedAt,
+        Instant nextReviewAt,
+        BigDecimal masteryScore
     ) {
     }
 }

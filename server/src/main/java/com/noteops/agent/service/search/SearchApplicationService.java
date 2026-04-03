@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -34,6 +35,8 @@ public class SearchApplicationService {
 
     private static final Logger log = LoggerFactory.getLogger(SearchApplicationService.class);
     private static final Pattern TOKEN_PATTERN = Pattern.compile("[\\p{L}\\p{N}]+");
+    private static final Pattern CJK_WHITESPACE_PATTERN = Pattern.compile("(?<=[\\p{IsHan}])\\s+(?=[\\p{IsHan}])");
+    private static final int MAX_AI_CANDIDATE_COUNT = 20;
     private static final SearchAiEnhancer NO_OP_SEARCH_AI_ENHANCER = request ->
         new SearchAiEnhancer.SearchAiEnhancementResult(Map.of(), Map.of());
 
@@ -130,16 +133,22 @@ public class SearchApplicationService {
             .thenComparing(match -> match.view().noteId()));
 
         List<ExternalSupplementSeed> externalSupplementSeeds = buildExternalSupplementSeeds(query);
+        // Search AI 候选集做预算保护：总候选数最多 20，其中 related 按“最近更新 + 快到遗忘点”混合选取。
+        SelectedRelatedCandidates selectedRelatedCandidates = selectRelatedCandidatesForEnhancement(
+            relatedMatches,
+            externalSupplementSeeds.size(),
+            Instant.now()
+        );
         EnhancementOutcome enhancementOutcome = enhanceSearchArtifacts(
             userId,
             traceId,
             searchRequestId,
             query,
-            relatedMatches,
+            selectedRelatedCandidates.matches(),
             externalSupplementSeeds
         );
         List<SearchRelatedMatchView> relatedViews = relatedMatches.stream()
-            .map(match -> match.view().withRelationReason(resolveRelationReason(match.view(), enhancementOutcome.result())))
+            .map(match -> enrichRelatedView(match.view(), enhancementOutcome.result()))
             .toList();
         List<ExternalSupplementView> externalSupplements = externalSupplementSeeds.stream()
             .map(seed -> toExternalSupplementView(seed, enhancementOutcome.result()))
@@ -157,6 +166,9 @@ public class SearchApplicationService {
             ),
             Map.of(
                 "ai_enhancement_status", enhancementOutcome.status(),
+                "selected_related_candidate_count", selectedRelatedCandidates.matches().size(),
+                "selected_related_by_recency_count", selectedRelatedCandidates.recencyCount(),
+                "selected_related_by_forgetting_count", selectedRelatedCandidates.forgettingCount(),
                 "exact_count", exactMatches.size(),
                 "related_count", relatedViews.size(),
                 "external_count", externalSupplements.size()
@@ -176,6 +188,7 @@ public class SearchApplicationService {
             ),
             Map.of(
                 "ai_enhancement_status", enhancementOutcome.status(),
+                "selected_related_candidate_count", selectedRelatedCandidates.matches().size(),
                 "external_count", externalSupplements.size(),
                 "source_names", externalSupplements.stream().map(ExternalSupplementView::sourceName).toList(),
                 "relation_labels", externalSupplements.stream().map(ExternalSupplementView::relationLabel).toList()
@@ -195,7 +208,8 @@ public class SearchApplicationService {
                 "exact_count", exactMatches.size(),
                 "related_count", relatedViews.size(),
                 "external_count", externalSupplements.size(),
-                "ai_enhancement_status", enhancementOutcome.status()
+                "ai_enhancement_status", enhancementOutcome.status(),
+                "selected_related_candidate_count", selectedRelatedCandidates.matches().size()
             )
         );
         userActionEventRepository.append(
@@ -210,6 +224,7 @@ public class SearchApplicationService {
                 "related_count", relatedViews.size(),
                 "external_count", externalSupplements.size(),
                 "ai_enhancement_status", enhancementOutcome.status(),
+                "selected_related_candidate_count", selectedRelatedCandidates.matches().size(),
                 "relation_labels", externalSupplements.stream().map(ExternalSupplementView::relationLabel).toList()
             )
         );
@@ -222,11 +237,14 @@ public class SearchApplicationService {
                 "exact_count", exactMatches.size(),
                 "related_count", relatedViews.size(),
                 "external_count", externalSupplements.size(),
-                "ai_enhancement_status", enhancementOutcome.status()
+                "ai_enhancement_status", enhancementOutcome.status(),
+                "selected_related_candidate_count", selectedRelatedCandidates.matches().size(),
+                "selected_related_by_recency_count", selectedRelatedCandidates.recencyCount(),
+                "selected_related_by_forgetting_count", selectedRelatedCandidates.forgettingCount()
             )
         );
         log.info(
-            "module=SearchApplicationService action=search_query_success path=/api/v1/search user_id={} search_request_id={} trace_id={} exact_count={} related_count={} external_count={} ai_enhancement_status={} duration_ms={}",
+            "module=SearchApplicationService action=search_query_success path=/api/v1/search user_id={} search_request_id={} trace_id={} exact_count={} related_count={} external_count={} ai_enhancement_status={} selected_related_candidate_count={} duration_ms={}",
             userId,
             searchRequestId,
             traceId,
@@ -234,6 +252,7 @@ public class SearchApplicationService {
             relatedViews.size(),
             externalSupplements.size(),
             enhancementOutcome.status(),
+            selectedRelatedCandidates.matches().size(),
             durationMs
         );
 
@@ -241,7 +260,8 @@ public class SearchApplicationService {
             query,
             exactMatches.stream().map(ScoredExactMatch::view).toList(),
             relatedViews,
-            externalSupplements
+            externalSupplements,
+            enhancementOutcome.status()
         );
     }
 
@@ -337,7 +357,8 @@ public class SearchApplicationService {
             candidate.currentKeyPoints(),
             candidate.latestContent(),
             relationReason,
-            candidate.updatedAt()
+            candidate.updatedAt(),
+            false
         );
     }
 
@@ -364,6 +385,60 @@ public class SearchApplicationService {
                 "延伸线索聚焦 " + query
             )
         );
+    }
+
+    // AI 相关候选做混合抽样：一部分保留最新上下文，一部分优先挑选接近遗忘节点的 Note。
+    private SelectedRelatedCandidates selectRelatedCandidatesForEnhancement(List<ScoredRelatedMatch> relatedMatches,
+                                                                           int externalCandidateCount,
+                                                                           Instant now) {
+        if (relatedMatches.isEmpty()) {
+            return new SelectedRelatedCandidates(List.of(), 0, 0);
+        }
+
+        int relatedBudget = Math.max(0, MAX_AI_CANDIDATE_COUNT - externalCandidateCount);
+        if (relatedBudget == 0) {
+            return new SelectedRelatedCandidates(List.of(), 0, 0);
+        }
+        if (relatedMatches.size() <= relatedBudget) {
+            return new SelectedRelatedCandidates(relatedMatches, relatedMatches.size(), 0);
+        }
+
+        int recencyQuota = Math.max(1, relatedBudget / 2);
+        int forgettingQuota = Math.max(0, relatedBudget - recencyQuota);
+        List<ScoredRelatedMatch> selected = new ArrayList<>(relatedBudget);
+        Set<UUID> selectedNoteIds = new LinkedHashSet<>();
+
+        int recencyCount = appendDistinct(
+            selected,
+            selectedNoteIds,
+            relatedMatches.stream()
+                .sorted(Comparator
+                    .comparing((ScoredRelatedMatch match) -> match.candidate().updatedAt(), Comparator.reverseOrder())
+                    .thenComparing(ScoredRelatedMatch::score, Comparator.reverseOrder())
+                    .thenComparing(match -> match.view().noteId()))
+                .limit(recencyQuota)
+                .toList(),
+            recencyQuota
+        );
+
+        int forgettingCount = appendDistinct(
+            selected,
+            selectedNoteIds,
+            relatedMatches.stream()
+                .filter(match -> !selectedNoteIds.contains(match.view().noteId()))
+                .sorted(forgettingPriorityComparator(now))
+                .limit(forgettingQuota)
+                .toList(),
+            forgettingQuota
+        );
+
+        appendDistinct(
+            selected,
+            selectedNoteIds,
+            relatedMatches,
+            relatedBudget - selected.size()
+        );
+        return new SelectedRelatedCandidates(selected, recencyCount, forgettingCount);
     }
 
     private EnhancementOutcome enhanceSearchArtifacts(UUID userId,
@@ -421,6 +496,7 @@ public class SearchApplicationService {
                     "external_candidate_count", externalSupplementSeeds.size()
                 ),
                 Map.of(
+                    "candidate_budget", MAX_AI_CANDIDATE_COUNT,
                     "related_enhanced_count", result.relatedByNoteId().size(),
                     "external_enhanced_count", result.externalBySourceUri().size()
                 ),
@@ -470,14 +546,22 @@ public class SearchApplicationService {
         }
     }
 
-    private String resolveRelationReason(SearchRelatedMatchView view, SearchAiEnhancer.SearchAiEnhancementResult result) {
+    private SearchRelatedMatchView enrichRelatedView(SearchRelatedMatchView view, SearchAiEnhancer.SearchAiEnhancementResult result) {
         SearchAiEnhancer.RelatedEnhancement enhancement = result.relatedByNoteId().get(view.noteId());
         String candidate = enhancement == null ? null : enhancement.relationReason();
-        return isMeaningfulRelationReason(candidate) ? candidate.trim() : view.relationReason();
+        if (isMeaningfulRelationReason(candidate)) {
+            return view.withAiEnhancement(candidate.trim());
+        }
+        return view;
     }
 
     private ExternalSupplementView toExternalSupplementView(ExternalSupplementSeed seed, SearchAiEnhancer.SearchAiEnhancementResult result) {
         SearchAiEnhancer.ExternalEnhancement enhancement = result.externalBySourceUri().get(seed.sourceUri());
+        boolean aiEnhanced = enhancement != null
+            && enhancement.relationLabel() != null
+            && !enhancement.relationLabel().isBlank()
+            && enhancement.summarySnippet() != null
+            && !enhancement.summarySnippet().isBlank();
         String relationLabel = sanitizeRelationLabel(enhancement == null ? null : enhancement.relationLabel(), seed.fallbackRelationLabel());
         List<String> keywords = sanitizeKeywords(enhancement == null ? List.of() : enhancement.keywords(), seed.keywords());
         String summarySnippet = sanitizeSummarySnippet(enhancement == null ? null : enhancement.summarySnippet(), seed.fallbackSummarySnippet());
@@ -488,8 +572,55 @@ public class SearchApplicationService {
             keywords,
             seed.relationTags(),
             relationLabel,
-            summarySnippet
+            summarySnippet,
+            aiEnhanced
         );
+    }
+
+    private Comparator<ScoredRelatedMatch> forgettingPriorityComparator(Instant now) {
+        return Comparator
+            .comparing((ScoredRelatedMatch match) -> hasReviewSchedule(match.candidate()) ? 0 : 1)
+            .thenComparing(match -> normalizeNextReviewAt(match.candidate()), Comparator.naturalOrder())
+            .thenComparing(match -> match.candidate().masteryScore(), Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(match -> overdueDuration(match.candidate(), now), Comparator.reverseOrder())
+            .thenComparing(ScoredRelatedMatch::score, Comparator.reverseOrder())
+            .thenComparing(match -> match.candidate().updatedAt(), Comparator.reverseOrder())
+            .thenComparing(match -> match.view().noteId());
+    }
+
+    private int appendDistinct(List<ScoredRelatedMatch> target,
+                               Set<UUID> selectedNoteIds,
+                               List<ScoredRelatedMatch> source,
+                               int limit) {
+        if (limit <= 0) {
+            return 0;
+        }
+        int appended = 0;
+        for (ScoredRelatedMatch match : source) {
+            if (appended >= limit) {
+                break;
+            }
+            if (selectedNoteIds.add(match.view().noteId())) {
+                target.add(match);
+                appended++;
+            }
+        }
+        return appended;
+    }
+
+    private boolean hasReviewSchedule(SearchRepository.SearchCandidate candidate) {
+        return candidate.nextReviewAt() != null;
+    }
+
+    private Instant normalizeNextReviewAt(SearchRepository.SearchCandidate candidate) {
+        return candidate.nextReviewAt() == null ? Instant.MAX : candidate.nextReviewAt();
+    }
+
+    private Duration overdueDuration(SearchRepository.SearchCandidate candidate, Instant now) {
+        if (candidate.nextReviewAt() == null || candidate.nextReviewAt().isAfter(now)) {
+            return Duration.ZERO;
+        }
+        return Duration.between(candidate.nextReviewAt(), now);
     }
 
     private String descriptiveRelationReason(FieldOverlap overlap) {
@@ -572,11 +703,13 @@ public class SearchApplicationService {
         if (rawValue == null || rawValue.isBlank()) {
             return "";
         }
-        return rawValue
+        String normalized = rawValue
             .toLowerCase(Locale.ROOT)
             .replaceAll("[^\\p{L}\\p{N}]+", " ")
             .replaceAll("\\s+", " ")
             .trim();
+        // 中文内容常出现逐字空格或换行，匹配前先把相邻汉字之间的人为空白收敛掉。
+        return CJK_WHITESPACE_PATTERN.matcher(normalized).replaceAll("");
     }
 
     private String requireQuery(UUID userId, String rawValue) {
@@ -630,6 +763,13 @@ public class SearchApplicationService {
     ) {
     }
 
+    private record SelectedRelatedCandidates(
+        List<ScoredRelatedMatch> matches,
+        int recencyCount,
+        int forgettingCount
+    ) {
+    }
+
     private enum MatchField {
         TITLE,
         SUMMARY,
@@ -642,7 +782,8 @@ public class SearchApplicationService {
         String query,
         List<SearchExactMatchView> exactMatches,
         List<SearchRelatedMatchView> relatedMatches,
-        List<ExternalSupplementView> externalSupplements
+        List<ExternalSupplementView> externalSupplements,
+        String aiEnhancementStatus
     ) {
     }
 
@@ -663,10 +804,11 @@ public class SearchApplicationService {
         List<String> currentKeyPoints,
         String latestContent,
         String relationReason,
-        Instant updatedAt
+        Instant updatedAt,
+        boolean aiEnhanced
     ) {
-        public SearchRelatedMatchView withRelationReason(String newRelationReason) {
-            return new SearchRelatedMatchView(noteId, title, currentSummary, currentKeyPoints, latestContent, newRelationReason, updatedAt);
+        public SearchRelatedMatchView withAiEnhancement(String newRelationReason) {
+            return new SearchRelatedMatchView(noteId, title, currentSummary, currentKeyPoints, latestContent, newRelationReason, updatedAt, true);
         }
     }
 
@@ -677,7 +819,8 @@ public class SearchApplicationService {
         List<String> keywords,
         List<String> relationTags,
         String relationLabel,
-        String summarySnippet
+        String summarySnippet,
+        boolean aiEnhanced
     ) {
     }
 

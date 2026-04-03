@@ -433,7 +433,8 @@ class TaskApplicationServiceTest {
                     null,
                     null,
                     NOW,
-                    NOW
+                    NOW,
+                    List.of()
                 ));
         }
 

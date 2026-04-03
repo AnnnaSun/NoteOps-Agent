@@ -22,8 +22,25 @@ public class NoteQueryService {
     public NoteDetailView get(String noteIdRaw, String userIdRaw) {
         UUID noteId = parseUuid(noteIdRaw, "INVALID_NOTE_ID", "note id must be a valid UUID");
         UUID userId = parseUuid(userIdRaw, "INVALID_USER_ID", "user_id must be a valid UUID");
-        return noteRepository.findByIdAndUserId(noteId, userId)
+        NoteDetailView note = noteRepository.findByIdAndUserId(noteId, userId)
             .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOTE_NOT_FOUND", "note not found"));
+        // 详情页补充 evidence blocks，让“保存为证据”在当前 Phase 3 至少具备可见性。
+        List<NoteEvidenceView> evidenceBlocks = noteRepository.findEvidenceByNoteIdAndUserId(noteId, userId);
+        return new NoteDetailView(
+            note.id(),
+            note.userId(),
+            note.title(),
+            note.currentSummary(),
+            note.currentKeyPoints(),
+            note.latestContentId(),
+            note.latestContentType(),
+            note.sourceUri(),
+            note.rawText(),
+            note.cleanText(),
+            note.createdAt(),
+            note.updatedAt(),
+            evidenceBlocks
+        );
     }
 
     // 查询用户的 Note 列表，供列表页和聚合页复用。
@@ -52,7 +69,19 @@ public class NoteQueryService {
         String rawText,
         String cleanText,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        List<NoteEvidenceView> evidenceBlocks
+    ) {
+    }
+
+    public record NoteEvidenceView(
+        UUID id,
+        String contentType,
+        String sourceUri,
+        String sourceName,
+        String relationLabel,
+        String summarySnippet,
+        Instant createdAt
     ) {
     }
 

@@ -54,6 +54,15 @@ export type NoteDetail = {
   clean_text: string | null;
   created_at: string;
   updated_at: string;
+  evidence_blocks: Array<{
+    id: string;
+    content_type: string;
+    source_uri: string | null;
+    source_name: string | null;
+    relation_label: string | null;
+    summary_snippet: string | null;
+    created_at: string;
+  }>;
 };
 
 export type ReviewTodayItem = {
@@ -115,6 +124,7 @@ export type SearchRelatedMatch = {
   latest_content: string;
   relation_reason: string;
   updated_at: string;
+  is_ai_enhanced: boolean;
 };
 
 export type SearchExternalSupplement = {
@@ -125,6 +135,7 @@ export type SearchExternalSupplement = {
   relation_label: string;
   relation_tags: string[];
   summary_snippet: string;
+  is_ai_enhanced: boolean;
 };
 
 export type SearchResult = {
@@ -132,6 +143,7 @@ export type SearchResult = {
   exact_matches: SearchExactMatch[];
   related_matches: SearchRelatedMatch[];
   external_supplements: SearchExternalSupplement[];
+  ai_enhancement_status: string;
 };
 
 export type ReviewCompletionPayload = {

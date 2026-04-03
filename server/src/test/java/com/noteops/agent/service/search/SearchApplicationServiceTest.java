@@ -7,6 +7,7 @@ import com.noteops.agent.repository.trace.AgentTraceRepository;
 import com.noteops.agent.repository.trace.ToolInvocationLogRepository;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -43,6 +44,7 @@ class SearchApplicationServiceTest {
         assertThat(result.relatedMatches()).extracting(SearchApplicationService.SearchRelatedMatchView::noteId)
             .containsExactly(relatedId);
         assertThat(result.relatedMatches().getFirst().relationReason()).startsWith("共享");
+        assertThat(result.relatedMatches().getFirst().aiEnhanced()).isFalse();
         assertThat(result.exactMatches()).extracting(SearchApplicationService.SearchExactMatchView::noteId)
             .doesNotContain(relatedId);
         assertThat(result.externalSupplements()).hasSize(2);
@@ -51,6 +53,8 @@ class SearchApplicationServiceTest {
         assertThat(result.externalSupplements().getFirst().relationTags()).containsExactly("BACKGROUND");
         assertThat(result.externalSupplements().getFirst().relationLabel()).isEqualTo("背景补充");
         assertThat(result.externalSupplements().getFirst().summarySnippet()).isNotBlank();
+        assertThat(result.externalSupplements().getFirst().aiEnhanced()).isFalse();
+        assertThat(result.aiEnhancementStatus()).isEqualTo("COMPLETED");
     }
 
     @Test
@@ -81,9 +85,12 @@ class SearchApplicationServiceTest {
         SearchApplicationService.SearchView result = service.search(userId.toString(), "kickoff alpha");
 
         assertThat(result.relatedMatches().getFirst().relationReason()).isEqualTo("共享工作流链路：kickoff review");
+        assertThat(result.relatedMatches().getFirst().aiEnhanced()).isTrue();
         assertThat(result.externalSupplements().getFirst().relationLabel()).isEqualTo("可能更新");
         assertThat(result.externalSupplements().getFirst().keywords()).containsExactly("kickoff", "alpha", "review");
         assertThat(result.externalSupplements().getFirst().summarySnippet()).isEqualTo("外部线索提示 kickoff 计划有新增进展");
+        assertThat(result.externalSupplements().getFirst().aiEnhanced()).isTrue();
+        assertThat(result.aiEnhancementStatus()).isEqualTo("COMPLETED");
     }
 
     @Test
@@ -112,7 +119,10 @@ class SearchApplicationServiceTest {
         SearchApplicationService.SearchView result = service.search(userId.toString(), "kickoff alpha");
 
         assertThat(result.relatedMatches().getFirst().relationReason()).startsWith("共享");
+        assertThat(result.relatedMatches().getFirst().aiEnhanced()).isFalse();
         assertThat(result.externalSupplements().getFirst().relationLabel()).isEqualTo("背景补充");
+        assertThat(result.externalSupplements().getFirst().aiEnhanced()).isFalse();
+        assertThat(result.aiEnhancementStatus()).isEqualTo("DEGRADED");
         assertThat(traceRepository.completed.orchestratorState()).containsEntry("ai_enhancement_status", "DEGRADED");
         assertThat(userActionEventRepository.events).extracting(UserActionEventRecord::eventType)
             .contains("SEARCH_AI_ENHANCEMENT_DEGRADED", "SEARCH_EXECUTED", "SEARCH_EXTERNAL_SUPPLEMENTS_GENERATED");
@@ -163,6 +173,76 @@ class SearchApplicationServiceTest {
         assertThat(toolInvocationLogRepository.logs).extracting(ToolInvocationLogRecord::toolName)
             .containsExactly("search.ai-enhancement", "search.execute", "search.external-supplement-generator");
         assertThat(toolInvocationLogRepository.logs.get(1).outputDigest()).containsEntry("exact_count", 2);
+        assertThat(result.aiEnhancementStatus()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void capsAiRelatedCandidatesAtBudgetAndMixesRecencyWithForgettingSignals() {
+        UUID userId = UUID.randomUUID();
+        InMemorySearchRepository repository = new InMemorySearchRepository();
+        Instant base = Instant.parse("2026-03-20T00:00:00Z");
+        for (int index = 0; index < 30; index++) {
+            repository.store(candidate(
+                userId,
+                UUID.randomUUID(),
+                "Kickoff note " + index,
+                "Team coordination summary " + index,
+                List.of("alpha-" + index),
+                List.of("kickoff"),
+                "phase follow-up " + index,
+                base.plusSeconds(index),
+                base.plusSeconds(3_600L * (29 - index)),
+                BigDecimal.valueOf(index)
+            ));
+        }
+
+        CapturingSearchAiEnhancer enhancer = new CapturingSearchAiEnhancer();
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        RecordingToolInvocationLogRepository toolInvocationLogRepository = new RecordingToolInvocationLogRepository();
+        RecordingUserActionEventRepository userActionEventRepository = new RecordingUserActionEventRepository();
+        SearchApplicationService service = new SearchApplicationService(
+            repository,
+            enhancer,
+            traceRepository,
+            toolInvocationLogRepository,
+            userActionEventRepository
+        );
+
+        SearchApplicationService.SearchView result = service.search(userId.toString(), "kickoff alpha");
+
+        assertThat(result.relatedMatches()).hasSize(30);
+        assertThat(enhancer.capturedRequest).isNotNull();
+        assertThat(enhancer.capturedRequest.relatedCandidates()).hasSize(18);
+        assertThat(enhancer.capturedRequest.externalCandidates()).hasSize(2);
+        assertThat(enhancer.capturedRequest.relatedCandidates()).extracting(SearchAiEnhancer.RelatedCandidate::noteId)
+            .doesNotHaveDuplicates();
+        assertThat(traceRepository.completed.orchestratorState()).containsEntry("selected_related_candidate_count", 18);
+        assertThat(traceRepository.completed.orchestratorState()).containsEntry("selected_related_by_recency_count", 9);
+        assertThat(traceRepository.completed.orchestratorState()).containsEntry("selected_related_by_forgetting_count", 9);
+    }
+
+    @Test
+    void matchesChineseQueryWhenCapturedContentContainsWhitespaceBetweenCjkCharacters() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+
+        InMemorySearchRepository repository = new InMemorySearchRepository();
+        repository.store(candidate(
+            userId,
+            noteId,
+            "英文标题",
+            "english summary only",
+            List.of("english point"),
+            List.of("english"),
+            "这 是 一 段 测 试 内 容",
+            Instant.parse("2026-03-16T03:00:00Z")
+        ));
+
+        SearchApplicationService service = new SearchApplicationService(repository);
+        SearchApplicationService.SearchView result = service.search(userId.toString(), "测试");
+
+        assertThat(result.exactMatches()).extracting(SearchApplicationService.SearchExactMatchView::noteId)
+            .containsExactly(noteId);
     }
 
     @Test
@@ -191,6 +271,19 @@ class SearchApplicationServiceTest {
                                                        List<String> currentTags,
                                                        String latestContent,
                                                        Instant updatedAt) {
+        return candidate(userId, noteId, title, currentSummary, currentKeyPoints, currentTags, latestContent, updatedAt, null, null);
+    }
+
+    private SearchRepository.SearchCandidate candidate(UUID userId,
+                                                       UUID noteId,
+                                                       String title,
+                                                       String currentSummary,
+                                                       List<String> currentKeyPoints,
+                                                       List<String> currentTags,
+                                                       String latestContent,
+                                                       Instant updatedAt,
+                                                       Instant nextReviewAt,
+                                                       BigDecimal masteryScore) {
         return new SearchRepository.SearchCandidate(
             noteId,
             userId,
@@ -201,7 +294,9 @@ class SearchApplicationServiceTest {
             "stub://note/" + noteId,
             "CAPTURE_RAW",
             latestContent,
-            updatedAt
+            updatedAt,
+            nextReviewAt,
+            masteryScore
         );
     }
 
@@ -269,6 +364,17 @@ class SearchApplicationServiceTest {
                            String errorCode,
                            String errorMessage) {
             logs.add(new ToolInvocationLogRecord(userId, traceId, toolName, status, inputDigest, outputDigest, latencyMs, errorCode, errorMessage));
+        }
+    }
+
+    private static final class CapturingSearchAiEnhancer implements SearchAiEnhancer {
+
+        private SearchAiEnhancementRequest capturedRequest;
+
+        @Override
+        public SearchAiEnhancementResult enhance(SearchAiEnhancementRequest request) {
+            capturedRequest = request;
+            return new SearchAiEnhancementResult(Map.of(), Map.of());
         }
     }
 

@@ -146,7 +146,8 @@ class SearchGovernanceApplicationServiceTest {
                 "raw",
                 "clean",
                 Instant.parse("2026-03-20T01:00:00Z"),
-                Instant.parse("2026-03-20T01:00:00Z")
+                Instant.parse("2026-03-20T01:00:00Z"),
+                List.of()
             ));
         }
 

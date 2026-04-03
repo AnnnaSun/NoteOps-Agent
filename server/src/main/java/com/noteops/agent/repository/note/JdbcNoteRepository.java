@@ -158,9 +158,40 @@ public class JdbcNoteRepository implements NoteRepository {
                 rs.getString("raw_text"),
                 rs.getString("clean_text"),
                 asInstant(rs.getTimestamp("created_at")),
-                asInstant(rs.getTimestamp("updated_at"))
+                asInstant(rs.getTimestamp("updated_at")),
+                List.of()
             ))
             .optional();
+    }
+
+    @Override
+    public List<NoteQueryService.NoteEvidenceView> findEvidenceByNoteIdAndUserId(UUID noteId, UUID userId) {
+        return jdbcClient.sql("""
+            select nc.id,
+                   nc.content_type,
+                   nc.source_uri,
+                   nc.source_snapshot ->> 'source_name' as source_name,
+                   nc.analysis_result ->> 'relation_label' as relation_label,
+                   coalesce(nc.clean_text, nc.raw_text, '') as summary_snippet,
+                   nc.created_at
+            from note_contents nc
+            where nc.note_id = :noteId
+              and nc.user_id = :userId
+              and nc.content_type = 'EVIDENCE'
+            order by nc.created_at desc, nc.id desc
+            """)
+            .param("noteId", noteId)
+            .param("userId", userId)
+            .query((rs, rowNum) -> new NoteQueryService.NoteEvidenceView(
+                rs.getObject("id", UUID.class),
+                rs.getString("content_type"),
+                rs.getString("source_uri"),
+                rs.getString("source_name"),
+                rs.getString("relation_label"),
+                blankToNull(rs.getString("summary_snippet")),
+                asInstant(rs.getTimestamp("created_at"))
+            ))
+            .list();
     }
 
     @Override
@@ -244,5 +275,9 @@ public class JdbcNoteRepository implements NoteRepository {
 
     private Instant asInstant(Timestamp timestamp) {
         return timestamp.toInstant();
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 }

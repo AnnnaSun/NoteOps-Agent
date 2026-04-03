@@ -274,6 +274,10 @@ button {
   padding: 11px 16px;
   background: linear-gradient(135deg, #5f83a8, #729bb6);
   color: #f8fbff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   transition:
     transform 140ms ease,
     opacity 140ms ease,
@@ -289,7 +293,25 @@ button:hover:not(:disabled) {
 
 button:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button.is-loading:disabled {
   cursor: wait;
+}
+
+.button-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(248, 251, 255, 0.35);
+  border-top-color: currentColor;
+  border-radius: 999px;
+  animation: spin 0.7s linear infinite;
+}
+
+.ghost-button .button-spinner {
+  border-color: rgba(79, 121, 163, 0.22);
+  border-top-color: currentColor;
 }
 
 .ghost-button {
@@ -840,6 +862,15 @@ pre {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
