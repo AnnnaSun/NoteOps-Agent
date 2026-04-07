@@ -1,163 +1,257 @@
-# Prompt.md
-# NoteOps-Agent Phase 3 执行提示（Idea 正式闭环）
+# Prompt
+# docs/codex/Prompt.md
 
-## 1. 本轮目标
+## 1. 文件目的
 
-当前仓库已完成 Phase 2 最小闭环。
-在正式推进 Idea 主线前，先完成一个 **Phase 3 前置补丁：Capture AI 最小闭环**，用于把当前系统推进到“至少已有一条真实可演示的 AI 主链路”。
-这一步只允许落在 Capture 的 `ANALYZING` 阶段，不等于开始 Search / Review / Task / Idea / Trend 的全面 AI 化。
+本文件定义 Codex / coding agent 在 NoteOps 仓库中执行 **Phase 3** 任务时的直接提示基线。
 
-当前另有一个 **用户定向补丁：Search AI 最小增强**，只允许补：
-- `related_matches.relation_reason`
-- `external_supplements.relation_label / keywords / summary_snippet`
-- `EVIDENCE` / `ChangeProposal` 治理入口
+当前唯一开发目标为：
 
-这不等于 Search 已进入完整 AI 闭环，也不等于允许 Search 直接覆盖 `notes.current_*`。
+**Phase 3：Idea Lifecycle / Idea Workspace / Minimal Idea AI Assess Slice**
 
-本轮进入 **Phase 3：Idea 正式闭环**，目标是把 Note / Search 产出的想法沉淀为可评估、可推进、可转任务的 Idea 工作流。
+注意：
+- 当前阶段不是 Trend，不是 Preference Learning 正式闭环。
+- 当前阶段也不是只做 `ideas` 表和 CRUD。
+- 当前阶段必须完成 Idea 的最小产品闭环：**创建 -> 评估 -> 生成下一步动作 -> 派生 Task -> Web 可见**。
 
-本轮**只做 Phase 3 的最小闭环**，不要提前进入 Trend 正式闭环，不要把 Preference Learning 做成完整画像系统，不要为了未来铺过多抽象层。
+---
 
-## 2. Phase 3 必做范围
+## 2. Phase 3 冻结目标
 
-1. **Idea 实体正式落地**
-    - 支持 `CAPTURED / ASSESSED / PLANNED / IN_PROGRESS / ARCHIVED`
-    - 支持 `source_note_id`
-    - 支持 `assessment_result`
-    - 所有核心表与接口保留 `user_id`
+你当前正在推进的是 **NoteOps Agent 的 Phase 3**。
+本阶段必须严格围绕 **Idea** 展开，而不是发散到 Trend、Preference、PWA 或移动端。
 
-2. **Idea 来源**
-    - 支持从 `Note` 生成 Idea
-    - 支持独立创建 Idea
-    - 可以为未来 `FROM_SEARCH / FROM_TREND_CANDIDATE` 预留枚举或字段，但不要做正式闭环
+本阶段的正式目标：
 
-3. **Idea Assess**
-    - 评估结果至少包含：
-        - 问题定义
-        - 目标用户
-        - 核心假设
-        - MVP 验证路径
-    - 不要求现在实现复杂评分引擎
+1. 落地 `ideas` 领域模型与生命周期。
+2. 支持 Idea 两种来源：
+   - `FROM_NOTE`
+   - `INDEPENDENT`
+3. 提供最小可用的 Idea 工作台：
+   - Idea List
+   - Idea Detail
+   - Assess 入口
+   - Assessment 展示
+4. 提供最小 **Idea AI assess** 切片：
+   - `POST /api/v1/ideas/{id}/assess`
+   - 受控调用 Idea Agent / Assessment Service
+   - 输出结构化 assessment result
+   - 将 Idea 从 `CAPTURED` 推进到 `ASSESSED`
+5. 支持由 assessment 结果派生 1~N 个 `SYSTEM` task。
+6. 保持 trace / event / structured logging / documentation 与当前仓库治理方式一致。
 
-4. **Idea -> Task**
-    - 支持基于 Idea 一键生成 system task
-    - 生成后的 task 能进入 Today / Upcoming 视图
-    - task 与 `linked_entity_type = IDEA`、`linked_entity_id` 对齐
+---
 
-5. **Idea UI 最小工作台**
-    - 至少具备：
-        - Idea List
-        - Idea Detail
-        - Assess 入口
-        - Generate Task 入口
-    - 页面必须连真实接口，不允许纯前端假数据冒充完成
+## 3. 本阶段绝对不要做的事
 
-6. **治理链路**
-    - Idea 关键字段更新、assessment 写回、任务生成，必须写 trace / event
-    - 关键更新默认走 proposal / trace 语义，不要让 Idea 成为绕开治理的例外
-    - 关键链路必须补齐结构化日志
+以下能力本阶段可预留，但不做正式闭环：
 
-## 3. 本轮明确不做
+1. Trend Inbox / Trend source registry / Trend scoring
+2. `user_preference_profiles` 正式重算与回写
+3. Prompt 自我改写或自由演化系统
+4. 复杂 Idea 打分算法、复杂商业评分器、复杂优先级学习
+5. 真正成熟的多 provider AI 编排系统
+6. 周/月日历重构
+7. 原生移动端
+8. 导出中心
+9. 任意网站抓取
+10. 为未来 Trend / Preference 提前铺大量抽象层
 
-1. Trend 正式抓取、排序、趋势池闭环
-2. user_preference_profiles 完整重算与自动学习管线
-3. Idea 复杂评分系统（价值分、风险分、置信度）
-4. Idea Kanban / Pipeline 高级视图
-5. 周/月 Calendar
-6. 多协议 / 多网关混合路由
-7. 大规模通用化 Agent framework
+---
 
-## 4. 默认实施顺序
+## 4. 实施总原则
 
-1. schema / enum / state machine
-2. domain model / repository / migration
-3. DTO / API contract
-4. service / orchestration
-5. trace / event / proposal / log
-6. frontend API client
-7. Idea List / Detail / Assess / Generate Task 页面
-8. 最小验证与文档同步
+### 4.1 最小闭环原则
 
-不要反过来先堆 UI，再回头补后端契约。
+每次只实现一个最小可验收切片。
+不要一次把 schema、AI provider、前端、复杂治理、复杂 prompt 系统全部做完。
 
-## 5. 领域与状态约束
+### 4.2 Note-first 原则
 
-1. **Idea 生命周期**
-    - `CAPTURED -> ASSESSED -> PLANNED -> IN_PROGRESS -> ARCHIVED`
-    - 可支持 `ARCHIVED -> PLANNED` 重新开启
+Idea 是独立实体，但仍属于 Note-first 体系：
+- Idea 可以来源于 Note
+- Idea 可以派生 Task
+- Idea 的评估与推进不能脱离主知识链路
 
-2. **Note 仍是第一公民**
-    - Idea 不是脱离 Note 的独立系统
-    - 即便支持独立创建，也要保留与 Note / Search / Task 的主链路关系
+### 4.3 AI 受控原则
 
-3. **Proposal / Trace 不可绕开**
-    - Idea assessment_result、title、relation、task planning 等关键变更，要么经 proposal，要么至少保留 trace + event + before/after 摘要
-    - 不允许关键变更完全静默写库
+Idea 的 AI 能力必须是 **受控 assessment**，而不是自由生成器。
 
-4. **Task 继续沿用现有轻量状态**
-    - `TODO / IN_PROGRESS / DONE / SKIPPED / CANCELLED`
+AI 只负责：
+- 结构化理解输入
+- 生成 assessment
+- 给出验证路径与下一步动作建议
 
-## 6. 日志与可观测性要求
+AI 不负责：
+- 直接拍板改数据库
+- 绕过状态机推进多个对象
+- 静默改写 Idea 主记录核心字段
+- 直接替用户创建不可追溯的结果
 
-以下场景必须补结构化日志：
+### 4.4 治理一致性原则
 
-- 创建 Idea
-- 从 Note 派生 Idea
-- Assess 开始 / 成功 / 失败
-- Generate Task 开始 / 成功 / 失败
-- Idea 状态迁移
-- Proposal apply / reject / rollback（如果本轮涉及）
-- 写入 trace / event / user_action_event
+Idea assess 不是例外。
+它必须延续当前仓库的治理语义：
 
-日志至少包含：
+- 可追溯
+- 可验证
+- 可观察
+- 可记录来源
+- 不静默越权
 
-- `trace_id`
-- `user_id`
-- `idea_id`（如适用）
-- `action`
-- `result`
-- `duration_ms`（如适用）
-- `error_code` / `error_message`（失败时）
+凡涉及：
+- 状态推进
+- 自动任务生成
+- AI assessment 结果落库
+- 后续建议生成
 
-## 7. 每一步输出要求
+都必须同步考虑：
+- `agent_traces`
+- `tool_invocation_logs`
+- `user_action_events`
+- 结构化日志
+- `docs/codex/Documentation.md`
+
+---
+
+## 5. Phase 3 推荐切片顺序
+
+推荐按以下顺序推进：
+
+### Step 3.1
+`ideas` schema / enum / entity / repository / DTO / API contract
+
+### Step 3.2
+Idea create 最小闭环：
+- `FROM_NOTE`
+- `INDEPENDENT`
+
+### Step 3.3
+Idea assess 最小 AI 切片：
+- `/api/v1/ideas/{id}/assess`
+- `IdeaAssessmentService`
+- `IdeaAgent` interface / stub
+- `assessment_result` 落库
+- 状态推进到 `ASSESSED`
+- trace / log / event 补齐
+
+### Step 3.4
+Idea -> Task 派生：
+- 基于 assessment 生成 `SYSTEM` task
+- 进入 Today / Upcoming
+
+### Step 3.5
+Idea Web 工作台：
+- List / Detail / Assess 按钮 / Assessment 展示 / Generate Tasks
+
+### Step 3.6
+Phase 3 文档与治理收口：
+- 文档同步
+- 风险记录
+- deferred backlog 记录
+
+---
+
+## 6. Idea Assess 最小 AI 切片的硬要求
+
+这是 Phase 3 的关键补丁，不允许遗漏。
+
+最小 assess 切片必须满足：
+
+1. 有正式接口：`POST /api/v1/ideas/{id}/assess`
+2. 有正式领域服务，而不是 controller 里直接拼 prompt
+3. assessment 输出必须结构化，不接受只返回一段自由文本
+4. 结果至少包含：
+   - `problem_statement`
+   - `target_user`
+   - `core_hypothesis`
+   - `mvp_validation_path`
+   - `next_actions`
+5. 成功后 Idea 状态从 `CAPTURED` -> `ASSESSED`
+6. assessment 过程必须写 trace
+7. 关键链路必须写结构化日志
+8. 至少写入一个与 Idea assess 相关的 `user_action_event` 或等价治理记录
+9. AI provider 可先 stub / mock / minimal adapter，但 contract 必须稳定
+10. 未做的增强项必须记录到 deferred backlog
+
+---
+
+## 7. assessment_result 建议合同
+
+最小结构建议如下：
+
+```json
+{
+  "problem_statement": "string",
+  "target_user": "string",
+  "core_hypothesis": "string",
+  "mvp_validation_path": [
+    "string"
+  ],
+  "next_actions": [
+    "string"
+  ],
+  "risks": [
+    "string"
+  ],
+  "reasoning_summary": "string"
+}
+```
+
+允许后续扩展，但当前阶段不要为了“以后可能会加”引入复杂泛化协议。
+
+---
+
+## 8. 允许的简化
+
+当前阶段允许简化：
+
+1. AI provider 先走单一 provider
+2. prompt 模板先写成单一模板
+3. assessment 不做复杂打分
+4. `next_actions` 先只生成 1~3 条
+5. Idea -> Task 先做显式触发，不做完全自动批量编排
+6. Web UI 先做最小可读，不做重视觉
+
+---
+
+## 9. 不允许的简化
+
+以下简化不可接受：
+
+1. 只有 `ideas` CRUD，没有 assess
+2. 只有 assess 按钮，没有正式后端接口
+3. assessment 结果不落库
+4. 评估后不推进状态
+5. 核心链路没有 trace / logs
+6. 直接在 controller 写死 AI prompt 调用
+7. 只做前端假数据，不打通真实合同
+8. 把 Phase 4 Trend 逻辑顺手塞进来
+
+---
+
+## 10. 每次任务完成后的输出要求
+
+每次完成一个切片后，必须给出：
 
 ### 本次完成
-- 本步支持了什么真实行为
+- 当前 Step / 子切片名称
+- 当前新增的真实行为
 
 ### 修改文件
-- 改了哪些关键文件
-- 为什么改
+- 关键文件与职责
 
 ### 验证结果
-- 跑了哪些命令 / 测试
-- 通过 / 失败情况
-- 哪些还没验证
+- 运行了什么测试 / 构建 / 手工检查
+- 哪些通过
+- 哪些没跑
+
+### 日志覆盖
+- 新增了哪些关键日志点
+- 哪些链路已带 `trace_id`
+- 哪些失败场景可定位
 
 ### 风险与下一步
-- 当前最主要缺口
-- 下一个最小切片是什么
-
-## 8. 完成定义
-
-只有同时满足以下条件，Phase 3 才能标记“已完成最小闭环”：
-
-1. 可以创建 Idea
-2. 可以从 Note 派生 Idea
-3. 可以对 Idea 做最小 Assess
-4. 可以从 Idea 生成真实 system task
-5. Today / Upcoming 能看到生成后的任务
-6. 关键状态迁移有 trace / event / log
-7. 前端工作台走真实接口
-8. Documentation.md 已同步当前真实实现
-
-## 9. Deferred Backlog 记录要求
-
-任何为了最小闭环暂时跳过的能力，必须显式记录到 deferred backlog，例如：
-
-- Idea scoring
-- Trend candidate 接入
-- Preference profile 重算
-- Kanban / pipeline
-- richer assessment templates
-
-**阶段性跳过 ≠ 永久删除。**
+- 未覆盖边界
+- deferred items
+- 下一最小切片
