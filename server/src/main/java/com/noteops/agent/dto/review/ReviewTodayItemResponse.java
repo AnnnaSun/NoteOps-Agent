@@ -29,7 +29,13 @@ public record ReviewTodayItemResponse(
     @JsonProperty("current_summary")
     String currentSummary,
     @JsonProperty("current_key_points")
-    List<String> currentKeyPoints
+    List<String> currentKeyPoints,
+    @JsonProperty("ai_recall_summary")
+    String aiRecallSummary,
+    @JsonProperty("ai_review_key_points")
+    List<String> aiReviewKeyPoints,
+    @JsonProperty("ai_extension_preview")
+    String aiExtensionPreview
 ) {
 
     public static ReviewTodayItemResponse from(ReviewApplicationService.ReviewTodayItemView view) {
@@ -45,7 +51,10 @@ public record ReviewTodayItemResponse(
             view.unfinishedCount(),
             view.title(),
             view.currentSummary(),
-            view.currentKeyPoints()
+            view.currentKeyPoints(),
+            view.aiRecallSummary(),
+            view.aiReviewKeyPoints(),
+            view.aiExtensionPreview()
         );
     }
 }

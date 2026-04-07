@@ -57,7 +57,11 @@ class ReviewControllerTest {
                 1,
                 "A note",
                 "summary",
-                List.of("point")
+                List.of("point"),
+                List.of("tag-1"),
+                null,
+                List.of(),
+                null
             )
         ));
 
@@ -68,6 +72,59 @@ class ReviewControllerTest {
             .andExpect(jsonPath("$.data[0].id").value(reviewId.toString()))
             .andExpect(jsonPath("$.data[0].queue_type").value("RECALL"))
             .andExpect(jsonPath("$.data[0].completion_reason").value("TIME_LIMIT"))
+            .andExpect(jsonPath("$.data[0].ai_recall_summary").value(nullValue()))
+            .andExpect(jsonPath("$.data[0].ai_review_key_points").isEmpty())
+            .andExpect(jsonPath("$.data[0].ai_extension_preview").value(nullValue()))
+            .andExpect(jsonPath("$.meta.server_time").exists());
+    }
+
+    @Test
+    void returnsPrepWithEnvelope() throws Exception {
+        UUID reviewId = UUID.randomUUID();
+        when(reviewApplicationService.getPrep(eq(reviewId.toString()), eq("11111111-1111-1111-1111-111111111111"))).thenReturn(
+            new ReviewApplicationService.ReviewPrepView(
+                reviewId,
+                "prep summary",
+                List.of("prep point 1", "prep point 2"),
+                "prep extension"
+            )
+        );
+
+        mockMvc.perform(get("/api/v1/reviews/{reviewItemId}/prep", reviewId)
+                .param("user_id", "11111111-1111-1111-1111-111111111111"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.trace_id").value(nullValue()))
+            .andExpect(jsonPath("$.data.review_item_id").value(reviewId.toString()))
+            .andExpect(jsonPath("$.data.ai_recall_summary").value("prep summary"))
+            .andExpect(jsonPath("$.data.ai_review_key_points[0]").value("prep point 1"))
+            .andExpect(jsonPath("$.data.ai_extension_preview").value("prep extension"))
+            .andExpect(jsonPath("$.meta.server_time").exists());
+    }
+
+    @Test
+    void returnsFeedbackWithEnvelope() throws Exception {
+        UUID reviewId = UUID.randomUUID();
+        when(reviewApplicationService.getFeedback(eq(reviewId.toString()), eq("11111111-1111-1111-1111-111111111111"))).thenReturn(
+            new ReviewApplicationService.ReviewFeedbackView(
+                reviewId,
+                "feedback summary",
+                "next hint",
+                List.of("suggestion-1", "suggestion-2"),
+                "task suggestion"
+            )
+        );
+
+        mockMvc.perform(get("/api/v1/reviews/{reviewItemId}/feedback", reviewId)
+                .param("user_id", "11111111-1111-1111-1111-111111111111"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.trace_id").value(nullValue()))
+            .andExpect(jsonPath("$.data.review_item_id").value(reviewId.toString()))
+            .andExpect(jsonPath("$.data.recall_feedback_summary").value("feedback summary"))
+            .andExpect(jsonPath("$.data.next_review_hint").value("next hint"))
+            .andExpect(jsonPath("$.data.extension_suggestions[0]").value("suggestion-1"))
+            .andExpect(jsonPath("$.data.follow_up_task_suggestion").value("task suggestion"))
             .andExpect(jsonPath("$.meta.server_time").exists());
     }
 
@@ -96,7 +153,11 @@ class ReviewControllerTest {
                 Instant.parse("2026-03-19T01:00:00Z"),
                 0,
                 0,
-                BigDecimal.valueOf(20)
+                BigDecimal.valueOf(20),
+                null,
+                null,
+                List.of(),
+                null
             )
         );
 
@@ -118,6 +179,38 @@ class ReviewControllerTest {
             .andExpect(jsonPath("$.data.self_recall_result").value("GOOD"))
             .andExpect(jsonPath("$.data.note").value("Strong recall"))
             .andExpect(jsonPath("$.data.mastery_score").value(20))
+            .andExpect(jsonPath("$.data.recall_feedback_summary").value(nullValue()))
+            .andExpect(jsonPath("$.data.next_review_hint").value(nullValue()))
+            .andExpect(jsonPath("$.data.extension_suggestions").isEmpty())
+            .andExpect(jsonPath("$.data.follow_up_task_suggestion").value(nullValue()))
+            .andExpect(jsonPath("$.meta.server_time").exists());
+    }
+
+    @Test
+    void returnsErrorEnvelopeForInvalidPrepBody() throws Exception {
+        when(reviewApplicationService.getPrep(eq("bad-id"), eq("11111111-1111-1111-1111-111111111111")))
+            .thenThrow(new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REVIEW_ITEM_ID", "review_item_id must be a valid UUID"));
+
+        mockMvc.perform(get("/api/v1/reviews/{reviewItemId}/prep", "bad-id")
+                .param("user_id", "11111111-1111-1111-1111-111111111111"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.trace_id").value(nullValue()))
+            .andExpect(jsonPath("$.error.code").value("INVALID_REVIEW_ITEM_ID"))
+            .andExpect(jsonPath("$.meta.server_time").exists());
+    }
+
+    @Test
+    void returnsErrorEnvelopeForInvalidFeedbackBody() throws Exception {
+        when(reviewApplicationService.getFeedback(eq("bad-id"), eq("11111111-1111-1111-1111-111111111111")))
+            .thenThrow(new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REVIEW_ITEM_ID", "review_item_id must be a valid UUID"));
+
+        mockMvc.perform(get("/api/v1/reviews/{reviewItemId}/feedback", "bad-id")
+                .param("user_id", "11111111-1111-1111-1111-111111111111"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.trace_id").value(nullValue()))
+            .andExpect(jsonPath("$.error.code").value("INVALID_REVIEW_ITEM_ID"))
             .andExpect(jsonPath("$.meta.server_time").exists());
     }
 

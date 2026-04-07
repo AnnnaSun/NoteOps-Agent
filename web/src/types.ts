@@ -78,6 +78,24 @@ export type ReviewTodayItem = {
   title: string;
   current_summary: string;
   current_key_points: string[];
+  ai_recall_summary: string | null;
+  ai_review_key_points: string[];
+  ai_extension_preview: string | null;
+};
+
+export type ReviewPrepResult = {
+  review_item_id: string;
+  ai_recall_summary: string;
+  ai_review_key_points: string[];
+  ai_extension_preview: string | null;
+};
+
+export type ReviewFeedbackResult = {
+  review_item_id: string;
+  recall_feedback_summary: string | null;
+  next_review_hint: string | null;
+  extension_suggestions: string[];
+  follow_up_task_suggestion: string | null;
 };
 
 export type TaskItem = {
@@ -166,6 +184,10 @@ export type ReviewCompletionResult = {
   retry_after_hours: number;
   unfinished_count: number;
   mastery_score: number | null;
+  recall_feedback_summary: string | null;
+  next_review_hint: string | null;
+  extension_suggestions: string[];
+  follow_up_task_suggestion: string | null;
 };
 
 export type ChangeProposal = {

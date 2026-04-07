@@ -241,6 +241,7 @@ class TaskApplicationServiceTest {
             title,
             "summary",
             List.of("point"),
+            List.of("tag"),
             UUID.randomUUID(),
             NOW
         );

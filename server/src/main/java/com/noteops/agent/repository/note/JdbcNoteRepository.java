@@ -203,6 +203,7 @@ public class JdbcNoteRepository implements NoteRepository {
                    n.title,
                    n.current_summary,
                    n.current_key_points,
+                   n.current_tags,
                    n.latest_content_id,
                    n.updated_at
             from notes n
@@ -216,6 +217,7 @@ public class JdbcNoteRepository implements NoteRepository {
                 rs.getString("title"),
                 rs.getString("current_summary"),
                 jsonSupport.readStringList(rs.getString("current_key_points")),
+                jsonSupport.readStringList(rs.getString("current_tags")),
                 rs.getObject("latest_content_id", UUID.class),
                 asInstant(rs.getTimestamp("updated_at"))
             ))

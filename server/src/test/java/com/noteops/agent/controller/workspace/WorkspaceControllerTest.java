@@ -57,7 +57,11 @@ class WorkspaceControllerTest {
                         1,
                         "Recall note",
                         "summary",
-                        List.of("point")
+                        List.of("point"),
+                        List.of("tag-1"),
+                        "ai summary",
+                        List.of("ai point"),
+                        "ai extension"
                     )
                 ),
                 List.of(
@@ -88,6 +92,7 @@ class WorkspaceControllerTest {
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.trace_id").value(nullValue()))
             .andExpect(jsonPath("$.data.today_reviews[0].queue_type").value("RECALL"))
+            .andExpect(jsonPath("$.data.today_reviews[0].ai_recall_summary").value("ai summary"))
             .andExpect(jsonPath("$.data.today_tasks[0].task_source").value("USER"))
             .andExpect(jsonPath("$.meta.server_time").exists());
     }

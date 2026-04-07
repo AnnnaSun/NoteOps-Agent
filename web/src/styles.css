@@ -610,6 +610,59 @@ button.is-loading:disabled {
   align-items: stretch;
 }
 
+.review-prep-card {
+  display: grid;
+  gap: 10px;
+}
+
+.review-prep-section {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.review-prep-section-primary {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 250, 255, 0.96));
+  box-shadow: inset 0 0 0 1px rgba(79, 137, 163, 0.06);
+}
+
+.review-prep-section-secondary {
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.review-prep-section-tertiary {
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.review-prep-label {
+  margin: 0;
+  color: var(--ink-500);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.review-prep-summary {
+  margin: 0;
+  color: var(--ink-900);
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.review-prep-points {
+  margin-top: 0;
+}
+
+.review-prep-extension {
+  margin: 0;
+  color: var(--ink-600);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .review-group {
   display: grid;
   gap: 12px;
@@ -908,6 +961,14 @@ pre {
 @media (max-width: 720px) {
   .app-shell {
     padding: 18px;
+  }
+
+  .review-prep-section {
+    padding: 10px;
+  }
+
+  .review-prep-summary {
+    font-size: 0.94rem;
   }
 
   .panel,

@@ -24,6 +24,7 @@ class NoteQueryServiceTest {
             "First",
             "Summary 1",
             List.of("a"),
+            List.of("tag-a"),
             UUID.randomUUID(),
             Instant.parse("2026-03-15T10:00:00Z")
         ));
@@ -33,6 +34,7 @@ class NoteQueryServiceTest {
             "Second",
             "Summary 2",
             List.of("b"),
+            List.of("tag-b"),
             UUID.randomUUID(),
             Instant.parse("2026-03-15T09:00:00Z")
         ));

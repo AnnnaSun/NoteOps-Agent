@@ -31,6 +31,12 @@ noteops:
       search-enhancement:
         endpoint: default
         model: deepseek-r1:8b
+      review-render:
+        endpoint: default
+        model: deepseek-r1:8b
+      review-feedback:
+        endpoint: default
+        model: deepseek-r1:8b
     openai-compatible:
       # 这里要求上游兼容 OpenAI chat completions 协议。
       # 如果目标 API 不兼容该协议，应在网关层先做归一，或新增协议型 provider。
