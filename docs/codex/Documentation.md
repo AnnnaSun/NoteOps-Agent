@@ -9,7 +9,7 @@
 
 但当前真实完成度已推进到：
 
-- `Step 3.2：Idea create 最小闭环`
+- `Step 3.4：Idea -> Task 派生`
 
 本次已真实落地的范围：
 
@@ -22,15 +22,22 @@
 - `POST /api/v1/ideas`
 - `IdeaApplicationService` / `IdeaController`
 - Idea create 的最小 trace / user_action_event / structured logging
+- `AssessIdeaRequest`
+- `POST /api/v1/ideas/{id}/assess`
+- `IdeaAssessmentService`
+- `IdeaAgent` / `StubIdeaAgent`
+- Idea assess 的最小 trace / tool_invocation_logs / user_action_event / structured logging
+- `GenerateIdeaTaskRequest`
+- `IdeaTaskGenerationResponse`
+- `POST /api/v1/ideas/{id}/generate-task`
+- `IdeaTaskGenerationService`
+- Idea -> Task 的最小 trace / user_action_event / structured logging
 
 当前仍**未实现**：
 
 - `GET /api/v1/ideas`
 - `GET /api/v1/ideas/{id}`
-- `POST /api/v1/ideas/{id}/assess`
-- `Idea -> Task`
 - Idea Web 工作台
-- Idea assess / task 的 trace / event / structured logging 运行时链路
 
 ---
 
@@ -133,6 +140,7 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 
 当前已冻结 DTO：
 
+- `AssessIdeaRequest`
 - `CreateIdeaRequest`
 - `IdeaResponse`
 
@@ -147,13 +155,14 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 
 当前说明：
 
-- DTO 已用于当前 create 路由
+- DTO 已用于当前 create / assess / task-generation 路由
 - 当前真实已注册：
   - `POST /api/v1/ideas`
+  - `POST /api/v1/ideas/{id}/assess`
+  - `POST /api/v1/ideas/{id}/generate-task`
 - 当前尚未注册：
   - `GET /api/v1/ideas`
   - `GET /api/v1/ideas/{id}`
-  - `POST /api/v1/ideas/{id}/assess`
 
 ### 3.4 Create Idea 当前语义
 
@@ -183,23 +192,84 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 - 独立创建：`IDEA_CREATED`
 - 从 Note 派生：`IDEA_DERIVED_FROM_NOTE`
 
+### 3.5 Assess Idea 当前语义
+
+`POST /api/v1/ideas/{id}/assess`
+
+当前请求字段：
+
+- `user_id`
+
+当前真实行为：
+
+- 仅允许 `CAPTURED` 状态进入 assess
+- 会读取当前 Idea 记录；如存在 `source_note_id`，会补充 source note 的标题、摘要、关键点进入 assessment context
+- 当前通过 `StubIdeaAgent` 生成确定性结构化 assessment，不依赖真实外部 provider
+- assessment 成功后：
+  - `ideas.assessment_result` 被更新
+  - `status` 从 `CAPTURED` 推进到 `ASSESSED`
+  - 写入 `agent_traces`
+  - 写入 `tool_invocation_logs`
+  - 写入 `user_action_events`
+  - 写入结构化日志
+
+当前事件语义：
+
+- assess 成功：`IDEA_ASSESSED`
+- assess 失败：`IDEA_ASSESS_FAILED`
+
+### 3.6 Idea -> Task 当前语义
+
+`POST /api/v1/ideas/{id}/generate-task`
+
+当前请求字段：
+
+- `user_id`
+
+当前真实行为：
+
+- 仅允许 `ASSESSED` 状态进入 task generation
+- 要求 `assessment_result.next_actions` 至少包含 1 条动作
+- 会为每条 `next_action` 创建一个 `SYSTEM` task
+- 当前会对 `next_actions` 做最小去重，避免同一 assessment 的重复动作生成重复 task
+- 生成 task 时固定写入：
+  - `task_source=SYSTEM`
+  - `task_type=IDEA_NEXT_ACTION`
+  - `status=TODO`
+  - `related_entity_type=IDEA`
+  - `related_entity_id=<idea_id>`
+- 若 Idea 来自 Note，则生成 task 时会复用 `source_note_id` 作为 `note_id`
+- 当前 `due_at` 策略为：
+  - 第一个 task 使用当前生成时间，默认进入 Today
+  - 后续 task 按天顺延，默认可进入 Upcoming
+- 当前生成 task 后会把 Idea 状态从 `ASSESSED` 推进到 `PLANNED`
+- 生成后的 task 可按当前默认调度进入 Today / Upcoming 聚合视图
+- 当前通过 compare-and-set 状态推进避免同一个 `ASSESSED` Idea 被并发重复生成任务
+- 当前会写入：
+  - `agent_traces`
+  - `user_action_events`
+  - 结构化日志
+
+当前事件语义：
+
+- task generation 成功：`IDEA_TASKS_GENERATED`
+- task generation 失败：`IDEA_TASK_GENERATION_FAILED`
+
 ---
 
 ## 4. 当前未完成边界
 
 以下能力仍属于后续 Step，不应误判为已落地现实：
 
-1. Step 3.3：Idea assess 最小 AI 切片
-2. Step 3.4：Idea -> Task 派生
-3. Step 3.5：Idea Web 工作台
-4. Step 3.6：Phase 3 文档与治理收口
+1. Step 3.5：Idea Web 工作台
+2. Step 3.6：Phase 3 文档与治理收口
 
 特别说明：
 
-- 当前 `IdeaRepository` 只提供 `create(...)` 与 `findByIdAndUserId(...)`
+- 当前 `IdeaRepository` 只提供 `create(...)`、`findByIdAndUserId(...)`、`updateAssessment(...)` 与 `updateStatus(...)`
 - 当前没有 `GET /api/v1/ideas` / `GET /api/v1/ideas/{id}`
-- 当前没有 `IdeaAssessmentService`
-- 当前没有 Idea assess / task 的 tool log 写入
+- 当前 assess 仍是 `StubIdeaAgent`，不代表真实 provider 已接入
+- 当前 task generation 仍不包含复杂批量拆解、优先级学习或计划时间推断
 
 ---
 
@@ -208,11 +278,11 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 以下能力当前阶段可以明确后置，但不能丢失：
 
 1. Idea assess / task 的完整治理链路
-  - 原因：本次只完成 create 主链
-  - 预计补回：Step 3.3 ~ Step 3.4
+  - 原因：当前只完成最小 task generation，未补 proposal 治理和更复杂的计划决策
+  - 预计补回：Phase 3 后段或 Phase 4
 
 2. 多 provider / model routing
-  - 原因：当前先保证合同与最小闭环
+  - 原因：当前 assess 先使用 `StubIdeaAgent` 保证合同与主链路稳定
   - 预计补回：Phase 3 后段或 Phase 4
 
 3. assessment scoring / 商业评分
@@ -237,7 +307,7 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 
 当前可以标记为：
 
-- `Step 3.2 已完成最小闭环`
+- `Step 3.4 已完成最小闭环`
 
 当前**不能**标记为：
 
@@ -245,8 +315,6 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 
 因为以下条件仍未满足：
 
-1. 可以 assess Idea
-2. Idea 状态能被真实推进到 `ASSESSED`
-3. assessment 能产生下一步动作或派生 Task
-4. Web 能展示 Idea 主路径
-5. trace / log / event 已覆盖 assess / task 主链
+1. Web 能展示 Idea 主路径
+2. Idea List / Detail 尚未可用
+3. 复杂计划推进和后续状态交互尚未实现

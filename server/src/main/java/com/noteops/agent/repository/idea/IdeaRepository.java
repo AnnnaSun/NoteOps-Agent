@@ -20,6 +20,20 @@ public interface IdeaRepository {
 
     Optional<IdeaRecord> findByIdAndUserId(UUID ideaId, UUID userId);
 
+    IdeaRecord updateAssessment(UUID ideaId,
+                                UUID userId,
+                                IdeaAssessmentResult assessmentResult,
+                                IdeaStatus status);
+
+    IdeaRecord updateStatus(UUID ideaId,
+                            UUID userId,
+                            IdeaStatus status);
+
+    Optional<IdeaRecord> updateStatusIfCurrent(UUID ideaId,
+                                               UUID userId,
+                                               IdeaStatus currentStatus,
+                                               IdeaStatus targetStatus);
+
     record IdeaRecord(
         UUID id,
         UUID userId,

@@ -141,6 +141,44 @@ class JdbcIdeaRepositoryIntegrationTest {
         assertThat(created.rawDescription()).isNull();
     }
 
+    @Test
+    void updatesAssessmentResultAndStatus() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        insertNote(noteId, userId, "Source note");
+
+        IdeaRepository.IdeaRecord created = ideaRepository.create(
+            userId,
+            IdeaSourceMode.FROM_NOTE,
+            noteId,
+            "Idea from note",
+            "Turn this note into an idea",
+            IdeaStatus.CAPTURED,
+            null
+        );
+
+        IdeaAssessmentResult assessmentResult = new IdeaAssessmentResult(
+            "Problem statement",
+            "Solo founder",
+            "A focused workflow improves execution quality",
+            List.of("Talk to 3 users"),
+            List.of("Write interview script"),
+            List.of("Needs proof of demand"),
+            "Promising but narrow the audience first"
+        );
+
+        IdeaRepository.IdeaRecord updated = ideaRepository.updateAssessment(
+            created.id(),
+            userId,
+            assessmentResult,
+            IdeaStatus.ASSESSED
+        );
+
+        assertThat(updated.status()).isEqualTo(IdeaStatus.ASSESSED);
+        assertThat(updated.assessmentResult()).isEqualTo(assessmentResult);
+        assertThat(updated.updatedAt()).isNotNull();
+    }
+
     private void insertNote(UUID noteId, UUID userId, String title) {
         jdbcClient.sql("""
             insert into notes (

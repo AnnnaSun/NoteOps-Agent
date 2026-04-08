@@ -78,6 +78,69 @@ public class JdbcIdeaRepository implements IdeaRepository {
             .optional();
     }
 
+    @Override
+    // 更新 assessment 结果并推进状态，供 assess 主链路持久化使用。
+    public IdeaRecord updateAssessment(UUID ideaId,
+                                       UUID userId,
+                                       IdeaAssessmentResult assessmentResult,
+                                       IdeaStatus status) {
+        IdeaAssessmentResult effectiveAssessment = assessmentResult == null ? IdeaAssessmentResult.empty() : assessmentResult;
+        jdbcClient.sql("""
+            update ideas
+            set assessment_result = cast(:assessmentResult as jsonb),
+                status = :status,
+                updated_at = current_timestamp
+            where id = :ideaId and user_id = :userId
+            """)
+            .param("assessmentResult", jsonSupport.write(effectiveAssessment.toMap()))
+            .param("status", status.name())
+            .param("ideaId", ideaId)
+            .param("userId", userId)
+            .update();
+        return findByIdAndUserId(ideaId, userId).orElseThrow();
+    }
+
+    @Override
+    // 单独推进 Idea 状态，供 task 派生等非 assessment 场景复用。
+    public IdeaRecord updateStatus(UUID ideaId, UUID userId, IdeaStatus status) {
+        jdbcClient.sql("""
+            update ideas
+            set status = :status,
+                updated_at = current_timestamp
+            where id = :ideaId and user_id = :userId
+            """)
+            .param("status", status.name())
+            .param("ideaId", ideaId)
+            .param("userId", userId)
+            .update();
+        return findByIdAndUserId(ideaId, userId).orElseThrow();
+    }
+
+    @Override
+    // 以 compare-and-set 方式推进状态，避免并发请求重复执行同一业务动作。
+    public Optional<IdeaRecord> updateStatusIfCurrent(UUID ideaId,
+                                                      UUID userId,
+                                                      IdeaStatus currentStatus,
+                                                      IdeaStatus targetStatus) {
+        int updatedRows = jdbcClient.sql("""
+            update ideas
+            set status = :targetStatus,
+                updated_at = current_timestamp
+            where id = :ideaId
+              and user_id = :userId
+              and status = :currentStatus
+            """)
+            .param("targetStatus", targetStatus.name())
+            .param("ideaId", ideaId)
+            .param("userId", userId)
+            .param("currentStatus", currentStatus.name())
+            .update();
+        if (updatedRows == 0) {
+            return Optional.empty();
+        }
+        return findByIdAndUserId(ideaId, userId);
+    }
+
     private Instant timestampToInstant(Timestamp value) {
         return value == null ? null : value.toInstant();
     }

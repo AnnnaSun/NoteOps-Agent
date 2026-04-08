@@ -208,6 +208,21 @@ class IdeaApplicationServiceTest {
             }
             return Optional.of(record);
         }
+
+        @Override
+        public IdeaRecord updateAssessment(UUID ideaId, UUID userId, IdeaAssessmentResult assessmentResult, IdeaStatus status) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public IdeaRecord updateStatus(UUID ideaId, UUID userId, IdeaStatus status) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Optional<IdeaRecord> updateStatusIfCurrent(UUID ideaId, UUID userId, IdeaStatus currentStatus, IdeaStatus targetStatus) {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private static final class InMemoryNoteRepository implements NoteRepository {
