@@ -21,6 +21,24 @@ management:
         include: health
 
 noteops:
+  trend:
+    default-plan:
+      plan-key: default_ai_engineering_trends
+      enabled: true
+      sources:
+        - HN
+        - GITHUB
+      fetch-limit-per-source: 5
+      schedule: DAILY
+      keyword-bias:
+        - agent
+        - llm
+        - memory
+        - retrieval
+        - tooling
+        - coding
+      auto-ingest: true
+      auto-convert: false
   ai:
     default-provider: OPENAI_COMPATIBLE
     request-timeout: PT80S

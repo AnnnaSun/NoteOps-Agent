@@ -3,390 +3,436 @@
 
 ## 1. 当前阶段状态
 
-当前仓库开发基线仍处于：
+当前仓库开发基线已进入：
 
-# Phase 3：Idea Lifecycle / Idea Workspace
+# Phase 4：Trend Source Registry / Trend Inbox
 
-但当前真实完成度已推进到：
+本阶段从 Phase 3 的 Idea Lifecycle / Idea Workspace 继续向前推进，当前新增主线为：
+- Trend Source Registry
+- Default Trend Plan
+- Trend ingest
+- Trend AI 结构化分析
+- Trend Inbox
+- Trend -> Note / Idea 转化
 
-- `Step 3.6：Phase 3 文档与治理收口`
+Preference Learning 正式闭环、PWA 与移动端仍未进入当前主线。
 
-本次已真实落地的范围：
+### 1.1 Step 4.1 当前落地状态
 
-- `ideas` 表与索引
-- `V3__rename_idea_source_mode_to_manual.sql`
-- Idea 来源枚举：`FROM_NOTE` / `MANUAL`
-- Idea 状态枚举：`CAPTURED` / `ASSESSED` / `PLANNED` / `IN_PROGRESS` / `ARCHIVED`
-- `assessment_result` 结构化合同
-- `IdeaRepository` / `JdbcIdeaRepository`
-- `CreateIdeaRequest` / `IdeaResponse` DTO 冻结
-- `POST /api/v1/ideas`
-- `IdeaApplicationService` / `IdeaController`
-- Idea create 的最小 trace / user_action_event / structured logging
-- `AssessIdeaRequest`
-- `POST /api/v1/ideas/{id}/assess`
-- `IdeaAssessmentService`
-- `IdeaAgent` / `StubIdeaAgent`
-- Idea assess 的最小 trace / tool_invocation_logs / user_action_event / structured logging
-- `GenerateIdeaTaskRequest`
-- `IdeaTaskGenerationResponse`
-- `POST /api/v1/ideas/{id}/generate-task`
-- `IdeaTaskGenerationService`
-- Idea -> Task 的最小 trace / user_action_event / structured logging
-- `IdeaQueryService`
-- `IdeaSummaryResponse` / `IdeaDetailResponse`
-- `GET /api/v1/ideas`
-- `GET /api/v1/ideas/{id}`
-- Web 单页 Idea Workspace：
-  - Idea List
-  - Idea Detail
-  - Assess 入口
-  - Assessment Result 展示
-  - Generate Tasks / View Tasks 入口
-  - Idea panel 请求失败时不再拖垮 Note / Workspace
-  - Idea action 后的刷新失败改为在 Idea 面板内提示，不再误报为动作失败
-- Step 3.6 文档与治理同步：
-  - `README.md`
-  - `docs/reality/Feature-Status-Matrix.md`
-  - `docs/reality/Implementation-Inventory.md`
-  - `docs/reality/Schema-API-Drift-Report.md`
+当前仓库已完成 Step 4.1 的合同冻结：
+- `trend_items` schema / index / foreign key 已落地
+- Trend source / status / action 枚举已冻结
+- Trend analysis payload 结构已冻结
+- Trend repository 与未来 API DTO 形状已补齐
 
-当前仍**未实现**：
+当前仓库尚未完成：
+- real ingest
+- Trend AI analyze runtime
+- Trend Inbox controller / page
+- Trend -> Note / Idea conversion
 
-- Promote to Plan / Archive / Reopen 的正式交互与后端命令
-- Idea Create 的 Web 表单入口
+说明：
+- Step 4.1 当前只冻结 persistence 与 contract
+- 不提供可调用的 `/api/v1/trends/*` endpoint
+- 不应把 Step 4.5/4.6 误记为已完成
 
----
+### 1.2 Step 4.2 当前落地状态
 
-## 2. Step 3.1 已冻结的领域语义
+当前仓库已完成 Step 4.2 的最小骨架：
+- `TrendSourceRegistry` 已注册并解析 `HN` / `GITHUB`
+- Default Trend Plan 已可从配置读取
+- 已提供显式 trigger 入口 `POST /api/v1/trends/plans/default/trigger`
+- trigger 当前只执行 `REGISTRY_ONLY`
+- trigger 链路已写 `agent_traces`、结构化日志、最小 `tool_invocation_logs`
 
-### 2.1 Idea 的定位
+当前仓库在 Step 4.2 仍明确不做：
+- 真实外部抓取
+- `trend_items` 入库
+- Trend AI 分析
+- Trend Inbox 列表 / 动作
+- Trend -> Note / Idea 转化
 
-Idea 是独立实体，但仍保持 Note-first 约束：
+说明：
+- Step 4.2 当前只完成来源注册与默认计划的显式触发骨架
+- Step 4.3 才开始真实 ingest / normalize / dedupe / persistence
 
-- 可以独立存在
-- 可以绑定来源 Note
-- 后续可以进入 assess / task / workspace
-- 当前已支持最小 create 命令，assess / task / workspace 仍待后续切片
+### 1.3 Step 4.3 当前落地状态
 
-### 2.2 Idea 来源
+当前仓库已完成 Step 4.3 的最小 ingest 闭环：
+- `POST /api/v1/trends/plans/default/trigger` 已从 `REGISTRY_ONLY` 升级为真实 `INGEST`
+- 默认 plan 会同时触发 `HN` 与 `GITHUB` 两个 source 的最小候选拉取
+- 候选会经过最小 normalize 与幂等去重后写入 `trend_items`
+- `(user_id, source_type, source_item_key)` 已用于最小 dedupe
+- ingest 链路已补齐 `agent_traces`、结构化日志、最小 `tool_invocation_logs`
 
-当前仅冻结两种来源：
+当前仓库在 Step 4.3 仍明确不做：
+- Trend AI 分析
+- Trend Inbox 列表 / 动作
+- Trend -> Note / Idea 转化
+- 复杂聚类、复杂评分、复杂 provider 平台化
 
-- `FROM_NOTE`
-- `MANUAL`
-
-约束固定为：
-
-- `FROM_NOTE` 时 `source_note_id` 必填
-- `MANUAL` 时 `source_note_id` 必须为空
-
-### 2.3 Idea 生命周期
-
-当前阶段已冻结以下状态值：
-
-- `CAPTURED`
-- `ASSESSED`
-- `PLANNED`
-- `IN_PROGRESS`
-- `ARCHIVED`
-
-当前已实现的状态推进：
-
-- create：进入 `CAPTURED`
-- assess：`CAPTURED -> ASSESSED`
-- generate-task：`ASSESSED -> PLANNED`
-
-当前仍未实现：
-
-- `PLANNED -> IN_PROGRESS`
-- Archive / Reopen 相关状态命令
+说明：
+- 当前 trigger 的 `trigger_mode = INGEST`
+- 当前单个 source fetch 失败时，整次 trigger 失败
+- Step 4.4 才开始写 `analysis_payload` 和 `suggested_action`
 
 ---
 
-## 3. 当前真实 Schema / Contract
+## 2. Phase 4 目标说明
 
-### 3.1 `ideas` 表
+Phase 4 的目标不是做一个普通热点流，而是让外部高价值输入进入 Knowledge-to-Action 主线。
 
-当前真实字段：
+Trend 在当前阶段应具备以下能力：
+1. 可从受控来源拉取候选
+2. 可做最小结构化分析
+3. 可进入 Trend Inbox
+4. 可由用户决策去留
+5. 可转为 Note
+6. 可转为 Idea
+7. 可为后续偏好学习积累行为事件
 
-- `id`
-- `user_id`
-- `source_mode`
-- `source_note_id`
-- `title`
-- `raw_description`
-- `status`
-- `assessment_result`
-- `created_at`
-- `updated_at`
+---
 
-当前真实约束：
+## 3. Phase 4 领域语义
 
-- `source_mode in ('FROM_NOTE', 'MANUAL')`
-- `status in ('CAPTURED', 'ASSESSED', 'PLANNED', 'IN_PROGRESS', 'ARCHIVED')`
-- `source_note_id` 外键指向 `notes(id)`
-- `FROM_NOTE` / `MANUAL` 与 `source_note_id` 的交叉校验
+### 3.1 Trend 的定位
 
-当前真实索引：
+Trend 不是孤立对象，也不是产品唯一卖点。
+Trend 是高价值输入增强模块：
+- 为系统提供外部候选输入
+- 为 Note 生成提供素材
+- 为 Idea 孵化提供触发源
+- 为后续 Preference 学习提供行为事件
 
-- `(user_id, updated_at desc)`
-- `(user_id, status, updated_at desc)`
-- `(user_id, source_note_id, updated_at desc)`
+### 3.2 Default Trend Plan 的定位
 
-### 3.2 `assessment_result` 合同
+当前阶段建议提供一个默认内置计划，而不是一开始就建设复杂的用户自定义平台。
 
-当前已冻结的最小结构：
+默认计划建议为：
+- `plan_key = default_ai_engineering_trends`
+- 来源：`HN`、`GITHUB`
+- 频率：`DAILY`
+- 每源抓取上限：5
+- 关键词偏置：agent / llm / memory / retrieval / tooling / coding
+- `auto_ingest = true`
+- `auto_convert = false`
+
+说明：
+- 当前阶段允许系统自动入箱
+- 当前阶段不允许系统静默自动创建大量 Note / Idea
+
+当前仓库在 Step 4.2 已落地的最小语义：
+- plan 配置来源于 `noteops.trend.default-plan`
+- 当前 trigger 会真实执行双 source ingest
+- 返回 `trigger_mode = INGEST`
+
+---
+
+## 4. Trend AI 最小分析切片
+
+## 4.1 为什么这是 Phase 4 必须项
+
+如果没有结构化分析，Trend 只是一批外部链接，并不能成为可决策候选。
+
+因此，Phase 4 的最小闭环明确要求提供：
+- `TrendAnalysisService`
+- `TrendAgent`（最小 provider/stub 均可）
+- analysis result 结构化落库
+- Trend Inbox 展示分析结果
+- 转化动作以分析建议为参考
+- trace / log / event 补齐
+
+## 4.2 Trend AI 的管理原则
+
+Trend AI 必须按“受控 Worker Agent”管理，而不是自由模型调用。
+
+AI 负责：
+- 结构化理解趋势候选
+- 输出简练摘要
+- 给出 why-it-matters 解释
+- 判断更适合转 Note 还是转 Idea
+- 产出 `suggested_action`
+
+AI 不负责：
+- 自己抓取网页
+- 越权直接创建主业务对象
+- 静默大批量转化
+- 绕过用户决策直接推进高影响动作
+
+应用层 / 领域层负责：
+- 来源拉取
+- 输入准备
+- provider 调用
+- 结果校验
+- 入库
+- Inbox 展示
+- 转化命令执行
+- trace / log / event
+
+---
+
+## 5. Trend analysis 合同
+
+当前阶段建议最小结构如下：
 
 ```json
 {
-  "problem_statement": "string",
-  "target_user": "string",
-  "core_hypothesis": "string",
-  "mvp_validation_path": [
-    "string"
-  ],
-  "next_actions": [
-    "string"
-  ],
-  "risks": [
-    "string"
-  ],
+  "summary": "string",
+  "why_it_matters": "string",
+  "topic_tags": ["string"],
+  "signal_type": "string",
+  "note_worthy": true,
+  "idea_worthy": false,
+  "suggested_action": "SAVE_AS_NOTE",
   "reasoning_summary": "string"
 }
 ```
 
-当前语义：
+说明：
+- 当前阶段不要求复杂个性化分数模型
+- 当前阶段不要求正式偏好重算
+- 当前阶段优先保证结构稳定、可展示、可落库
 
-- schema 层默认值仍为 `{}`，用于兜底数据库写入
-- 当前 create 路径会显式写入 `IdeaAssessmentResult.empty()` 对应的空 assessment 结构，读取后统一表现为“尚未 assess”
-- 当前 assess 接口已真实存在，并以该合同写回 `ideas.assessment_result`
+### 5.1 Step 4.1 已冻结的 `trend_items` 合同
 
-### 3.3 DTO / API 基线
-
-当前已冻结 DTO：
-
-- `AssessIdeaRequest`
-- `CreateIdeaRequest`
-- `IdeaDetailResponse`
-- `IdeaResponse`
-- `IdeaSummaryResponse`
-
-字段命名统一使用 snake_case：
-
-- `source_mode`
-- `source_note_id`
-- `raw_description`
-- `assessment_result`
+当前 schema 已冻结以下字段：
+- `id`
+- `user_id`
+- `source_type`
+- `source_item_key`
+- `title`
+- `url`
+- `summary`
+- `normalized_score`
+- `analysis_payload`
+- `extra_attributes`
+- `status`
+- `suggested_action`
+- `source_published_at`
+- `last_ingested_at`
+- `converted_note_id`
+- `converted_idea_id`
 - `created_at`
 - `updated_at`
 
-当前说明：
+当前约束已冻结：
+- `source_type in ('HN', 'GITHUB')`
+- `status in ('INGESTED', 'ANALYZED', 'IGNORED', 'SAVED_AS_NOTE', 'PROMOTED_TO_IDEA')`
+- `suggested_action in ('IGNORE', 'SAVE_AS_NOTE', 'PROMOTE_TO_IDEA') or null`
+- `(user_id, source_type, source_item_key)` 唯一，用于后续 dedupe
 
-- DTO 已用于当前 create / assess / task-generation 路由
-- 当前真实已注册：
-  - `GET /api/v1/ideas`
-  - `GET /api/v1/ideas/{id}`
-  - `POST /api/v1/ideas`
-  - `POST /api/v1/ideas/{id}/assess`
-  - `POST /api/v1/ideas/{id}/generate-task`
+---
 
-### 3.3.1 Idea Query 当前语义
+## 6. API 基线（Phase 4）
 
-`GET /api/v1/ideas`
+### 6.1 Trend Inbox
 
-当前请求字段：
+`GET /api/v1/trends/inbox`
 
-- `user_id`
+用途：
+- 查询当前趋势候选列表
+- 提供最小排序与过滤
+- 返回 AI 分析后的摘要与建议动作
 
-当前真实行为：
-
-- 按 `updated_at desc` 返回当前用户的 Idea 列表
-- 列表项包含：
-  - `id`
-  - `user_id`
-  - `source_mode`
-  - `source_note_id`
-  - `title`
-  - `status`
-  - `updated_at`
-- 返回 `ApiEnvelope`
-- `trace_id=null`
-
-`GET /api/v1/ideas/{id}`
-
-当前请求字段：
-
-- `user_id`
-
-当前真实行为：
-
-- 仅按 `idea_id + user_id` 读取单条 Idea
-- 详情包含：
-  - `raw_description`
-  - `assessment_result`
-  - `created_at`
-  - `updated_at`
-- 非法 UUID 返回受控 `400`
-- Idea 不存在返回受控 `404`
-- 读接口不触发状态迁移，也不新增 trace / event / tool log
-
-### 3.4 Create Idea 当前语义
-
-`POST /api/v1/ideas`
-
-当前请求字段：
-
-- `user_id`
-- `source_mode`
-- `source_note_id`
+最小输出语义：
+- `trend_item_id`
 - `title`
-- `raw_description`
+- `source_type`
+- `url`
+- `summary`
+- `normalized_score`
+- `suggested_action`
 
-当前真实行为：
+### 6.2 Trend Actions
 
-- `source_mode=MANUAL` 时创建独立 Idea
-- `source_mode=FROM_NOTE` 时要求 `source_note_id` 存在且属于当前 `user_id`
-- 初始状态固定写入 `CAPTURED`
-- `assessment_result` 初始写入空 assessment 结构，并在 repository 侧统一映射为 `IdeaAssessmentResult.empty()`
-- 创建成功后写入：
-  - `agent_traces`
-  - `user_action_events`
-  - 结构化日志
+建议最小新增一个动作接口，例如：
 
-当前事件语义：
+`POST /api/v1/trends/{trend_item_id}/actions`
 
-- 独立创建：`IDEA_CREATED`
-- 从 Note 派生：`IDEA_DERIVED_FROM_NOTE`
+用途：
+- 对 Trend 候选执行用户决策动作
 
-### 3.5 Assess Idea 当前语义
+最小输入语义：
+- `action = IGNORE | SAVE_AS_NOTE | PROMOTE_TO_IDEA`
+- `operator_note`（可选）
 
-`POST /api/v1/ideas/{id}/assess`
+最小输出语义：
+- `trend_item_id`
+- `action_result`
+- `converted_note_id`（如有）
+- `converted_idea_id`（如有）
 
-当前请求字段：
+说明：
+- 也可以按仓库风格拆成多个 endpoint
+- 但当前阶段必须保证动作合同真实存在
+- 当前 Step 4.1 仅冻结 DTO 形状，不提供 controller 实现
 
+### 6.3 Trend Default Plan Trigger
+
+`POST /api/v1/trends/plans/default/trigger`
+
+用途：
+- 显式触发一次默认 Trend plan
+- 校验默认 plan 配置
+- 解析 `HN` / `GITHUB` source registration
+- 拉取候选并执行最小 ingest
+- 写 trace / tool log
+
+当前输入语义：
 - `user_id`
 
-当前真实行为：
+当前输出语义：
+- `plan_key`
+- `enabled`
+- `resolved_sources`
+- `fetch_limit_per_source`
+- `schedule`
+- `keyword_bias`
+- `auto_ingest`
+- `auto_convert`
+- `trigger_mode = INGEST`
+- `fetched_count`
+- `inserted_count`
+- `deduped_count`
+- `source_results`
+- `result`
 
-- 仅允许 `CAPTURED` 状态进入 assess
-- 会读取当前 Idea 记录；如存在 `source_note_id`，会补充 source note 的标题、摘要、关键点进入 assessment context
-- 当前通过 `StubIdeaAgent` 生成确定性结构化 assessment，不依赖真实外部 provider
-- assessment 成功后：
-  - `ideas.assessment_result` 被更新
-  - `status` 从 `CAPTURED` 推进到 `ASSESSED`
-  - 写入 `agent_traces`
-  - 写入 `tool_invocation_logs`
-  - 写入 `user_action_events`
-  - 写入结构化日志
-
-当前事件语义：
-
-- assess 成功：`IDEA_ASSESSED`
-- assess 失败：`IDEA_ASSESS_FAILED`
-
-### 3.6 Idea -> Task 当前语义
-
-`POST /api/v1/ideas/{id}/generate-task`
-
-当前请求字段：
-
-- `user_id`
-
-当前真实行为：
-
-- 仅允许 `ASSESSED` 状态进入 task generation
-- 要求 `assessment_result.next_actions` 至少包含 1 条动作
-- 会为每条 `next_action` 创建一个 `SYSTEM` task
-- 当前会对 `next_actions` 做最小去重，避免同一 assessment 的重复动作生成重复 task
-- 生成 task 时固定写入：
-  - `task_source=SYSTEM`
-  - `task_type=IDEA_NEXT_ACTION`
-  - `status=TODO`
-  - `related_entity_type=IDEA`
-  - `related_entity_id=<idea_id>`
-- 若 Idea 来自 Note，则生成 task 时会复用 `source_note_id` 作为 `note_id`
-- 当前 `due_at` 策略为：
-  - 第一个 task 使用当前生成时间，默认进入 Today
-  - 后续 task 按天顺延，默认可进入 Upcoming
-- 当前生成 task 后会把 Idea 状态从 `ASSESSED` 推进到 `PLANNED`
-- 生成后的 task 可按当前默认调度进入 Today / Upcoming 聚合视图
-- 当前通过 compare-and-set 状态推进避免同一个 `ASSESSED` Idea 被并发重复生成任务
-- 当前会写入：
-  - `agent_traces`
-  - `user_action_events`
-  - 结构化日志
-
-当前事件语义：
-
-- task generation 成功：`IDEA_TASKS_GENERATED`
-- task generation 失败：`IDEA_TASK_GENERATION_FAILED`
+说明：
+- 当前 Step 4.3 已执行真实抓取并写入 `trend_items`
+- 当前 Step 4.3 的最小 dedupe 语义是：重复命中仅刷新 `last_ingested_at`（必要时补齐缺失的 `source_published_at`），不覆盖既有 `title`、`url`、`normalized_score`、`extra_attributes`
+- 当前 Step 4.3 的最小失败语义是：若 normalize / upsert 中途失败，则本次 ingest 视为整体失败，不保留部分 `trend_items` 写入
+- 当前 Step 4.3 不写 `analysis_payload`
+- 当前 Step 4.3 不写 Trend Inbox 用户动作事件
 
 ---
 
-## 4. 当前未完成边界
+## 7. Trend -> Note / Idea 转化
 
-以下能力仍属于后续 Step，不应误判为已落地现实：
+### 7.1 Trend -> Note
 
-1. Promote to Plan / Archive / Reopen 的正式生命周期交互
+适用于信息型候选：
+- 新 benchmark
+- 高价值文章/讨论
+- 热门仓库的核心能力总结
 
-特别说明：
+当前阶段要求：
+- 生成 Note
+- 保留来源链
+- 写入简练摘要与必要标签
+- 必要时可追加 evidence block
 
-- 当前 `IdeaRepository` 已提供 `findAllByUserId(...)`，用于 Idea List 查询
-- 当前 `GET /api/v1/ideas` / `GET /api/v1/ideas/{id}` 已落地
-- 当前 Web 已提供单页 Idea List / Detail / Assess / Generate Tasks / View Tasks 的最小入口
-- 当前 assess 仍是 `StubIdeaAgent`，不代表真实 provider 已接入
-- 当前 task generation 仍不包含复杂批量拆解、优先级学习或计划时间推断
+### 7.2 Trend -> Idea
+
+适用于启发型候选：
+- 某个设计触发了产品想法
+- 某个趋势暴露了需求空白
+- 某个项目能被抽象成新功能或实验方向
+
+当前阶段要求：
+- 生成 Idea
+- 保留来源链
+- 允许复用既有 Idea assess 流程
+
+说明：
+- Trend 阶段不重复实现 Idea 评估平台
+- Trend -> Idea 的后续评估应复用既有 `ideas/{id}/assess`
 
 ---
 
-## 5. 当前 deferred backlog
+## 8. 可观测性与治理要求（Phase 4）
+
+Phase 4 新增核心链路必须补齐：
+
+1. 结构化日志
+2. `agent_traces`
+3. 必要的 `tool_invocation_logs`
+4. 至少一个相关 `user_action_event`
+
+最小日志点应覆盖：
+- Trend plan 触发入口
+- source 拉取开始 / 成功 / 失败
+- Trend analysis 调用开始 / 成功 / 失败
+- trend item 入库
+- Trend Inbox 用户动作
+- Trend -> Note 转化
+- Trend -> Idea 转化
+
+日志至少应包含：
+- `trace_id`
+- `user_id`
+- `trend_item_id`（如适用）
+- `source_type`
+- `action`
+- `result`
+- `duration_ms`（如适用）
+- `error_code` / `error_message`（失败时）
+
+同时建议至少记录以下 `user_action_events`：
+- `TREND_IGNORED`
+- `TREND_SAVED_AS_NOTE`
+- `TREND_PROMOTED_TO_IDEA`
+
+这些事件将作为未来偏好学习和排序评估输入。
+
+---
+
+## 9. Web 交付基线（Phase 4）
+
+当前阶段前端最小目标：
+
+1. Trend Inbox List
+2. 候选摘要展示
+3. suggested_action 展示
+4. IGNORE 按钮
+5. SAVE_AS_NOTE 按钮
+6. PROMOTE_TO_IDEA 按钮
+7. 加载 / 空 / 错误态
+
+当前阶段前端不优先：
+- 复杂视觉重构
+- 可拖拽多列布局
+- 个性化筛选平台
+- 高级趋势图表
+
+---
+
+## 10. 当前 deferred backlog
 
 以下能力当前阶段可以明确后置，但不能丢失：
 
-1. Idea assess / task 的完整治理链路
-  - 原因：当前只完成最小 task generation，未补 proposal 治理和更复杂的计划决策
-  - 预计补回：Phase 3 后段或 Phase 4
+1. 用户自定义 Trend Plan
+    - 原因：当前先保证默认计划与最小闭环
+    - 预计补回：Phase 4 后段或 Phase 5
 
-2. 多 provider / model routing
-  - 原因：当前 assess 先使用 `StubIdeaAgent` 保证合同与主链路稳定
-  - 预计补回：Phase 3 后段或 Phase 4
+2. 多来源正式 connector 平台
+    - 原因：当前先保证 HN / GitHub 默认主线
+    - 预计补回：Phase 4 后段
 
-3. assessment scoring / 商业评分
-  - 原因：当前先保证结构化评估，不做伪精细化
-  - 预计补回：Phase 4 以后
+3. Trend 个性化排序
+    - 原因：Preference 正式闭环尚未开始
+    - 预计补回：Phase 5
 
-4. Trend 与 Idea 联动正式流
-  - 原因：Trend 正式阶段尚未开始
-  - 预计补回：Phase 4
+4. Trend 去重 / 聚类高级优化
+    - 原因：当前先保证可运行，不做复杂质量工程
+    - 预计补回：Phase 4 后段
 
-5. `user_preference_profiles` 对 Idea 排序的真实影响
-  - 原因：Preference 正式闭环尚未开始
-  - 预计补回：Phase 5
-
-6. Idea 高级工作台（Kanban / pipeline / bulk actions）
-  - 原因：先做最小可用，不做界面平台化
-  - 预计补回：Phase 3 后段或 Phase 4
+5. Trend 批量转化与自动化规则
+    - 原因：当前坚持建议优先，不做静默高影响动作
+    - 预计补回：Phase 5 以后
 
 ---
 
-## 6. 当前完成定义
+## 11. 当前完成定义
 
-当前可以标记为：
+仅当以下条件同时满足，才可标记为“Phase 4 已完成最小闭环”：
 
-- `Step 3.6 已完成最小闭环`
+1. 有默认 Trend Plan
+2. 至少支持 HN / GitHub 两个默认来源
+3. 能真实拉取并入库 Trend 候选
+4. 能对候选做结构化分析
+5. 有 Trend Inbox
+6. 可执行 ignore / save as note / promote to idea
+7. Trend -> Note / Idea 真实可用
+8. trace / log / event / docs 已同步
 
-当前**不能**标记为：
-
-- `Phase 3 已完成最小闭环`
-
-因为以下条件仍未满足：
-
-1. Promote to Plan / Archive / Reopen 尚未实现
-2. Idea Create 的 Web 入口尚未补齐
-3. 复杂计划推进和后续状态交互尚未实现
-
-补充说明：
-
-- 按 `docs/codex/Plan.md` 的最小 create / assess / task / web / docs 链路，当前仓库已经完成到 Step 3.6
-- 但按更高优先级的 `AGENTS.md` 约束，Idea Workspace 的正式生命周期动作仍未收口，因此整个 Phase 3 不能宣告完成
+若只完成表、静态列表、假数据或手工写库，不可标记为已完成最小闭环。

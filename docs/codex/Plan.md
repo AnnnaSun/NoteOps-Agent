@@ -3,159 +3,180 @@
 
 ## 1. 当前阶段
 
-当前开发阶段已从 Phase 2 切换到：
+当前开发阶段已从 Phase 3 切换到：
 
-# Phase 3：Idea Lifecycle / Idea Workspace
+# Phase 4：Trend Source Registry / Trend Inbox
 
-本阶段以 **Idea 正式闭环** 为唯一目标。
-Trend、Preference Learning、PWA、移动端均不进入当前主线。
+本阶段以 **Trend 正式最小闭环** 为唯一目标。
+Preference Learning、PWA、移动端均不进入当前主线。
 
 ---
 
 ## 2. 阶段目标
 
-Phase 3 需要完成的不是单纯的 `ideas` 数据表或 CRUD 页面，而是一个最小但真实可运行的 Idea 产品闭环：
+Phase 4 需要完成的不是一个简单的“热点列表”，而是一个最小但真实可运行的 Trend 产品闭环：
 
-1. 用户可创建 Idea
-2. Idea 可来自 Note 或独立输入
-3. 系统可对 Idea 执行一次最小 AI assess
-4. assessment 结果结构化存储
-5. Idea 状态按状态机推进
-6. assessment 结果可派生下一步任务
-7. 前端可展示 Idea 列表、详情、assessment 和 task 派生入口
+1. 系统能从受控来源拉取趋势候选
+2. 系统有默认 Trend Plan（HN + GitHub）
+3. 候选能被结构化分析与评分
+4. 候选进入 Trend Inbox
+5. 用户能执行 Trend 决策动作
+6. 趋势候选可转为 Note 或 Idea
+7. 转 Idea 后复用已有 Idea 流程
 8. 全链路保持 trace / event / structured logging / doc sync 一致
 
 ---
 
 ## 3. 当前冻结边界
 
-### 3.1 Phase 3 必做
+### 3.1 Phase 4 必做
 
-1. `ideas` 领域模型落地
-2. Idea 生命周期落地：
-  - `CAPTURED`
-  - `ASSESSED`
-  - `PLANNED`
-  - `IN_PROGRESS`
-  - `ARCHIVED`
-3. 创建 Idea：
-  - `FROM_NOTE`
-  - `MANUAL`
-4. 最小 Idea assess AI 切片
-5. Idea -> Task 派生
-6. Idea 工作台最小可用
-7. trace / log / event / docs 对齐
+1. Trend 领域模型落地
+2. Trend Source Registry 最小落地
+3. Default Trend Plan 落地：
+    - `HN`
+    - `GITHUB`
+4. Trend ingest 最小闭环
+5. Trend AI 结构化分析最小切片
+6. Trend Inbox 最小可用
+7. Trend -> Note / Idea 转化
+8. trace / log / event / docs 对齐
 
-### 3.2 Phase 3 可预留但不做正式闭环
+### 3.2 Phase 4 可预留但不做正式闭环
 
-1. Trend source registry / Trend Inbox
-2. `user_preference_profiles` 正式读写闭环
-3. 更复杂的 prompt registry / model routing
-4. Idea 自动优先级学习
-5. Idea 复杂协作流程
+1. 用户自定义 Trend Plan UI
+2. 更复杂的 source 权重与个性化规则
+3. 正式 `user_preference_profiles` 对 Trend 排序生效
+4. 多 provider 抓取平台化
+5. 复杂去重、聚类与事件合并
 6. 高保真 UI 重构
 
-### 3.3 Phase 3 明确不做
+### 3.3 Phase 4 明确不做
 
-1. Trend 正式主流程
+1. 任意网站自由抓取
 2. Preference 正式画像重算器
-3. 移动端
-4. 导出中心
-5. 任意自由抓取
+3. PWA 离线 Trend 抓取
+4. 原生移动端
+5. 导出中心
 6. 多 provider 复杂 AI 平台化
+7. 全自动静默生成大量 Note / Idea
 
 ---
 
-## 4. Phase 3 切片计划
+## 4. Phase 4 切片计划
 
-## Step 3.1：Idea schema / contract 基线
+## Step 4.1：Trend schema / contract 基线
 
 ### 目标
-先冻结 Phase 3 的后端合同和状态机基础，防止后续 assess / task / web 漂移。
+先冻结 Phase 4 的后端合同和数据边界，防止后续 registry / ingest / inbox 漂移。
 
 ### 交付
-1. `ideas` 表 / migration
-2. enum / state constants
+1. `trend_items` 表 / migration（如仍需补齐）
+2. enum / source type / action constants
 3. entity / model / repository
 4. request / response DTO
 5. 基础 API contract
-6. 文档同步到 Phase 3 语义
+6. 文档同步到 Phase 4 语义
 
 ### 最小验收
-- `ideas` 可被持久化
-- Idea 状态枚举可统一使用
+- `trend_items` 可被持久化
+- source type 与 action 常量可统一使用
 - API contract 与 persistence 对齐
-- 文档明确记录 Phase 3 已开始
+- 文档明确记录 Phase 4 已开始
 
 ### 风险
-- 若字段设计过早泛化，会影响后面 assess 结构
-- 若状态机没冻结，前后端会漂移
+- 若字段设计过早泛化，会影响后续 default plan 与 inbox 合同
+- 若 source/action 枚举没冻结，前后端会漂移
 
 ### 建议后续
-进入 Step 3.2
+进入 Step 4.2
 
 ---
 
-## Step 3.2：Idea create 最小闭环
+## Step 4.2：Trend Source Registry + Default Trend Plan
 
 ### 目标
-让 Idea 能真正被创建，而不是只有 schema。
+让 Trend 具备正式来源入口，而不是手工塞数据。
 
 ### 范围
-支持两种来源：
-1. `FROM_NOTE`
-2. `MANUAL`
+最小支持：
+1. `HN`
+2. `GITHUB`
 
 ### 交付
-1. `POST /api/v1/ideas`
-2. 创建 service / command handler
-3. 基础校验
-4. 必要的日志与 trace
-5. 最小前端创建入口（如果当前阶段已接 Web）
+1. `TrendSourceRegistry`
+2. source connector interface
+3. 默认 `HN` / `GITHUB` source registration
+4. Default Trend Plan config
+5. 最小调度或显式触发入口
 
 ### 最小验收
-- 能创建独立 Idea
-- 能基于 Note 创建 Idea
-- 初始状态为 `CAPTURED`
+- registry 能注册并解析 HN/GitHub source
+- 默认 Trend Plan 配置可读取
+- 能触发一次默认 plan 的 ingest 流程
 - 写入必要 trace/log
 
 ### deferred
-- 高级字段自动补全
-- 更复杂来源归因
-- 智能去重
+- 用户自定义 source
+- 多计划并行
+- 复杂定时任务治理
 
 ### 建议后续
-进入 Step 3.3
+进入 Step 4.3
 
 ---
 
-## Step 3.3：Idea assess 最小 AI 切片（Phase 3 关键步骤）
+## Step 4.3：Trend ingest 最小闭环
 
 ### 目标
-让 Idea 从“记录点子”升级为“受控评估对象”。
-
-### 这是 Phase 3 的关键要求
-若缺失本步骤，Phase 3 不能视为真正完成最小闭环。
+让外部候选真正进入系统，而不是只有 registry。
 
 ### 交付
-1. `POST /api/v1/ideas/{id}/assess`
-2. `IdeaAssessmentService`
-3. `IdeaAgent` interface（可先最小实现）
-4. assessment request / result contract
-5. `assessment_result` 落库
-6. 状态推进：
-  - `CAPTURED -> ASSESSED`
-7. `agent_traces` 记录
-8. 结构化日志
-9. 至少一个相关事件记录
+1. 拉取趋势候选
+2. 基础归一化
+3. 去重 / 幂等（最小）
+4. 写入 `trend_items`
+5. 基础分数或 rank 字段写入
+6. 必要的 trace/log
 
-### 最小 assessment 输出
-必须至少包含：
-- `problem_statement`
-- `target_user`
-- `core_hypothesis`
-- `mvp_validation_path`
-- `next_actions`
+### 最小验收
+- 至少能从一个 source 拉取候选并落库
+- `trend_items` 包含 title/url/source_type
+- 重复拉取不会无限重复写入
+- trace/log 可查
+
+### deferred
+- 高级聚类
+- 高级摘要抓取
+- 更复杂评分
+
+### 建议后续
+进入 Step 4.4
+
+---
+
+## Step 4.4：Trend AI 分析最小切片（Phase 4 关键步骤）
+
+### 目标
+让 Trend 从“抓到一条热点”升级为“可决策的候选项”。
+
+### 这是 Phase 4 的关键要求
+若缺失本步骤，Phase 4 不能视为真正完成最小闭环。
+
+### 交付
+1. `TrendAnalysisService`
+2. `TrendAgent` interface（可先最小实现）
+3. analysis request / result contract
+4. analysis payload 落库
+5. 输出：
+    - `summary`
+    - `why_it_matters`
+    - `topic_tags`
+    - `note_worthy`
+    - `idea_worthy`
+    - `suggested_action`
+6. `agent_traces` 记录
+7. 结构化日志
 
 ### 可以接受的实现方式
 - 单 provider
@@ -165,87 +186,93 @@ Phase 3 需要完成的不是单纯的 `ideas` 数据表或 CRUD 页面，而是
 
 ### 不可接受的实现方式
 - controller 中直接调用模型
-- assessment 只返回自然语言长文本
+- analysis 只返回自然语言长文本
 - 没有落库
-- 不推进状态
 - 没有 trace/log
+- analysis 结果直接静默创建 Note / Idea
 
 ### 最小验收
-- assess 接口真实可调用
-- 能返回结构化 assessment
-- `ideas.assessment_result` 被写入
-- Idea 状态进入 `ASSESSED`
+- analysis 真实可调用
+- 能返回结构化分析结果
+- `trend_items.extra_attributes` 或等价字段被写入
 - trace/log 可查
 
 ### deferred
 - 多模型路由
-- assessment scoring
+- 个性化排序
 - prompt registry 平台化
-- 更复杂评估模板
+- 复杂评分模板
 
 ### 建议后续
-进入 Step 3.4
+进入 Step 4.5
 
 ---
 
-## Step 3.4：Idea -> Task 派生
+## Step 4.5：Trend Inbox
 
 ### 目标
-把 assessment 的结果推进到行动层。
+让 Phase 4 在前端和 API 层可见、可决策、可演示。
 
 ### 交付
-1. 从 assessment 中生成 1~N 个 `SYSTEM` tasks
-2. Task 与 Idea 正确关联
-3. 需要时更新 Idea 状态为 `PLANNED`
-4. Today / Upcoming 可看到这些任务
+1. `GET /api/v1/trends/inbox`
+2. 最小列表排序 / 过滤
+3. 展示字段：
+    - title
+    - source_type
+    - summary
+    - score
+    - suggested_action
+4. 用户动作：
+    - `IGNORE`
+    - `SAVE_AS_NOTE`
+    - `PROMOTE_TO_IDEA`
 
 ### 最小验收
-- 至少能从一个 assessed idea 派生任务
-- 任务具备基础标题 / 说明 / 关联 id
-- Today / Upcoming 能看见任务
-- 任务链路有 trace / event / logs
+- 可以浏览 Trend 候选列表
+- 可以看到 AI 分析结果
+- 可以执行至少一种用户动作
+- 候选状态变化可追溯
 
 ### deferred
-- 自动批量拆分
-- 智能优先级
-- 复杂任务模板
+- 高级筛选
+- 批量操作
+- 复杂可视化排序
 
 ### 建议后续
-进入 Step 3.5
+进入 Step 4.6
 
 ---
 
-## Step 3.5：Idea Web 工作台
+## Step 4.6：Trend -> Note / Idea 转化
 
 ### 目标
-让 Phase 3 在前端可见、可演示、可验收。
+把 Trend 的价值真正推进到主知识链路。
 
 ### 交付
-1. Idea List
-2. Idea Detail
-3. Assess 按钮
-4. Assessment Result 展示
-5. Generate Task / View Tasks 入口
-6. 加载 / 空 / 错误态
+1. `SAVE_AS_NOTE`：生成 Note 并保留来源链
+2. `PROMOTE_TO_IDEA`：生成 Idea 并保留来源链
+3. 必要时记录 Trend 与目标对象的关联 id
+4. 相关 `user_action_events`
+5. 相关 trace/log
+6. Trend -> Idea 后允许走既有 assess 流程
 
 ### 最小验收
-- 可以浏览 Idea 列表
-- 可以查看详情
-- 可以触发 assess
-- 可以看到 assessment 结果
-- 可以看到派生任务入口或结果
+- 至少能从一个 trend item 成功生成 Note
+- 至少能从一个 trend item 成功生成 Idea
+- 转化后来源链可追溯
+- 相关事件与日志可查
 
 ### deferred
-- Kanban / Pipeline
-- 大规模视觉重构
-- 高级筛选排序
+- 自动批量转化
+- 智能二次整理
+- 转化后的复杂 proposal 治理
 
 ### 建议后续
-进入 Step 3.6
+进入 Step 4.7
 
 ---
 
-## Step 3.6：Phase 3 文档与治理收口
+## Step 4.7：Phase 4 文档与治理收口
 
 ### 目标
 确保实现、文档、仓库规范一致，不留明显漂移。
@@ -258,25 +285,25 @@ Phase 3 需要完成的不是单纯的 `ideas` 数据表或 CRUD 页面，而是
 5. 校验 `AGENTS.md` / `Implement.md` / skill 是否仍与当前阶段一致
 
 ### 最小验收
-- 文档能准确描述当前 Phase 3 实现范围
+- 文档能准确描述当前 Phase 4 实现范围
 - 未完成内容被显式记录
-- 没有把 Phase 4/5 能力误写成已实现
+- 没有把 Phase 5 能力误写成已实现
 
 ---
 
 ## 5. 阶段完成定义
 
-仅当以下条件同时满足，才可以说 Phase 3 达到最小闭环：
+仅当以下条件同时满足，才可以说 Phase 4 达到最小闭环：
 
-1. Idea 可创建
-2. Idea 可 assess
-3. assessment 结果结构化落库
-4. Idea 状态能从 `CAPTURED` 进入 `ASSESSED`
-5. assessment 能派生至少一个 task 或明确下一步动作
-6. 前端能展示 Idea 与 assessment
+1. 有默认 Trend Plan
+2. 能从 HN / GitHub 拉取候选
+3. 候选能做结构化 Trend 分析
+4. 有 Trend Inbox
+5. 用户能执行 ignore / save as note / promote to idea
+6. 趋势候选可真实转为 Note / Idea
 7. trace / log / event / docs 已同步
 
-只完成 CRUD、表结构或页面壳子，不算 Phase 3 闭环。
+只完成表结构、静态列表页或手工写库，不算 Phase 4 闭环。
 
 ---
 
