@@ -1,6 +1,6 @@
 # Feature Status Matrix
 
-更新时间：2026-04-03
+更新时间：2026-04-09
 
 状态定义：
 
@@ -39,10 +39,10 @@
 | Task Upcoming 列表展示 | Workspace Upcoming | workspace upcoming response | implemented | 否 | 仅展示 |
 | Task 创建 UI | 无 | `POST /api/v1/tasks` | not implemented | 否 | 后端有接口，前端无入口 |
 | Task complete/skip UI | 无 | `POST /api/v1/tasks/{id}/complete|skip` | not implemented | 否 | 后端有接口，前端无入口 |
-| Idea List | 无 | 无 | not implemented | 否 | 完全缺失 |
-| Idea Detail | 无 | 无 | not implemented | 否 | 完全缺失 |
-| Idea Assess | 无 | 无 | not implemented | 否 | 完全缺失 |
-| Idea -> Task UI | 无 | 无 | not implemented | 否 | 完全缺失 |
+| Idea List | Idea panel | `GET /api/v1/ideas` | implemented | 否 | 单页工作台内真实列表，按 `updated_at desc` 展示；首屏失败隔离在 Idea 面板内 |
+| Idea Detail | Idea panel | `GET /api/v1/ideas/{id}` | implemented | 否 | 单页工作台内真实详情，展示 assessment 与来源 Note |
+| Idea Assess | Idea panel | `POST /api/v1/ideas/{id}/assess` | implemented | 是 | 仅 `CAPTURED` 显示入口；后续列表刷新失败只在 Idea 面板提示 |
+| Idea -> Task UI | Idea panel | `POST /api/v1/ideas/{id}/generate-task` + workspace task data | implemented | 否 | 可生成任务并查看当前 Idea 关联的 Today / Upcoming 任务；工作台刷新失败不会污染全局错误态 |
 
 ## 2. 后端能力状态矩阵
 
@@ -74,7 +74,7 @@
 | Proposal | reject | not implemented | 否 | 无 API |
 | Workspace | today aggregation | implemented | 否 | 真实聚合 today review + task，已不再同步等待 Review AI |
 | Workspace | upcoming aggregation | implemented | 否 | Review + Task 聚合 |
-| Idea | schema / state machine / API / UI | not implemented | 否 | 全部缺失 |
+| Idea | schema / state machine / API / UI | partially implemented | 部分 | create / assess / generate-task / list / detail / minimal web workspace 已落地；archive/reopen 等后续生命周期未完成 |
 
 ## 3. AI 接入点矩阵
 
@@ -86,14 +86,14 @@
 | Review feedback | `review-feedback` | `DefaultReviewAiAssistant.buildCompletionFeedback` | implemented | 完整，当前用于 `/api/v1/reviews/{id}/feedback` |
 | Proposal generation | 无 | 规则逻辑 | not implemented as AI | 仅 trace/event/log，不是 AI |
 | Task generation/planning | 无 | 规则逻辑 | not implemented as AI | 无独立 AI 接入 |
-| Idea assess | 无 | 无 | not implemented | 无 |
+| Idea assess | `idea-assess`（stub route semantics） | `IdeaAssessmentService` + `StubIdeaAgent` | implemented | 完整 |
 | Trend research provider | 无 | 无 | not implemented | 无 |
 
 ## 4. 当前最值得警惕的“看起来有，实际没有”
 
 | 表象 | 现实 |
 | --- | --- |
-| `TaskRelatedEntityType` 里有 `IDEA` | 只是预留，没有任何真实 Idea 流程使用 |
+| `TaskRelatedEntityType` 里有 `IDEA` | 已被 Idea -> Task 主链路真实使用，但仍不代表完整 Idea 生命周期已闭环 |
 | Search 有 external supplements | 实际来源是 stub，不是真外部 provider |
 | 前端有 `listReviewsToday` / `listTasksToday` client | 页面主路径并未使用 |
-| 文档写 Phase 3 Idea 基线 | 代码里不存在 Idea 主线 |
+| 文档写 Phase 3 Idea 正式闭环 | 代码里只有最小闭环：create / assess / task / list / detail / web workspace，未到完整生命周期收口 |

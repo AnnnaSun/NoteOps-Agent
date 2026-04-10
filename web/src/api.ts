@@ -2,6 +2,9 @@ import type {
   ApiEnvelope,
   CaptureResponse,
   ChangeProposal,
+  IdeaDetail,
+  IdeaSummary,
+  IdeaTaskGenerationResult,
   NoteDetail,
   NoteSummary,
   ReviewFeedbackResult,
@@ -46,6 +49,32 @@ export function listNotes(userId: string): Promise<NoteSummary[]> {
 
 export function getNote(noteId: string, userId: string): Promise<NoteDetail> {
   return request(`/api/v1/notes/${encodeURIComponent(noteId)}?user_id=${encodeURIComponent(userId)}`);
+}
+
+export function listIdeas(userId: string): Promise<IdeaSummary[]> {
+  return request(`/api/v1/ideas?user_id=${encodeURIComponent(userId)}`);
+}
+
+export function getIdea(ideaId: string, userId: string): Promise<IdeaDetail> {
+  return request(`/api/v1/ideas/${encodeURIComponent(ideaId)}?user_id=${encodeURIComponent(userId)}`);
+}
+
+export function assessIdea(ideaId: string, userId: string): Promise<IdeaDetail> {
+  return request(`/api/v1/ideas/${encodeURIComponent(ideaId)}/assess`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: userId
+    })
+  });
+}
+
+export function generateIdeaTasks(ideaId: string, userId: string): Promise<IdeaTaskGenerationResult> {
+  return request(`/api/v1/ideas/${encodeURIComponent(ideaId)}/generate-task`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: userId
+    })
+  });
 }
 
 export function createCapture(input: {

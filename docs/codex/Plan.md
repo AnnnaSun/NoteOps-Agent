@@ -1,299 +1,292 @@
-# Plan.md
-# NoteOps-Agent Phase 3 实施计划（Idea 正式闭环）
+# Plan
+# docs/codex/Plan.md
 
-## 0. 阶段目标
+## 1. 当前阶段
 
-Phase 3 的目标不是做 Trend，而是把 Phase 2 已有的 Note / Search / Review / Task 基础继续向前推进，完成 **Idea 正式闭环**：
+当前开发阶段已从 Phase 2 切换到：
 
-- 想法能被沉淀为 `Idea`
-- Idea 能被评估
-- Idea 能被推进为 Task
-- 关键动作具备 trace / proposal / event / log
-- Web 端具备最小可操作工作台
+# Phase 3：Idea Lifecycle / Idea Workspace
 
-## 1. 本阶段范围
+本阶段以 **Idea 正式闭环** 为唯一目标。
+Trend、Preference Learning、PWA、移动端均不进入当前主线。
 
-### 1.1 必做
-1. Idea schema、枚举、状态机对齐
-2. Idea 创建
-3. Note -> Idea 派生
-4. Idea Assess
-5. Idea -> Task
-6. Idea List / Detail / Assess / Generate Task UI
-7. trace / event / user_action_event / structured log 补齐
-8. 文档同步
+---
 
-### 1.2 不做
-1. Trend 正式闭环
-2. Preference 正式学习闭环
-3. 复杂评分系统
-4. Kanban / board
-5. 高级推荐排序
-6. 周/月日历
-7. 多来源实时抓取
+## 2. 阶段目标
 
-### 1.3 只预留
-1. `FROM_SEARCH`
-2. `FROM_TREND_CANDIDATE`
-3. `user_preference_profiles` 读模型或占位 service
-4. richer assessment templates
+Phase 3 需要完成的不是单纯的 `ideas` 数据表或 CRUD 页面，而是一个最小但真实可运行的 Idea 产品闭环：
 
-## 2. Step 切分
+1. 用户可创建 Idea
+2. Idea 可来自 Note 或独立输入
+3. 系统可对 Idea 执行一次最小 AI assess
+4. assessment 结果结构化存储
+5. Idea 状态按状态机推进
+6. assessment 结果可派生下一步任务
+7. 前端可展示 Idea 列表、详情、assessment 和 task 派生入口
+8. 全链路保持 trace / event / structured logging / doc sync 一致
 
-## 前置补丁：Capture AI 最小闭环（已完成）
+---
+
+## 3. 当前冻结边界
+
+### 3.1 Phase 3 必做
+
+1. `ideas` 领域模型落地
+2. Idea 生命周期落地：
+  - `CAPTURED`
+  - `ASSESSED`
+  - `PLANNED`
+  - `IN_PROGRESS`
+  - `ARCHIVED`
+3. 创建 Idea：
+  - `FROM_NOTE`
+  - `MANUAL`
+4. 最小 Idea assess AI 切片
+5. Idea -> Task 派生
+6. Idea 工作台最小可用
+7. trace / log / event / docs 对齐
+
+### 3.2 Phase 3 可预留但不做正式闭环
+
+1. Trend source registry / Trend Inbox
+2. `user_preference_profiles` 正式读写闭环
+3. 更复杂的 prompt registry / model routing
+4. Idea 自动优先级学习
+5. Idea 复杂协作流程
+6. 高保真 UI 重构
+
+### 3.3 Phase 3 明确不做
+
+1. Trend 正式主流程
+2. Preference 正式画像重算器
+3. 移动端
+4. 导出中心
+5. 任意自由抓取
+6. 多 provider 复杂 AI 平台化
+
+---
+
+## 4. Phase 3 切片计划
+
+## Step 3.1：Idea schema / contract 基线
+
 ### 目标
-在正式进入 Idea 主线前，先把 `POST /api/v1/captures` 与 `GET /api/v1/captures/{capture_job_id}` 升级为真实 AI 主链路，而不是 placeholder summary。
+先冻结 Phase 3 的后端合同和状态机基础，防止后续 assess / task / web 漂移。
 
-### 实际已完成
-- 支持 `TEXT / URL`
-- CaptureJob 状态机固定为：
-    - `RECEIVED`
-    - `EXTRACTING`
-    - `ANALYZING`
-    - `CONSOLIDATING`
-    - `COMPLETED`
-    - `FAILED`
-- `TEXT` 走原文规整提取，`URL` 走最小 HTTP 快照提取
-- `ANALYZING` 阶段支持真实结构化 JSON 调用，AI 层已收敛为协议型 provider：`OPENAI_COMPATIBLE / OLLAMA`
-- provider/router 已抽到共享 `service.ai` 平台，默认走统一 AI 网关，route 以 `endpoint + model` 选型为主；请求级 `providerOverride` 已移除，当前已接入 `capture-analysis` 与 `search-enhancement`
-- 服务端对 `CaptureAnalysisResult` 做强校验
-- consolidate 默认新建 Note，原始输入落 `CAPTURE_RAW`，AI 结果仅写 Note 当前解释层与 `analysis_result`
-- 写入 `agent_traces`、`tool_invocation_logs`、`user_action_events`、结构化日志
+### 交付
+1. `ideas` 表 / migration
+2. enum / state constants
+3. entity / model / repository
+4. request / response DTO
+5. 基础 API contract
+6. 文档同步到 Phase 3 语义
 
-### 明确不扩张
-- 不做旧 Note 匹配
-- 不做 `UPDATE / APPEND / CONFLICT`
-- 不把 Proposal 设为 Capture 主入口
-- 不扩 Search / Review / Task / Idea / Trend 的 AI 主链
-- 不引入异步队列、多模型路由平台、prompt registry
+### 最小验收
+- `ideas` 可被持久化
+- Idea 状态枚举可统一使用
+- API contract 与 persistence 对齐
+- 文档明确记录 Phase 3 已开始
 
-### 下一正式里程碑
-- 完成前置补丁后，继续按 Idea 主线推进，从 `Step 3.1` / `Step 3.2` 继续，不把 Capture 补丁误判为 Phase 3 全量开始
+### 风险
+- 若字段设计过早泛化，会影响后面 assess 结构
+- 若状态机没冻结，前后端会漂移
 
-## 用户定向补丁：Search AI 最小增强（已完成）
+### 建议后续
+进入 Step 3.2
+
+---
+
+## Step 3.2：Idea create 最小闭环
+
 ### 目标
-在不改变 Search 三分栏冻结语义的前提下，为 `related_matches` 和 `external_supplements` 增加最小可演示 AI 解释能力，并补齐 evidence / proposal 治理动作。
+让 Idea 能真正被创建，而不是只有 schema。
 
-### 实际已完成
-- `GET /api/v1/search` 保持三分栏：
-    - `exact_matches`
-    - `related_matches`
-    - `external_supplements`
-- `related_matches.relation_reason` 由共享 `service.ai` 路由做最小解释增强，失败时回退到规则可解释短句
-- `external_supplements` 增加：
-    - `relation_label`
-    - `keywords`
-    - `summary_snippet`
-- 新增 Search 治理入口：
-    - `POST /api/v1/search/notes/{noteId}/evidence`
-    - `POST /api/v1/search/notes/{noteId}/change-proposals`
-- 保存 evidence 只追加 `note_contents.content_type = EVIDENCE`
-- 从 Search 生成的解释层更新只允许落到 `ChangeProposal`
-- Search 查询、AI 增强、evidence 保存、proposal 生成均写入 `agent_traces`、`tool_invocation_logs`、`user_action_events`
+### 范围
+支持两种来源：
+1. `FROM_NOTE`
+2. `MANUAL`
 
-### 明确不扩张
-- 不引入真实外部 provider 抓取
-- 不让 Search 直接更新 `notes.current_summary / current_key_points / current_tags`
-- 不做 Search ranking learning
-- 不做 Search 偏好学习
-- 不做 Search -> Idea 正式自动转化
+### 交付
+1. `POST /api/v1/ideas`
+2. 创建 service / command handler
+3. 基础校验
+4. 必要的日志与 trace
+5. 最小前端创建入口（如果当前阶段已接 Web）
 
-## Step 3.1：锁定 Idea 领域模型与状态机
-### 目标
-让 schema / entity / enum / DTO 对齐 Phase 3 的 Idea 语义。
-
-### 需要完成
-- 检查是否已有 `ideas` 表或对应迁移
-- 对齐状态：
-    - `CAPTURED`
-    - `ASSESSED`
-    - `PLANNED`
-    - `IN_PROGRESS`
-    - `ARCHIVED`
-- 对齐核心字段：
-    - `id`
-    - `user_id`
-    - `source_note_id`
-    - `title`
-    - `status`
-    - `assessment_result`
-    - `created_at`
-    - `updated_at`
-- 如现有 schema 不完整，补 migration
-- 同步 Java 枚举 / entity / repository / DTO
-
-### 前置准备
-- 阅读现有 migration、entity、repository、controller、DTO
-- 查清 Phase 2 是否已有占位实现
-
-### 验收点
-- 后端可构建
-- 枚举与表字段无漂移
-- 文档里能明确当前 Idea 模型
-
-## Step 3.2：创建 Idea 与从 Note 派生 Idea
-### 目标
-打通 Phase 3 的最基本输入来源。
-
-### 需要完成
-- `POST /api/ideas`
-- `POST /api/notes/{noteId}/ideas` 或同等语义接口
-- 支持两种来源：
-    - 独立创建
-    - 从 Note 派生
-- 写入 trace / user_action_event
-- 补齐结构化日志
-
-### 验收点
+### 最小验收
 - 能创建独立 Idea
-- 能从指定 Note 派生 Idea
-- 接口返回 envelope 一致
-- 日志中能定位 `idea_id` / `note_id` / `trace_id`
+- 能基于 Note 创建 Idea
+- 初始状态为 `CAPTURED`
+- 写入必要 trace/log
 
-## Step 3.3：Idea Detail 与 List 查询
+### deferred
+- 高级字段自动补全
+- 更复杂来源归因
+- 智能去重
+
+### 建议后续
+进入 Step 3.3
+
+---
+
+## Step 3.3：Idea assess 最小 AI 切片（Phase 3 关键步骤）
+
 ### 目标
-给前端工作台最小读取能力。
+让 Idea 从“记录点子”升级为“受控评估对象”。
 
-### 需要完成
-- `GET /api/ideas`
-- `GET /api/ideas/{id}`
-- 支持基础过滤：
-    - status
-    - source_note_id（可选）
-- 前端 API client 接通
-- 最小列表 / 详情页展示真实数据
+### 这是 Phase 3 的关键要求
+若缺失本步骤，Phase 3 不能视为真正完成最小闭环。
 
-### 验收点
-- 页面能列出 Idea
-- 能进入详情页
-- 加载 / 空态 / 错误态明确
+### 交付
+1. `POST /api/v1/ideas/{id}/assess`
+2. `IdeaAssessmentService`
+3. `IdeaAgent` interface（可先最小实现）
+4. assessment request / result contract
+5. `assessment_result` 落库
+6. 状态推进：
+  - `CAPTURED -> ASSESSED`
+7. `agent_traces` 记录
+8. 结构化日志
+9. 至少一个相关事件记录
 
-## Step 3.4：Idea Assess 最小闭环
+### 最小 assessment 输出
+必须至少包含：
+- `problem_statement`
+- `target_user`
+- `core_hypothesis`
+- `mvp_validation_path`
+- `next_actions`
+
+### 可以接受的实现方式
+- 单 provider
+- 单 prompt
+- stub / mock adapter
+- 同步调用
+
+### 不可接受的实现方式
+- controller 中直接调用模型
+- assessment 只返回自然语言长文本
+- 没有落库
+- 不推进状态
+- 没有 trace/log
+
+### 最小验收
+- assess 接口真实可调用
+- 能返回结构化 assessment
+- `ideas.assessment_result` 被写入
+- Idea 状态进入 `ASSESSED`
+- trace/log 可查
+
+### deferred
+- 多模型路由
+- assessment scoring
+- prompt registry 平台化
+- 更复杂评估模板
+
+### 建议后续
+进入 Step 3.4
+
+---
+
+## Step 3.4：Idea -> Task 派生
+
 ### 目标
-让 Idea 从“被记录”进入“被评估”。
+把 assessment 的结果推进到行动层。
 
-### 需要完成
-- `POST /api/ideas/{id}/assess`
-- assessment_result 最少包含：
-    - `problem_definition`
-    - `target_user`
-    - `core_hypothesis`
-    - `mvp_validation_path`
-- 状态从 `CAPTURED -> ASSESSED`
-- 写 trace / event / user_action_event
-- 关键写入保留 before / after 摘要
-- 补齐结构化日志
+### 交付
+1. 从 assessment 中生成 1~N 个 `SYSTEM` tasks
+2. Task 与 Idea 正确关联
+3. 需要时更新 Idea 状态为 `PLANNED`
+4. Today / Upcoming 可看到这些任务
 
-### 验收点
-- 接口可成功写入 assessment_result
-- 状态按预期迁移
-- Detail 页能展示 assessment 内容
-- 失败场景可从日志定位
+### 最小验收
+- 至少能从一个 assessed idea 派生任务
+- 任务具备基础标题 / 说明 / 关联 id
+- Today / Upcoming 能看见任务
+- 任务链路有 trace / event / logs
 
-## Step 3.5：Idea -> Task 最小闭环
+### deferred
+- 自动批量拆分
+- 智能优先级
+- 复杂任务模板
+
+### 建议后续
+进入 Step 3.5
+
+---
+
+## Step 3.5：Idea Web 工作台
+
 ### 目标
-把 Idea 推进到执行层，而不是停留在想法展示。
+让 Phase 3 在前端可见、可演示、可验收。
 
-### 需要完成
-- `POST /api/ideas/{id}/generate-task`
-- 生成 `task_source = SYSTEM`
-- 绑定：
-    - `linked_entity_type = IDEA`
-    - `linked_entity_id = idea.id`
-- Idea 状态从 `ASSESSED -> PLANNED`
-- Today / Upcoming 可见
-- 写 trace / event / user_action_event
-- 补齐结构化日志
+### 交付
+1. Idea List
+2. Idea Detail
+3. Assess 按钮
+4. Assessment Result 展示
+5. Generate Task / View Tasks 入口
+6. 加载 / 空 / 错误态
 
-### 验收点
-- 成功生成真实 task
-- task 可在 Today / Upcoming 中看到
-- Task 与 Idea 关系可追溯
-- 失败场景可从 trace 与日志回放
+### 最小验收
+- 可以浏览 Idea 列表
+- 可以查看详情
+- 可以触发 assess
+- 可以看到 assessment 结果
+- 可以看到派生任务入口或结果
 
-## Step 3.6：Idea 继续推进与归档
+### deferred
+- Kanban / Pipeline
+- 大规模视觉重构
+- 高级筛选排序
+
+### 建议后续
+进入 Step 3.6
+
+---
+
+## Step 3.6：Phase 3 文档与治理收口
+
 ### 目标
-把生命周期补到最小完整，不停在 PLANNED。
+确保实现、文档、仓库规范一致，不留明显漂移。
 
-### 需要完成
-- 至少支持：
-    - `POST /api/ideas/{id}/start`：`PLANNED -> IN_PROGRESS`
-    - `POST /api/ideas/{id}/archive`：`IN_PROGRESS|PLANNED|ASSESSED -> ARCHIVED`
-    - 可选 `POST /api/ideas/{id}/reopen`：`ARCHIVED -> PLANNED`
-- 写 trace / event / user_action_event
-- 补齐结构化日志
+### 交付
+1. 更新 `docs/codex/Documentation.md`
+2. 更新 milestone 状态
+3. 记录 deferred backlog
+4. 标记已完成与未完成边界
+5. 校验 `AGENTS.md` / `Implement.md` / skill 是否仍与当前阶段一致
 
-### 验收点
-- Idea 生命周期能走到归档
-- 详情页可看到状态变化
-- 状态机规则不混乱
+### 最小验收
+- 文档能准确描述当前 Phase 3 实现范围
+- 未完成内容被显式记录
+- 没有把 Phase 4/5 能力误写成已实现
 
-## Step 3.7：治理链路补强
-### 目标
-让 Idea 不成为绕开治理的孤岛。
+---
 
-### 需要完成
-- 对关键更新评估是否经 proposal 或至少保留 before / after 摘要
-- 检查 trace / event / user_action_event 的一致性
-- 检查日志字段最小集合
-- 校验 DTO / schema / 文档是否漂移
+## 5. 阶段完成定义
 
-### 验收点
-- 关键动作可追溯
-- 无核心链路静默写库
-- 无接口与文档明显不一致
+仅当以下条件同时满足，才可以说 Phase 3 达到最小闭环：
 
-## Step 3.8：文档与阶段收口
-### 目标
-让仓库执行文档和真实代码对齐。
+1. Idea 可创建
+2. Idea 可 assess
+3. assessment 结果结构化落库
+4. Idea 状态能从 `CAPTURED` 进入 `ASSESSED`
+5. assessment 能派生至少一个 task 或明确下一步动作
+6. 前端能展示 Idea 与 assessment
+7. trace / log / event / docs 已同步
 
-### 需要完成
-- 更新 `docs/codex/Documentation.md`
-- 如范围变化，更新 `AGENTS.md`
-- 如执行规则变化，更新 `docs/codex/Implement.md`
-- 如 phase skill 仍停留在 Phase 2，更新 skill
+只完成 CRUD、表结构或页面壳子，不算 Phase 3 闭环。
 
-### 验收点
-- 文档能解释当前已实现行为
-- 明确 Deferred Backlog
-- 下一阶段边界清楚
+---
 
-## 3. 验证策略
+## 6. Deferred Backlog 记录要求
 
-每个 Step 默认执行：
+凡是为了最小闭环暂时跳过的能力，必须在 `Documentation.md` 中记录：
 
-1. 相关单元 / 集成测试
-2. build / type check
-3. migration 验证（如果 schema 有变）
-4. 手工 API 链路验证
-5. 前端最小点击验证（若页面改动）
+1. 跳过了什么
+2. 为什么现在不做
+3. 预期在哪个 Phase 补回
+4. 当前造成什么限制
 
-禁止声称执行了未执行的验证。
-
-## 4. 完成标准
-
-Phase 3 只有满足以下条件，才算“已完成最小闭环”：
-
-1. 独立创建 Idea 成功
-2. 从 Note 派生 Idea 成功
-3. Idea List / Detail 可用
-4. Idea Assess 成功
-5. Idea -> Task 成功
-6. Today / Upcoming 能看到生成任务
-7. 状态至少能走到 `ARCHIVED`
-8. trace / event / logs 补齐
-9. 文档同步完成
-
-## 5. Deferred Backlog
-
-以下内容在 Phase 3 结束后必须保留为后续计划，不得遗失：
-
-1. Trend 正式闭环
-2. user_preference_profiles 正式学习与重算
-3. Idea scoring / ranking
-4. Trend candidate -> Idea 自动转化
-5. Idea Kanban / board
-6. richer assessment template
-7. 推荐排序与偏好融合
-
-阶段性跳过仅代表“后置”，不代表“删除”。
+阶段性跳过，不代表永久删除。

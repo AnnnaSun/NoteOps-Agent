@@ -1,24 +1,38 @@
 import { FormEvent, useEffect, useRef, useState, useTransition } from "react";
 import {
   applyChangeProposal,
+  assessIdea,
   completeReview,
   createSearchChangeProposal,
   createCapture,
   createChangeProposal,
+  generateIdeaTasks,
+  getIdea,
   getReviewFeedback,
   getReviewPrep,
   getWorkspaceToday,
   getWorkspaceUpcoming,
   getNote,
+  listIdeas,
   listChangeProposals,
   listNotes,
   saveSearchEvidence,
   searchNotes,
   rollbackChangeProposal
 } from "./api";
+import {
+  foldBootstrapSlice,
+  resolveIdeaSelection,
+  shouldApplyIdeaActionFollowUp,
+  toErrorMessage
+} from "./ideaWorkspaceState";
 import type {
   CaptureResponse,
   ChangeProposal,
+  IdeaAssessmentResult,
+  IdeaDetail,
+  IdeaSummary,
+  IdeaTaskGenerationResult,
   NoteDetail,
   NoteSummary,
   ReviewFeedbackResult,
@@ -244,6 +258,34 @@ function getTaskStatusLabel(value: string): string {
   }
 }
 
+function getIdeaStatusLabel(value: string): string {
+  switch (value) {
+    case "CAPTURED":
+      return "已捕获";
+    case "ASSESSED":
+      return "已评估";
+    case "PLANNED":
+      return "已计划";
+    case "IN_PROGRESS":
+      return "进行中";
+    case "ARCHIVED":
+      return "已归档";
+    default:
+      return value;
+  }
+}
+
+function getIdeaSourceModeLabel(value: string): string {
+  switch (value) {
+    case "FROM_NOTE":
+      return "来自笔记";
+    case "MANUAL":
+      return "独立想法";
+    default:
+      return value;
+  }
+}
+
 function getProposalStatusLabel(value: string): string {
   switch (value) {
     case "PENDING":
@@ -367,6 +409,8 @@ type ReviewFeedbackBanner = {
 type ReviewPrepState = Record<string, ReviewPrepResult>;
 type ReviewPrepLoadingState = Record<string, boolean>;
 
+type IdeaTaskVisibilityMap = Record<string, boolean>;
+
 function isRecallQueue(queueType: string): boolean {
   return queueType === "RECALL";
 }
@@ -389,10 +433,44 @@ function normalizeOptionalValue(value: string): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function hasIdeaAssessmentResult(result: IdeaAssessmentResult | null | undefined): boolean {
+  if (!result) {
+    return false;
+  }
+  return Boolean(
+    result.problem_statement ||
+      result.target_user ||
+      result.core_hypothesis ||
+      result.reasoning_summary ||
+      result.mvp_validation_path.length ||
+      result.next_actions.length ||
+      result.risks.length
+  );
+}
+
+function mergeIdeaTasks(
+  latestGeneratedIdeaTasks: TaskItem[],
+  todayTasks: TaskItem[],
+  upcomingTasks: TaskItem[]
+): TaskItem[] {
+  const tasksById = new Map<string, TaskItem>();
+  for (const task of [...latestGeneratedIdeaTasks, ...todayTasks, ...upcomingTasks]) {
+    tasksById.set(task.id, task);
+  }
+  return Array.from(tasksById.values()).sort((left, right) => {
+    const leftDue = left.due_at ?? left.updated_at;
+    const rightDue = right.due_at ?? right.updated_at;
+    return new Date(leftDue).getTime() - new Date(rightDue).getTime();
+  });
+}
+
 export default function App() {
   const [userIdInput, setUserIdInput] = useState(readStoredUserId);
   const [activeUserId, setActiveUserId] = useState(readStoredUserId);
   const [notes, setNotes] = useState<NoteSummary[]>([]);
+  const [ideas, setIdeas] = useState<IdeaSummary[]>([]);
+  const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
+  const [selectedIdea, setSelectedIdea] = useState<IdeaDetail | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [selectedNote, setSelectedNote] = useState<NoteDetail | null>(null);
   const [proposals, setProposals] = useState<ChangeProposal[]>([]);
@@ -413,6 +491,10 @@ export default function App() {
   const [reviewFormDraft, setReviewFormDraft] = useState<ReviewFormDraft | null>(null);
   const [lastReviewFeedback, setLastReviewFeedback] = useState<ReviewFeedbackBanner | null>(null);
   const [notesError, setNotesError] = useState<string | null>(null);
+  const [ideasError, setIdeasError] = useState<string | null>(null);
+  const [ideaDetailError, setIdeaDetailError] = useState<string | null>(null);
+  const [ideaActionError, setIdeaActionError] = useState<string | null>(null);
+  const [ideaActionNotice, setIdeaActionNotice] = useState<string | null>(null);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [proposalError, setProposalError] = useState<string | null>(null);
@@ -424,11 +506,18 @@ export default function App() {
   const [isSubmittingCapture, setIsSubmittingCapture] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isMutatingSearchAction, setIsMutatingSearchAction] = useState(false);
+  const [isIdeaTaskListVisibleById, setIsIdeaTaskListVisibleById] = useState<IdeaTaskVisibilityMap>({});
   const [isRefreshingWorkspace, startWorkspaceTransition] = useTransition();
   const [isRefreshingNote, startNoteTransition] = useTransition();
+  const [isRefreshingIdeas, startIdeaRefreshTransition] = useTransition();
+  const [isRefreshingIdeaDetail, startIdeaDetailTransition] = useTransition();
+  const [isAssessingIdea, startIdeaAssessTransition] = useTransition();
+  const [isGeneratingIdeaTasks, startIdeaTaskTransition] = useTransition();
   const [isSubmittingReview, startReviewTransition] = useTransition();
   const [isMutatingProposal, startProposalTransition] = useTransition();
+  const [latestGeneratedIdeaTasks, setLatestGeneratedIdeaTasks] = useState<TaskItem[]>([]);
   const activeUserIdRef = useRef(activeUserId);
+  const selectedIdeaIdRef = useRef<string | null>(selectedIdeaId);
   const isDetailVisible = Boolean(selectedNoteId || noteError || isRefreshingNote);
   const upcomingItemCount = upcomingReviews.length + upcomingTasks.length;
   const upcomingReviewGroups = groupUpcomingReviewsByNote(upcomingReviews);
@@ -449,6 +538,21 @@ export default function App() {
           lastReviewFeedback.feedback?.follow_up_task_suggestion ?? lastReviewFeedback.result.follow_up_task_suggestion,
         isLoading: lastReviewFeedback.isLoading
       }
+    : null;
+  const selectedIdeaRelatedTasks = selectedIdeaId
+    ? mergeIdeaTasks(
+        latestGeneratedIdeaTasks.filter((task) => task.related_entity_id === selectedIdeaId),
+        tasksToday.filter(
+          (task) => task.related_entity_type === "IDEA" && task.related_entity_id === selectedIdeaId
+        ),
+        upcomingTasks.filter(
+          (task) => task.related_entity_type === "IDEA" && task.related_entity_id === selectedIdeaId
+        )
+      )
+    : [];
+  const isSelectedIdeaTaskListVisible = selectedIdeaId ? (isIdeaTaskListVisibleById[selectedIdeaId] ?? false) : false;
+  const selectedIdeaSourceNote = selectedIdea?.source_note_id
+    ? notes.find((note) => note.id === selectedIdea.source_note_id) ?? null
     : null;
 
   function applyWorkspaceSnapshot(snapshot: WorkspaceSnapshot) {
@@ -483,44 +587,63 @@ export default function App() {
   }, [activeUserId]);
 
   useEffect(() => {
+    selectedIdeaIdRef.current = selectedIdeaId;
+  }, [selectedIdeaId]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function bootstrap() {
       setIsBootstrapping(true);
       setNotesError(null);
+      setIdeasError(null);
       setWorkspaceError(null);
+      setIdeaDetailError(null);
+      setIdeaActionError(null);
+      setIdeaActionNotice(null);
       setReviewPrepById({});
       setReviewPrepLoadingById({});
       setLastReviewFeedback(null);
-      try {
-        const [noteItems, workspaceSnapshot] = await Promise.all([
+      setLatestGeneratedIdeaTasks([]);
+      setIsIdeaTaskListVisibleById({});
+      const [notesResult, ideasResult, workspaceResult] = await Promise.allSettled([
           listNotes(activeUserId),
+          listIdeas(activeUserId),
           fetchWorkspaceSnapshot(activeUserId)
         ]);
-        if (cancelled) {
-          return;
-        }
-        setNotes(noteItems);
-        applyWorkspaceSnapshot(workspaceSnapshot);
-        setSelectedNoteId(noteItems[0]?.id ?? null);
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        const message = error instanceof Error ? error.message : "加载初始数据失败";
-        setNotesError(message);
-        setWorkspaceError(message);
-        setNotes([]);
+      if (cancelled) {
+        return;
+      }
+
+      const noteSlice = foldBootstrapSlice(notesResult, [] as NoteSummary[]);
+      const ideaSlice = foldBootstrapSlice(ideasResult, [] as IdeaSummary[]);
+      const workspaceSlice = foldBootstrapSlice(workspaceResult, null as WorkspaceSnapshot | null);
+
+      setNotes(noteSlice.data);
+      setNotesError(noteSlice.error);
+      setSelectedNoteId(noteSlice.data[0]?.id ?? null);
+
+      setIdeas(ideaSlice.data);
+      setIdeasError(ideaSlice.error);
+      const nextIdeaId = resolveIdeaSelection(
+        ideaSlice.data,
+        null,
+        selectedIdeaIdRef.current,
+        false
+      );
+      selectedIdeaIdRef.current = nextIdeaId;
+      setSelectedIdeaId(nextIdeaId);
+
+      if (workspaceSlice.data) {
+        applyWorkspaceSnapshot(workspaceSlice.data);
+      } else {
         setReviewsToday([]);
         setTasksToday([]);
         setUpcomingReviews([]);
         setUpcomingTasks([]);
-        setSelectedNoteId(null);
-      } finally {
-        if (!cancelled) {
-          setIsBootstrapping(false);
-        }
       }
+      setWorkspaceError(workspaceSlice.error);
+      setIsBootstrapping(false);
     }
 
     void bootstrap();
@@ -571,6 +694,41 @@ export default function App() {
     };
   }, [activeUserId, selectedNoteId]);
 
+  useEffect(() => {
+    if (!selectedIdeaId) {
+      setSelectedIdea(null);
+      setIdeaDetailError(null);
+      setIdeaActionError(null);
+      setIdeaActionNotice(null);
+      setLatestGeneratedIdeaTasks([]);
+      return;
+    }
+
+    let cancelled = false;
+    startIdeaDetailTransition(() => {
+      void (async () => {
+        setIdeaDetailError(null);
+        try {
+          const idea = await getIdea(selectedIdeaId, activeUserId);
+          if (cancelled) {
+            return;
+          }
+          setSelectedIdea(idea);
+        } catch (error) {
+          if (cancelled) {
+            return;
+          }
+          setSelectedIdea(null);
+          setIdeaDetailError(toErrorMessage(error, "加载 Idea 详情失败"));
+        }
+      })();
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeUserId, selectedIdeaId]);
+
   async function refreshNotes(preferredNoteId?: string) {
     const noteItems = await listNotes(activeUserId);
     setNotes(noteItems);
@@ -589,6 +747,25 @@ export default function App() {
     }
   }
 
+  async function refreshIdeas(options?: {
+    preferredIdeaId?: string;
+    preserveCurrentSelection?: boolean;
+  }) {
+    const ideaItems = await listIdeas(activeUserId);
+    setIdeas(ideaItems);
+    const nextSelectedId = resolveIdeaSelection(
+      ideaItems,
+      options?.preferredIdeaId ?? null,
+      selectedIdeaIdRef.current,
+      options?.preserveCurrentSelection ?? false
+    );
+    selectedIdeaIdRef.current = nextSelectedId;
+    setSelectedIdeaId(nextSelectedId);
+    if (!nextSelectedId) {
+      setSelectedIdea(null);
+    }
+  }
+
   function handleUserIdApply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextUserId = userIdInput.trim();
@@ -601,6 +778,14 @@ export default function App() {
     setLastReviewFeedback(null);
     setReviewPrepById({});
     setReviewPrepLoadingById({});
+    setIdeas([]);
+    selectedIdeaIdRef.current = null;
+    setSelectedIdeaId(null);
+    setSelectedIdea(null);
+    setLatestGeneratedIdeaTasks([]);
+    setIsIdeaTaskListVisibleById({});
+    setIdeaActionError(null);
+    setIdeaActionNotice(null);
     setActiveUserId(nextUserId);
   }
 
@@ -700,6 +885,107 @@ export default function App() {
         }
       })();
     });
+  }
+
+  function handleIdeasRefresh() {
+    startIdeaRefreshTransition(() => {
+      void (async () => {
+        setIdeasError(null);
+        setIdeaActionNotice(null);
+        try {
+          await refreshIdeas({ preserveCurrentSelection: true });
+        } catch (error) {
+          setIdeasError(toErrorMessage(error, "刷新 Idea 列表失败"));
+        }
+      })();
+    });
+  }
+
+  function handleIdeaAssess() {
+    if (!selectedIdeaId) {
+      return;
+    }
+    const actionIdeaId = selectedIdeaId;
+    startIdeaAssessTransition(() => {
+      void (async () => {
+        setIdeaActionError(null);
+        setIdeaActionNotice(null);
+        try {
+          const idea = await assessIdea(actionIdeaId, activeUserId);
+          if (shouldApplyIdeaActionFollowUp(actionIdeaId, selectedIdeaIdRef.current)) {
+            setSelectedIdea(idea);
+          }
+          try {
+            await refreshIdeas({
+              preferredIdeaId: actionIdeaId,
+              preserveCurrentSelection: true
+            });
+          } catch (error) {
+            setIdeaActionNotice(`Idea 已评估，但列表刷新失败：${toErrorMessage(error, "刷新失败")}`);
+          }
+        } catch (error) {
+          setIdeaActionError(toErrorMessage(error, "执行 Idea assess 失败"));
+        }
+      })();
+    });
+  }
+
+  function handleIdeaGenerateTasks() {
+    if (!selectedIdeaId) {
+      return;
+    }
+    const actionIdeaId = selectedIdeaId;
+    startIdeaTaskTransition(() => {
+      void (async () => {
+        setIdeaActionError(null);
+        setIdeaActionNotice(null);
+        try {
+          const result: IdeaTaskGenerationResult = await generateIdeaTasks(actionIdeaId, activeUserId);
+          setLatestGeneratedIdeaTasks(result.generated_tasks);
+          setIsIdeaTaskListVisibleById((current) => ({
+            ...current,
+            [actionIdeaId]: true
+          }));
+          if (shouldApplyIdeaActionFollowUp(actionIdeaId, selectedIdeaIdRef.current)) {
+            try {
+              const refreshedIdea = await getIdea(actionIdeaId, activeUserId);
+              if (shouldApplyIdeaActionFollowUp(actionIdeaId, selectedIdeaIdRef.current)) {
+                setSelectedIdea(refreshedIdea);
+              }
+            } catch (error) {
+              setIdeaActionNotice(`任务已生成，但 Idea 详情刷新失败：${toErrorMessage(error, "刷新失败")}`);
+            }
+          }
+          try {
+            await refreshIdeas({
+              preferredIdeaId: actionIdeaId,
+              preserveCurrentSelection: true
+            });
+          } catch (error) {
+            setIdeaActionNotice((current) => current ?? `任务已生成，但 Idea 列表刷新失败：${toErrorMessage(error, "刷新失败")}`);
+          }
+          try {
+            const workspaceSnapshot = await fetchWorkspaceSnapshot(activeUserId);
+            applyWorkspaceSnapshot(workspaceSnapshot);
+            setWorkspaceError(null);
+          } catch (error) {
+            setIdeaActionNotice((current) => current ?? `任务已生成，但工作台刷新失败：${toErrorMessage(error, "刷新失败")}`);
+          }
+        } catch (error) {
+          setIdeaActionError(toErrorMessage(error, "生成 Idea 任务失败"));
+        }
+      })();
+    });
+  }
+
+  function handleIdeaTaskVisibilityToggle() {
+    if (!selectedIdeaId) {
+      return;
+    }
+    setIsIdeaTaskListVisibleById((current) => ({
+      ...current,
+      [selectedIdeaId]: !(current[selectedIdeaId] ?? false)
+    }));
   }
 
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1337,6 +1623,240 @@ export default function App() {
                   <span className="note-card-meta">更新于 {formatDateTime(note.updated_at)}</span>
                 </button>
               ))}
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="panel-kicker">Idea</p>
+                <h2>Idea Workspace</h2>
+              </div>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={handleIdeasRefresh}
+                disabled={isRefreshingIdeas}
+              >
+                {isRefreshingIdeas ? "刷新中..." : "刷新"}
+              </button>
+            </div>
+            <div className="idea-workspace-grid">
+              <section className="subpanel idea-list-panel">
+                <div className="subpanel-heading">
+                  <h3>Idea List</h3>
+                  <span className="meta-chip">{ideas.length}</span>
+                </div>
+                <p className="subpanel-description">显示当前用户的 Idea 列表，并按最近更新时间倒序排列。</p>
+                {isBootstrapping ? <p className="status-message">正在加载 Idea 列表...</p> : null}
+                {ideasError ? <p className="status-message error">{ideasError}</p> : null}
+                {!isBootstrapping && !ideasError && ideas.length === 0 ? (
+                  <p className="status-message">当前还没有 Idea，可先通过 API 或已有链路创建。</p>
+                ) : null}
+                <div className="idea-list">
+                  {ideas.map((idea) => (
+                    <button
+                      key={idea.id}
+                      type="button"
+                      className={`idea-card ${selectedIdeaId === idea.id ? "selected" : ""}`}
+                      onClick={() => {
+                        selectedIdeaIdRef.current = idea.id;
+                        setSelectedIdeaId(idea.id);
+                        setIdeaActionError(null);
+                        setIdeaActionNotice(null);
+                        setLatestGeneratedIdeaTasks([]);
+                      }}
+                    >
+                      <span className="note-card-row">
+                        <span className="note-card-title">{idea.title}</span>
+                        <span className="note-card-pill">{getIdeaStatusLabel(idea.status)}</span>
+                      </span>
+                      <span className="note-card-summary">{getIdeaSourceModeLabel(idea.source_mode)}</span>
+                      <span className="row-meta row-meta-inline">
+                        <span className={idea.source_mode === "FROM_NOTE" ? "tone-cyan" : "tone-slate"}>
+                          {getIdeaSourceModeLabel(idea.source_mode)}
+                        </span>
+                        <span className={idea.status === "ASSESSED" || idea.status === "PLANNED" ? "tone-blue" : "tone-slate"}>
+                          {getIdeaStatusLabel(idea.status)}
+                        </span>
+                      </span>
+                      <span className="note-card-meta">更新于 {formatDateTime(idea.updated_at)}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="subpanel idea-detail-panel">
+                <div className="subpanel-heading">
+                  <h3>Idea Detail</h3>
+                  {selectedIdea ? <span className="meta-chip">{getIdeaStatusLabel(selectedIdea.status)}</span> : null}
+                </div>
+                <p className="subpanel-description">展示当前 Idea 的来源、描述、assessment 结果和任务派生入口。</p>
+                {isRefreshingIdeaDetail ? <p className="status-message">正在加载 Idea 详情...</p> : null}
+                {ideaDetailError ? <p className="status-message error">{ideaDetailError}</p> : null}
+                {ideaActionError ? <p className="status-message error">{ideaActionError}</p> : null}
+                {ideaActionNotice ? <p className="status-message">{ideaActionNotice}</p> : null}
+                {!selectedIdeaId && !ideaDetailError ? <p className="status-message">从左侧选择一个 Idea 查看详情。</p> : null}
+                {selectedIdea ? (
+                  <div className="idea-detail-stack">
+                    <div className="list-row">
+                      <div className="list-row-content">
+                        <strong>{selectedIdea.title}</strong>
+                        <p>{selectedIdea.raw_description || "当前没有补充描述。"}</p>
+                        <div className="row-meta row-meta-inline">
+                          <span className={selectedIdea.source_mode === "FROM_NOTE" ? "tone-cyan" : "tone-slate"}>
+                            {getIdeaSourceModeLabel(selectedIdea.source_mode)}
+                          </span>
+                          <span className={selectedIdea.status === "ASSESSED" || selectedIdea.status === "PLANNED" ? "tone-blue" : "tone-slate"}>
+                            {getIdeaStatusLabel(selectedIdea.status)}
+                          </span>
+                          <span className="tone-slate">更新于 {formatDateTime(selectedIdea.updated_at)}</span>
+                        </div>
+                        {selectedIdea.source_note_id ? (
+                          <div className="form-actions">
+                            <span className="meta-chip">
+                              来源 Note：{selectedIdeaSourceNote?.title ?? selectedIdea.source_note_id}
+                            </span>
+                            {selectedIdeaSourceNote ? (
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                onClick={() => setSelectedNoteId(selectedIdea.source_note_id)}
+                              >
+                                打开来源 Note
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <div className="form-actions">
+                          {selectedIdea.status === "CAPTURED" ? (
+                            <button
+                              type="button"
+                              onClick={handleIdeaAssess}
+                              disabled={isAssessingIdea}
+                            >
+                              {isAssessingIdea ? "Assess 中..." : "Assess"}
+                            </button>
+                          ) : null}
+                          {selectedIdea.status === "ASSESSED" &&
+                          selectedIdea.assessment_result.next_actions.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={handleIdeaGenerateTasks}
+                              disabled={isGeneratingIdeaTasks}
+                            >
+                              {isGeneratingIdeaTasks ? "生成中..." : "Generate Tasks"}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={handleIdeaTaskVisibilityToggle}
+                            disabled={!selectedIdeaId}
+                          >
+                            {isSelectedIdeaTaskListVisible ? "隐藏任务" : "View Tasks"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <section className="idea-assessment-panel">
+                      <div className="subpanel-heading compact-heading">
+                        <h4>Assessment Result</h4>
+                        <span className="meta-chip">
+                          {hasIdeaAssessmentResult(selectedIdea.assessment_result) ? "已生成" : "尚未评估"}
+                        </span>
+                      </div>
+                      {hasIdeaAssessmentResult(selectedIdea.assessment_result) ? (
+                        <div className="idea-assessment-grid">
+                          <div className="proposal-summary-card">
+                            <span className="detail-label">problem_statement</span>
+                            <p>{selectedIdea.assessment_result.problem_statement ?? "暂无"}</p>
+                          </div>
+                          <div className="proposal-summary-card">
+                            <span className="detail-label">target_user</span>
+                            <p>{selectedIdea.assessment_result.target_user ?? "暂无"}</p>
+                          </div>
+                          <div className="proposal-summary-card">
+                            <span className="detail-label">core_hypothesis</span>
+                            <p>{selectedIdea.assessment_result.core_hypothesis ?? "暂无"}</p>
+                          </div>
+                          <div className="proposal-summary-card">
+                            <span className="detail-label">reasoning_summary</span>
+                            <p>{selectedIdea.assessment_result.reasoning_summary ?? "暂无"}</p>
+                          </div>
+                          <div className="proposal-summary-card">
+                            <span className="detail-label">mvp_validation_path</span>
+                            {selectedIdea.assessment_result.mvp_validation_path.length > 0 ? (
+                              <ul className="key-point-list compact-list">
+                                {selectedIdea.assessment_result.mvp_validation_path.map((item) => (
+                                  <li key={`${selectedIdea.id}-validation-${item}`}>{item}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p>暂无</p>
+                            )}
+                          </div>
+                          <div className="proposal-summary-card">
+                            <span className="detail-label">next_actions</span>
+                            {selectedIdea.assessment_result.next_actions.length > 0 ? (
+                              <ul className="key-point-list compact-list">
+                                {selectedIdea.assessment_result.next_actions.map((item) => (
+                                  <li key={`${selectedIdea.id}-next-${item}`}>{item}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p>暂无</p>
+                            )}
+                          </div>
+                          <div className="proposal-summary-card idea-assessment-card-full">
+                            <span className="detail-label">risks</span>
+                            {selectedIdea.assessment_result.risks.length > 0 ? (
+                              <ul className="key-point-list compact-list">
+                                {selectedIdea.assessment_result.risks.map((item) => (
+                                  <li key={`${selectedIdea.id}-risk-${item}`}>{item}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p>暂无</p>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="status-message">尚未评估。执行 Assess 后会在这里展示结构化结果。</p>
+                      )}
+                    </section>
+
+                    {isSelectedIdeaTaskListVisible ? (
+                      <section className="idea-task-panel">
+                        <div className="subpanel-heading compact-heading">
+                          <h4>关联任务</h4>
+                          <span className="meta-chip">{selectedIdeaRelatedTasks.length}</span>
+                        </div>
+                        {selectedIdeaRelatedTasks.length === 0 ? (
+                          <p className="status-message">当前 Idea 还没有关联任务。</p>
+                        ) : (
+                          <div className="proposal-list">
+                            {selectedIdeaRelatedTasks.map((task) => (
+                              <div key={task.id} className="list-row">
+                                <div className="list-row-content">
+                                  <strong>{task.title}</strong>
+                                  <p>{task.description || task.task_type}</p>
+                                  <div className="row-meta row-meta-inline">
+                                    <span className={getTaskMetaTone(task.task_source)}>{getTaskSourceLabel(task.task_source)}</span>
+                                    <span className={getTaskMetaTone(task.status)}>{getTaskStatusLabel(task.status)}</span>
+                                    <span className="tone-slate">{getTaskTimingLabel(task)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
             </div>
           </article>
 

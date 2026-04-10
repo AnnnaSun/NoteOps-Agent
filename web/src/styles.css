@@ -406,6 +406,12 @@ button.is-loading:disabled {
   gap: 12px;
 }
 
+.idea-list,
+.idea-detail-stack {
+  display: grid;
+  gap: 12px;
+}
+
 .note-card {
   width: 100%;
   text-align: left;
@@ -421,6 +427,24 @@ button.is-loading:disabled {
   box-shadow:
     inset 0 0 0 1px rgba(79, 137, 163, 0.14),
     0 10px 24px rgba(79, 137, 163, 0.08);
+}
+
+.idea-card {
+  width: 100%;
+  text-align: left;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.98);
+  color: var(--ink-900);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.03);
+}
+
+.idea-card.selected {
+  border-color: rgba(79, 121, 163, 0.34);
+  box-shadow:
+    inset 0 0 0 1px rgba(79, 121, 163, 0.14),
+    0 10px 24px rgba(79, 121, 163, 0.08);
 }
 
 .note-card-title,
@@ -522,11 +546,18 @@ button.is-loading:disabled {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.idea-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.3fr);
+  gap: 16px;
+}
+
 .search-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .today-grid > .subpanel,
+.idea-workspace-grid > .subpanel,
 .search-grid > .subpanel,
 .list-row > div,
 .detail-meta-grid > div,
@@ -547,6 +578,14 @@ button.is-loading:disabled {
   background: linear-gradient(180deg, rgba(245, 243, 255, 0.98), rgba(255, 255, 255, 0.98));
 }
 
+.idea-list-panel {
+  background: linear-gradient(180deg, rgba(245, 248, 255, 0.98), rgba(255, 255, 255, 0.98));
+}
+
+.idea-detail-panel {
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.98));
+}
+
 .search-panel-exact {
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.98));
 }
@@ -565,6 +604,10 @@ button.is-loading:disabled {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.compact-heading {
+  margin-bottom: 8px;
 }
 
 .meta-chip-stack {
@@ -863,6 +906,16 @@ pre {
   margin-bottom: 12px;
 }
 
+.idea-assessment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.idea-assessment-card-full {
+  grid-column: 1 / -1;
+}
+
 .proposal-summary-card {
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 12px;
@@ -873,6 +926,16 @@ pre {
 .proposal-summary-card p {
   margin-top: 8px;
   font-size: 0.94rem;
+}
+
+.idea-task-panel,
+.idea-assessment-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.compact-list {
+  margin-top: 8px;
 }
 
 .proposal-details {
@@ -932,10 +995,12 @@ pre {
   .workspace-overview,
   .hero-panel,
   .today-grid,
+  .idea-workspace-grid,
   .search-grid,
   .content-grid,
   .proposal-snapshots,
-  .proposal-summary-grid {
+  .proposal-summary-grid,
+  .idea-assessment-grid {
     grid-template-columns: 1fr;
   }
 

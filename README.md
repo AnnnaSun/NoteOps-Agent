@@ -1,6 +1,6 @@
 # NoteOps Agent
 
-Phase 2 monorepo for the NoteOps Review / Search / Today Workspace milestone. The current repository state has completed the minimal Phase 2 backend and web loops defined in `docs/codex/Plan.md`.
+Phase 3 monorepo for the NoteOps Idea Lifecycle / Idea Workspace milestone. The current repository state has completed the minimal Phase 3 create / assess / task / query / web loops, and the current doc baseline has been synced through `Step 3.6` in `docs/codex/Plan.md`.
 
 ## Structure
 
@@ -155,7 +155,7 @@ npm run build
 
 ## Current Scope
 
-- Phase 1 minimal kernel is complete, and the repository is now aligned to the Phase 2 workspace milestone.
+- Phase 1 minimal kernel and the Phase 2 workspace baseline are complete, and the repository is now aligned to the minimal Phase 3 Idea Workspace milestone.
 - Current implemented backend API scope includes:
   - `POST /api/v1/captures`
   - `GET /api/v1/captures/{id}`
@@ -174,6 +174,11 @@ npm run build
   - `GET /api/v1/notes/{note_id}/change-proposals`
   - `POST /api/v1/notes/{note_id}/change-proposals/{proposal_id}/apply`
   - `POST /api/v1/change-proposals/{id}/rollback`
+  - `POST /api/v1/ideas`
+  - `GET /api/v1/ideas`
+  - `GET /api/v1/ideas/{id}`
+  - `POST /api/v1/ideas/{id}/assess`
+  - `POST /api/v1/ideas/{id}/generate-task`
 - Current web workspace supports:
   - explicit `user_id` selection
   - `TEXT / URL` Capture submission
@@ -182,18 +187,29 @@ npm run build
   - Today view for Review + Task
   - Upcoming view for Review + Task
   - Proposal list, generate, apply, and rollback
+  - Idea List and Idea Detail in the single-page workspace
+  - Idea assessment result display
+  - Idea task generation and related-task viewing
+  - source Note jump from `FROM_NOTE` ideas
 - Current implemented minimal governance details include:
   - Task supports `SYSTEM` and `USER`
+  - Task supports `related_entity_type = NOTE / IDEA / REVIEW / NONE`
+  - Idea source mode currently uses `FROM_NOTE / MANUAL`
   - Task Today supports optional `timezone_offset`
   - Review can derive `REVIEW_FOLLOW_UP` system tasks
   - duplicate open user task creation is rejected with `409 OPEN_TASK_ALREADY_EXISTS`
   - Proposal currently supports only `INTERPRETATION + LOW` via `REFRESH_INTERPRETATION`
+  - Idea supports `CAPTURED -> ASSESSED -> PLANNED` in the currently implemented main path
+  - Idea assess / task generation writes trace / event / structured logging
 
 ## Known Gaps
 
 - URL extraction is still a Phase 1 placeholder implementation and is not a full fetch/extraction pipeline.
 - Proposal governance is still limited to `INTERPRETATION + LOW`; `METADATA`, `RELATION`, and higher-risk governance are not implemented.
 - There is no complete account system; the current web flow uses explicit `user_id`.
-- Formal Idea lifecycle, Trend Inbox, full PWA/offline support, and mobile apps are still out of scope.
+- Phase 3 is not fully closed yet: `Promote to Plan / Archive / Reopen` and the corresponding backend lifecycle commands are still missing.
+- Idea Create still has backend/API support only; there is no dedicated web create form yet.
+- Trend Inbox, full PWA/offline support, and mobile apps are still out of scope for the current milestone.
 - External search provider integration is still stubbed; `external_supplements` is not backed by a real provider yet.
+- Idea assess currently uses a stubbed idea agent contract, not a real external research provider.
 - Full browser end-to-end regression is not yet complete; current verification is based on targeted backend tests, manual issue reproduction, and frontend build.
