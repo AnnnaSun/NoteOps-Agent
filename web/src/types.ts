@@ -98,6 +98,39 @@ export type ReviewFeedbackResult = {
   follow_up_task_suggestion: string | null;
 };
 
+export type IdeaAssessmentResult = {
+  problem_statement: string | null;
+  target_user: string | null;
+  core_hypothesis: string | null;
+  mvp_validation_path: string[];
+  next_actions: string[];
+  risks: string[];
+  reasoning_summary: string | null;
+};
+
+export type IdeaSummary = {
+  id: string;
+  user_id: string;
+  source_mode: string;
+  source_note_id: string | null;
+  title: string;
+  status: string;
+  updated_at: string;
+};
+
+export type IdeaDetail = {
+  id: string;
+  user_id: string;
+  source_mode: string;
+  source_note_id: string | null;
+  title: string;
+  raw_description: string | null;
+  status: string;
+  assessment_result: IdeaAssessmentResult;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TaskItem = {
   id: string;
   user_id: string;
@@ -213,4 +246,10 @@ export type SearchEvidenceResult = {
   content_type: string;
   source_uri: string;
   relation_label: string;
+};
+
+export type IdeaTaskGenerationResult = {
+  idea_id: string;
+  status: string;
+  generated_tasks: TaskItem[];
 };

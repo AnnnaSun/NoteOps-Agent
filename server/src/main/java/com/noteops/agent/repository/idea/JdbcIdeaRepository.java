@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -76,6 +77,31 @@ public class JdbcIdeaRepository implements IdeaRepository {
                 timestampToInstant(rs.getTimestamp("updated_at"))
             ))
             .optional();
+    }
+
+    @Override
+    public List<IdeaRecord> findAllByUserId(UUID userId) {
+        return jdbcClient.sql("""
+            select id, user_id, source_mode, source_note_id, title, raw_description, status,
+                   assessment_result, created_at, updated_at
+            from ideas
+            where user_id = :userId
+            order by updated_at desc
+            """)
+            .param("userId", userId)
+            .query((rs, rowNum) -> new IdeaRecord(
+                rs.getObject("id", UUID.class),
+                rs.getObject("user_id", UUID.class),
+                IdeaSourceMode.valueOf(rs.getString("source_mode")),
+                rs.getObject("source_note_id", UUID.class),
+                rs.getString("title"),
+                rs.getString("raw_description"),
+                IdeaStatus.valueOf(rs.getString("status")),
+                IdeaAssessmentResult.fromMap(jsonSupport.readMap(rs.getString("assessment_result"))),
+                timestampToInstant(rs.getTimestamp("created_at")),
+                timestampToInstant(rs.getTimestamp("updated_at"))
+            ))
+            .list();
     }
 
     @Override

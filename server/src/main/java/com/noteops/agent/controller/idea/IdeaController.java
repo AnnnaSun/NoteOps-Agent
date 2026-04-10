@@ -3,21 +3,28 @@ package com.noteops.agent.controller.idea;
 import com.noteops.agent.dto.ApiEnvelope;
 import com.noteops.agent.dto.idea.AssessIdeaRequest;
 import com.noteops.agent.dto.idea.CreateIdeaRequest;
+import com.noteops.agent.dto.idea.IdeaDetailResponse;
 import com.noteops.agent.dto.idea.IdeaResponse;
+import com.noteops.agent.dto.idea.IdeaSummaryResponse;
 import com.noteops.agent.dto.idea.GenerateIdeaTaskRequest;
 import com.noteops.agent.dto.idea.IdeaTaskGenerationResponse;
 import com.noteops.agent.service.idea.IdeaApplicationService;
 import com.noteops.agent.service.idea.IdeaAssessmentService;
+import com.noteops.agent.service.idea.IdeaQueryService;
 import com.noteops.agent.service.idea.IdeaTaskGenerationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/ideas")
@@ -27,14 +34,33 @@ public class IdeaController {
 
     private final IdeaApplicationService ideaApplicationService;
     private final IdeaAssessmentService ideaAssessmentService;
+    private final IdeaQueryService ideaQueryService;
     private final IdeaTaskGenerationService ideaTaskGenerationService;
 
     public IdeaController(IdeaApplicationService ideaApplicationService,
                           IdeaAssessmentService ideaAssessmentService,
+                          IdeaQueryService ideaQueryService,
                           IdeaTaskGenerationService ideaTaskGenerationService) {
         this.ideaApplicationService = ideaApplicationService;
         this.ideaAssessmentService = ideaAssessmentService;
+        this.ideaQueryService = ideaQueryService;
         this.ideaTaskGenerationService = ideaTaskGenerationService;
+    }
+
+    // 查询 Idea 列表，供单页工作台中的 Idea List 区块复用。
+    @GetMapping
+    public ApiEnvelope<List<IdeaSummaryResponse>> list(@RequestParam("user_id") String userId) {
+        List<IdeaSummaryResponse> ideas = ideaQueryService.list(userId).stream()
+            .map(IdeaSummaryResponse::from)
+            .toList();
+        return ApiEnvelope.success(null, ideas);
+    }
+
+    // 查询 Idea 详情，供 Idea Detail 区块展示 assessment 与动作入口。
+    @GetMapping("/{id}")
+    public ApiEnvelope<IdeaDetailResponse> get(@PathVariable String id, @RequestParam("user_id") String userId) {
+        IdeaQueryService.IdeaDetailView ideaView = ideaQueryService.get(id, userId);
+        return ApiEnvelope.success(null, IdeaDetailResponse.from(ideaView));
     }
 
     // 创建 Idea，支持独立创建和基于 Note 派生两种最小来源模式。

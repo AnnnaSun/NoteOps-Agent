@@ -26,7 +26,7 @@
 1. 落地 `ideas` 领域模型与生命周期。
 2. 支持 Idea 两种来源：
    - `FROM_NOTE`
-   - `INDEPENDENT`
+   - `MANUAL`
 3. 提供最小可用的 Idea 工作台：
    - Idea List
    - Idea Detail
@@ -124,7 +124,7 @@ Idea assess 不是例外。
 ### Step 3.2
 Idea create 最小闭环：
 - `FROM_NOTE`
-- `INDEPENDENT`
+- `MANUAL`
 
 ### Step 3.3
 Idea assess 最小 AI 切片：

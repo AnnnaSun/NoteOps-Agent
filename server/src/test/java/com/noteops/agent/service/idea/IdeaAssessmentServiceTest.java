@@ -108,7 +108,7 @@ class IdeaAssessmentServiceTest {
         ideaRepository.store(new IdeaRepository.IdeaRecord(
             ideaId,
             userId,
-            IdeaSourceMode.INDEPENDENT,
+            IdeaSourceMode.MANUAL,
             null,
             "Already assessed idea",
             null,
@@ -188,6 +188,13 @@ class IdeaAssessmentServiceTest {
                 return Optional.empty();
             }
             return Optional.of(record);
+        }
+
+        @Override
+        public List<IdeaRecord> findAllByUserId(UUID userId) {
+            return ideas.values().stream()
+                .filter(record -> record.userId().equals(userId))
+                .toList();
         }
 
         @Override

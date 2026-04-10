@@ -165,7 +165,7 @@ public class IdeaApplicationService {
             throw new ApiException(
                 HttpStatus.BAD_REQUEST,
                 "SOURCE_NOTE_ID_NOT_ALLOWED",
-                "source_note_id must be empty when source_mode is INDEPENDENT"
+                "source_note_id must be empty when source_mode is MANUAL"
             );
         }
         return null;

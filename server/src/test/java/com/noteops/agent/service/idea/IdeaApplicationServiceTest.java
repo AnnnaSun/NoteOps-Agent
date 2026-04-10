@@ -29,7 +29,7 @@ class IdeaApplicationServiceTest {
     private static final Instant NOW = Instant.parse("2026-04-07T12:00:00Z");
 
     @Test
-    void createsIndependentIdeaAndWritesTraceAndEvent() {
+    void createsManualIdeaAndWritesTraceAndEvent() {
         UUID userId = UUID.randomUUID();
         InMemoryIdeaRepository ideaRepository = new InMemoryIdeaRepository();
         InMemoryAgentTraceRepository traceRepository = new InMemoryAgentTraceRepository();
@@ -44,15 +44,15 @@ class IdeaApplicationServiceTest {
         IdeaApplicationService.IdeaCommandResult result = service.create(
             new IdeaApplicationService.CreateIdeaCommand(
                 userId.toString(),
-                "INDEPENDENT",
+                "MANUAL",
                 null,
-                "Independent idea",
+                "Manual idea",
                 "Validate this path"
             )
         );
 
         assertThat(result.traceId()).isNotBlank();
-        assertThat(result.idea().sourceMode()).isEqualTo(IdeaSourceMode.INDEPENDENT);
+        assertThat(result.idea().sourceMode()).isEqualTo(IdeaSourceMode.MANUAL);
         assertThat(result.idea().sourceNoteId()).isNull();
         assertThat(result.idea().status()).isEqualTo(IdeaStatus.CAPTURED);
         assertThat(result.idea().assessmentResult()).isEqualTo(IdeaAssessmentResult.empty());
@@ -113,7 +113,7 @@ class IdeaApplicationServiceTest {
     }
 
     @Test
-    void rejectsUnexpectedSourceNoteForIndependentIdea() {
+    void rejectsUnexpectedSourceNoteForManualIdea() {
         UUID userId = UUID.randomUUID();
         IdeaApplicationService service = newService(
             new InMemoryIdeaRepository(),
@@ -125,14 +125,14 @@ class IdeaApplicationServiceTest {
         assertThatThrownBy(() -> service.create(
             new IdeaApplicationService.CreateIdeaCommand(
                 userId.toString(),
-                "INDEPENDENT",
+                "MANUAL",
                 UUID.randomUUID().toString(),
                 "Bad idea",
                 null
             )
         ))
             .isInstanceOf(ApiException.class)
-            .hasMessage("source_note_id must be empty when source_mode is INDEPENDENT");
+            .hasMessage("source_note_id must be empty when source_mode is MANUAL");
     }
 
     @Test
@@ -207,6 +207,13 @@ class IdeaApplicationServiceTest {
                 return Optional.empty();
             }
             return Optional.of(record);
+        }
+
+        @Override
+        public List<IdeaRecord> findAllByUserId(UUID userId) {
+            return ideas.values().stream()
+                .filter(record -> record.userId().equals(userId))
+                .toList();
         }
 
         @Override

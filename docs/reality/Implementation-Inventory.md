@@ -1,6 +1,6 @@
 # Implementation Inventory
 
-更新时间：2026-04-03
+更新时间：2026-04-09
 
 本清单基于当前工作区现实，而不是 `git HEAD`。仓库当前存在未提交改动，因此本文档描述的是“此刻工作树里的实现现实”。本次盘点的直接依据主要包括：
 
@@ -11,6 +11,8 @@
 - `docs/codex/Documentation.md`
 - `docs/history/Documentation.md`
 - `server/src/main/resources/db/migration/V1__create_phase1_core_tables.sql`
+- `server/src/main/resources/db/migration/V2__create_ideas_table.sql`
+- `server/src/main/resources/db/migration/V3__rename_idea_source_mode_to_manual.sql`
 - `server/src/main/java/**`
 - `web/src/**`
 - `server/src/test/java/**`
@@ -23,8 +25,18 @@
   - SQL migration 中的表结构
   - repository 中的 JDBC 映射
   - service / dto 里的 `record`
-- 当前代码里不存在 `idea` 的 controller、service、repository、migration、DTO、页面。
-- 当前真实主链路是：Capture、Note Query、Search、Search Governance、Review、Task、Workspace、ChangeProposal、Trace/Event。
+- 当前代码里已经存在最小 Idea 主线：
+  - `V2__create_ideas_table.sql`
+  - `V3__rename_idea_source_mode_to_manual.sql`
+  - `controller/idea`
+  - `service/idea`
+  - `repository/idea`
+  - `dto/idea`
+  - Web 单页内的 Idea Workspace 面板
+- 当前 Idea 来源现实已统一为：
+  - `FROM_NOTE`
+  - `MANUAL`
+- 当前真实主链路是：Capture、Note Query、Search、Search Governance、Review、Task、Workspace、ChangeProposal、Trace/Event，以及最小 Idea create / assess / task / query / workspace。
 
 ## 2. 领域模型现实清单
 
@@ -388,16 +400,17 @@ Search 没有独立持久化表。真实对象分成两类：
 - `exact_matches` / `related_matches` 来自本地 Note 数据
 - `external_supplements` 不是外部 provider 真实抓取结果，而是基于 query 构造的 deterministic stub seed，再经 AI 做最小字段增强
 
-## 2.11 明确缺失的 Phase 3 对象
+## 2.11 当前仍缺失的 Phase 3 收口对象
 
-当前代码中不存在以下真实对象：
+当前代码中已经存在最小 Idea 主线，但以下“完整收口所需对象”仍不存在：
 
-- `ideas` 表
-- Idea entity / repository / service / controller / DTO
-- Idea assess result schema
-- Idea state machine
-- Idea 页面或 API client
-- Idea trace / user event / proposal 治理路径
+- `POST /api/v1/ideas/{id}/start`
+- `POST /api/v1/ideas/{id}/archive`
+- `POST /api/v1/ideas/{id}/reopen`
+- 与上述动作配套的 controller DTO / application service / state transition command
+- Web 侧 Idea Create 表单入口
+- Web 侧 Promote to Plan / Archive / Reopen 交互
+- 对应生命周期动作的 trace / user event / proposal 治理补强
 
 ## 3. 状态机现实清单
 
@@ -530,7 +543,7 @@ Search 没有独立持久化表。真实对象分成两类：
 | Task 列表展示 | implemented | 否 | Today/Upcoming 仅展示，不提供按钮动作 |
 | User Task 创建 UI | not implemented | 否 | 后端有 API，前端没有入口 |
 | Task complete/skip UI | not implemented | 否 | 后端有 API，前端没有入口 |
-| Idea List / Detail / Assess / Generate Task | not implemented | 否 | 前后端都不存在 |
+| Idea List / Detail / Assess / Generate Task | implemented | 部分 | 单页工作台已接通最小主路径；无 Create UI，生命周期后续动作未补齐 |
 
 ## 6. AI 接入现实清单
 

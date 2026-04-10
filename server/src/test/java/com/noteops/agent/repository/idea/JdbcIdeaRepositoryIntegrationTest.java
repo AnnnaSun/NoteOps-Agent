@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -69,11 +70,11 @@ class JdbcIdeaRepositoryIntegrationTest {
                 created_at timestamp with time zone not null default current_timestamp,
                 updated_at timestamp with time zone not null default current_timestamp,
                 constraint fk_ideas_source_note_id foreign key (source_note_id) references notes (id),
-                constraint chk_ideas_source_mode check (source_mode in ('FROM_NOTE', 'INDEPENDENT')),
+                constraint chk_ideas_source_mode check (source_mode in ('FROM_NOTE', 'MANUAL')),
                 constraint chk_ideas_status check (status in ('CAPTURED', 'ASSESSED', 'PLANNED', 'IN_PROGRESS', 'ARCHIVED')),
                 constraint chk_ideas_source_binding check (
                     (source_mode = 'FROM_NOTE' and source_note_id is not null)
-                    or (source_mode = 'INDEPENDENT' and source_note_id is null)
+                    or (source_mode = 'MANUAL' and source_note_id is null)
                 )
             )
             """).update();
@@ -122,20 +123,20 @@ class JdbcIdeaRepositoryIntegrationTest {
     }
 
     @Test
-    void createsIndependentIdeaWithEmptyAssessmentResult() {
+    void createsManualIdeaWithEmptyAssessmentResult() {
         UUID userId = UUID.randomUUID();
 
         IdeaRepository.IdeaRecord created = ideaRepository.create(
             userId,
-            IdeaSourceMode.INDEPENDENT,
+            IdeaSourceMode.MANUAL,
             null,
-            "Independent idea",
+            "Manual idea",
             null,
             IdeaStatus.CAPTURED,
             null
         );
 
-        assertThat(created.sourceMode()).isEqualTo(IdeaSourceMode.INDEPENDENT);
+        assertThat(created.sourceMode()).isEqualTo(IdeaSourceMode.MANUAL);
         assertThat(created.sourceNoteId()).isNull();
         assertThat(created.assessmentResult()).isEqualTo(IdeaAssessmentResult.empty());
         assertThat(created.rawDescription()).isNull();
@@ -177,6 +178,69 @@ class JdbcIdeaRepositoryIntegrationTest {
         assertThat(updated.status()).isEqualTo(IdeaStatus.ASSESSED);
         assertThat(updated.assessmentResult()).isEqualTo(assessmentResult);
         assertThat(updated.updatedAt()).isNotNull();
+    }
+
+    @Test
+    void listsIdeasByUserOrderedByUpdatedAtDesc() {
+        UUID userId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        UUID firstIdeaId = UUID.randomUUID();
+        UUID secondIdeaId = UUID.randomUUID();
+
+        jdbcClient.sql("""
+            insert into ideas (
+                id, user_id, source_mode, source_note_id, title, raw_description, status, assessment_result, created_at, updated_at
+            ) values (
+                :id, :userId, 'MANUAL', null, :title, null, :status, cast(:assessmentResult as jsonb), :createdAt, :updatedAt
+            )
+            """)
+            .param("id", firstIdeaId)
+            .param("userId", userId)
+            .param("title", "Older idea")
+            .param("status", IdeaStatus.CAPTURED.name())
+            .param("assessmentResult", "{}")
+            .param("createdAt", java.sql.Timestamp.from(Instant.parse("2026-04-09T08:00:00Z")))
+            .param("updatedAt", java.sql.Timestamp.from(Instant.parse("2026-04-09T09:00:00Z")))
+            .update();
+
+        jdbcClient.sql("""
+            insert into ideas (
+                id, user_id, source_mode, source_note_id, title, raw_description, status, assessment_result, created_at, updated_at
+            ) values (
+                :id, :userId, 'MANUAL', null, :title, null, :status, cast(:assessmentResult as jsonb), :createdAt, :updatedAt
+            )
+            """)
+            .param("id", secondIdeaId)
+            .param("userId", userId)
+            .param("title", "Newer idea")
+            .param("status", IdeaStatus.ASSESSED.name())
+            .param("assessmentResult", "{}")
+            .param("createdAt", java.sql.Timestamp.from(Instant.parse("2026-04-09T10:00:00Z")))
+            .param("updatedAt", java.sql.Timestamp.from(Instant.parse("2026-04-09T11:00:00Z")))
+            .update();
+
+        jdbcClient.sql("""
+            insert into ideas (
+                id, user_id, source_mode, source_note_id, title, raw_description, status, assessment_result, created_at, updated_at
+            ) values (
+                :id, :userId, 'MANUAL', null, :title, null, :status, cast(:assessmentResult as jsonb), :createdAt, :updatedAt
+            )
+            """)
+            .param("id", UUID.randomUUID())
+            .param("userId", otherUserId)
+            .param("title", "Other user idea")
+            .param("status", IdeaStatus.PLANNED.name())
+            .param("assessmentResult", "{}")
+            .param("createdAt", java.sql.Timestamp.from(Instant.parse("2026-04-09T12:00:00Z")))
+            .param("updatedAt", java.sql.Timestamp.from(Instant.parse("2026-04-09T13:00:00Z")))
+            .update();
+
+        List<IdeaRepository.IdeaRecord> ideas = ideaRepository.findAllByUserId(userId);
+
+        assertThat(ideas).extracting(IdeaRepository.IdeaRecord::id)
+            .containsExactly(secondIdeaId, firstIdeaId);
+        assertThat(ideas).extracting(IdeaRepository.IdeaRecord::title)
+            .containsExactly("Newer idea", "Older idea");
     }
 
     private void insertNote(UUID noteId, UUID userId, String title) {

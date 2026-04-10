@@ -1,6 +1,6 @@
 # Schema / API Drift Report
 
-更新时间：2026-04-03
+更新时间：2026-04-09
 
 本报告对照的主要文档基线：
 
@@ -13,13 +13,18 @@
 
 结论先行：
 
-- 当前代码现实明显更接近“Phase 2.5~2.8 加上 Capture/Search/Review AI 补丁”。
-- 当前文档基线却把仓库描述成“Phase 3：Idea 正式闭环”。
-- 最大漂移不是字段小差异，而是整条 Idea 领域线在文档中被写成已进入主实现基线，但代码里完全不存在。
+- 当前代码现实已经不再是“只有 Phase 2.5~2.8 补丁”，而是进入了 Phase 3 的最小 Idea 主线。
+- 当前仓库已真实落地：
+  - `ideas` migration
+  - Idea create / assess / generate-task
+  - `GET /api/v1/ideas`
+  - `GET /api/v1/ideas/{id}`
+  - Web 单页 Idea Workspace
+- 当前仍存在的主要漂移，不再是“Idea 完全不存在”，而是“文档容易把最小闭环误读成完整 Phase 3 生命周期已收口”。
 
-## 1. 一级漂移：文档写了，代码没有
+## 1. 一级漂移：文档目标仍大于当前现实
 
-## 1.1 Idea 全链路缺失
+## 1.1 Idea 已落地最小主线，但不是完整生命周期闭环
 
 `docs/codex/Prompt.md`、`docs/codex/Plan.md`、`docs/codex/Documentation.md` 都把以下能力写成当前 Phase 3 主线或基线：
 
@@ -34,32 +39,39 @@
 
 代码现实：
 
-- 没有 `ideas` migration
-- 没有 `idea` package
-- 没有 `IdeaController`
-- 没有 `IdeaApplicationService`
-- 没有 `IdeaRepository`
-- 没有 `Idea DTO`
-- 没有前端 Idea 页面与 API client
-- 没有任何 `IDEA_*` user event
+- 已有 `V2__create_ideas_table.sql`
+- 已有 `V3__rename_idea_source_mode_to_manual.sql`
+- 已有 `IdeaController`、`IdeaApplicationService`、`IdeaAssessmentService`、`IdeaTaskGenerationService`、`IdeaQueryService`
+- 已有 `IdeaRepository` / `JdbcIdeaRepository`
+- 已有 `dto/idea`
+- 已有 Web 单页内的 Idea panel 和对应 API client / types
+- 已有 `IDEA_*` 相关 user event / trace / log
+- Idea source mode 已从旧实现中的 `INDEPENDENT` 统一收敛到 `MANUAL`
 
-这不是“部分未完成”，而是“整条领域线尚未落地”。
+当前真正未完成的是：
 
-## 1.2 文档中的 Idea API 全部不存在
+- Promote to Plan / Archive / Reopen
+- Idea Create 的 Web 表单入口
+- 完整生命周期收口后的进一步治理补强
 
-`docs/codex/Documentation.md` 中列出的以下 API 当前都不存在：
+## 1.2 文档中的部分 Idea API 已存在，部分仍不存在
 
-- `POST /api/ideas`
-- `POST /api/notes/{noteId}/ideas`
-- `GET /api/ideas`
-- `GET /api/ideas/{id}`
-- `POST /api/ideas/{id}/assess`
-- `POST /api/ideas/{id}/generate-task`
-- `POST /api/ideas/{id}/start`
-- `POST /api/ideas/{id}/archive`
-- `POST /api/ideas/{id}/reopen`
+当前已存在：
 
-## 1.3 文档中的 Idea 工作台全部不存在
+- `POST /api/v1/ideas`
+- `GET /api/v1/ideas`
+- `GET /api/v1/ideas/{id}`
+- `POST /api/v1/ideas/{id}/assess`
+- `POST /api/v1/ideas/{id}/generate-task`
+
+当前仍不存在：
+
+- `POST /api/v1/notes/{noteId}/ideas`
+- `POST /api/v1/ideas/{id}/start`
+- `POST /api/v1/ideas/{id}/archive`
+- `POST /api/v1/ideas/{id}/reopen`
+
+## 1.3 文档中的 Idea 工作台已最小落地，但不是完整工作台
 
 `docs/codex/Documentation.md` 的前端基线声明：
 
@@ -70,9 +82,19 @@
 
 当前前端现实：
 
-- 单页只包含 Capture、Search、Note、Proposal、Workspace、Review
-- 不存在 Idea 区块
-- 不存在任何 Idea 文案、状态、按钮、client 函数、类型定义
+- 单页仍然只有一个 `App.tsx`，但已经新增 Idea 区块
+- 已存在：
+  - Idea List
+  - Idea Detail
+  - Assess 按钮
+  - Assessment Result 展示
+  - Generate Tasks / View Tasks 按钮
+  - Idea 首屏请求失败只留在 Idea 面板，不再把 Note / Workspace 一起打成错误态
+  - Idea action 成功后的刷新失败会在 Idea 面板内提示，不再误报成 assess / generate 动作失败
+- 仍不存在：
+  - Create UI
+  - Promote / Archive / Reopen
+  - Kanban / Pipeline / 高级筛选
 
 ## 2. 二级漂移：代码有，文档写法不准确或不完整
 
@@ -201,23 +223,25 @@
 - Search AI enhancement 已存在
 - Review AI render / feedback 已存在
 
-也就是说，仓库现实不是静止在旧的 Phase 2 文档上，但又没有真正进入 Idea Phase 3。
+也就是说，仓库现实不是静止在旧的 Phase 2 文档上，而是已经进入 Idea Phase 3 的最小主线；当前问题是完整生命周期还没有收口。
 
 ## 4. Schema 层面的现实风险
 
 以下不是“文档漂移”而已，而是实际 schema 边界的可控性问题：
 
-## 4.1 只有一份 `V1` migration
+## 4.1 migration 已拆出 `V2`，但后续阶段切分仍要继续保持
 
-当前所有核心表、AI 补丁、Phase 2/3 演进都还挤在：
+当前 migration 现实是：
 
 - `V1__create_phase1_core_tables.sql`
+- `V2__create_ideas_table.sql`
+- `V3__rename_idea_source_mode_to_manual.sql`
 
 现实含义：
 
-- schema 历史不可分段回看
-- 很难从 migration 层判断哪个能力属于哪个阶段
-- 文档容易先行，migration 却没有阶段切分证据
+- Phase 3 的最小 Idea schema 已经有独立 migration 证据
+- `MANUAL` source mode 的持久化合同也已经有独立迁移证据
+- 但后续如果继续补 lifecycle action、治理补强或 schema 演进，仍应继续按阶段拆分，而不是重新把新现实塞回旧 migration 叙述里
 
 ## 4.2 多个关键字段无数据库枚举约束
 
@@ -231,15 +255,17 @@
 
 尤其 `tasks.related_entity_type` 的代码枚举是 `NOTE / IDEA / REVIEW / NONE`，但数据库不校验，容易出现脏值。
 
-## 4.3 `TaskRelatedEntityType.IDEA` 只是预留，不是已实现
+## 4.3 `TaskRelatedEntityType.IDEA` 已被最小主链路真实使用
 
-当前 `TaskRelatedEntityType` 确实包含 `IDEA`，但这只是类型层预留：
+当前 `TaskRelatedEntityType.IDEA` 不再只是预留：
 
-- 没有 Idea 实体
-- 没有 Idea task 派生路径
-- 没有任何 controller/service 在真实使用 `IDEA`
+- `IdeaTaskGenerationService` 会真实创建 `related_entity_type=IDEA`
+- Web 侧 `View Tasks` 已按 `related_entity_type === "IDEA"` 过滤展示
 
-如果文档把这一点写成“已有 Idea->Task”，会误导判断。
+当前仍需注意：
+
+- 这只能说明最小 Idea -> Task 主链路已落地
+- 不能把它误读成完整 Idea 生命周期已经全部实现
 
 ## 5. API Contract 漂移点
 
@@ -310,11 +336,10 @@
 
 只给建议，不改代码：
 
-1. 先把 `docs/codex/Documentation.md` 从“Phase 3 Idea 已进入现实基线”回收为“当前真实落地能力 + Idea 未实现说明”。
+1. 保持 `docs/codex/Documentation.md` 对“Phase 3 最小主线已落地”的表述，同时明确完整生命周期尚未收口，不要再回退成“Idea 未实现”。
 2. 单独补一份真实 API / schema inventory，避免继续把 roadmap 写进实现基线。
 3. 明确 `related_entity_type` / `related_entity_id` 才是当前 Task contract。
 4. 明确 `PENDING_REVIEW` 才是当前 ChangeProposal 初始状态。
 5. 明确 Search external supplement 当前是 stub seed，不是外部 provider。
 6. 明确 Review 的 `self_recall_result` / `note` 实际存于 `review_meta`。
-7. 如果继续推进阶段开发，后续 migration 应拆分，不要继续把所有现实塞在 `V1` 里。
-
+7. 如果继续推进阶段开发，后续 migration 应继续按阶段拆分，延续 `V2` 之后的分段证据。

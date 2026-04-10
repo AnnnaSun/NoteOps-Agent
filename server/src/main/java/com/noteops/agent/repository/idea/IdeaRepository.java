@@ -5,6 +5,7 @@ import com.noteops.agent.model.idea.IdeaSourceMode;
 import com.noteops.agent.model.idea.IdeaStatus;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,6 +20,8 @@ public interface IdeaRepository {
                       IdeaAssessmentResult assessmentResult);
 
     Optional<IdeaRecord> findByIdAndUserId(UUID ideaId, UUID userId);
+
+    List<IdeaRecord> findAllByUserId(UUID userId);
 
     IdeaRecord updateAssessment(UUID ideaId,
                                 UUID userId,

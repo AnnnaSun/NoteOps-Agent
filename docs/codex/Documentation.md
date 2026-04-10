@@ -9,12 +9,13 @@
 
 但当前真实完成度已推进到：
 
-- `Step 3.4：Idea -> Task 派生`
+- `Step 3.6：Phase 3 文档与治理收口`
 
 本次已真实落地的范围：
 
 - `ideas` 表与索引
-- Idea 来源枚举：`FROM_NOTE` / `INDEPENDENT`
+- `V3__rename_idea_source_mode_to_manual.sql`
+- Idea 来源枚举：`FROM_NOTE` / `MANUAL`
 - Idea 状态枚举：`CAPTURED` / `ASSESSED` / `PLANNED` / `IN_PROGRESS` / `ARCHIVED`
 - `assessment_result` 结构化合同
 - `IdeaRepository` / `JdbcIdeaRepository`
@@ -32,12 +33,28 @@
 - `POST /api/v1/ideas/{id}/generate-task`
 - `IdeaTaskGenerationService`
 - Idea -> Task 的最小 trace / user_action_event / structured logging
+- `IdeaQueryService`
+- `IdeaSummaryResponse` / `IdeaDetailResponse`
+- `GET /api/v1/ideas`
+- `GET /api/v1/ideas/{id}`
+- Web 单页 Idea Workspace：
+  - Idea List
+  - Idea Detail
+  - Assess 入口
+  - Assessment Result 展示
+  - Generate Tasks / View Tasks 入口
+  - Idea panel 请求失败时不再拖垮 Note / Workspace
+  - Idea action 后的刷新失败改为在 Idea 面板内提示，不再误报为动作失败
+- Step 3.6 文档与治理同步：
+  - `README.md`
+  - `docs/reality/Feature-Status-Matrix.md`
+  - `docs/reality/Implementation-Inventory.md`
+  - `docs/reality/Schema-API-Drift-Report.md`
 
 当前仍**未实现**：
 
-- `GET /api/v1/ideas`
-- `GET /api/v1/ideas/{id}`
-- Idea Web 工作台
+- Promote to Plan / Archive / Reopen 的正式交互与后端命令
+- Idea Create 的 Web 表单入口
 
 ---
 
@@ -57,12 +74,12 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 当前仅冻结两种来源：
 
 - `FROM_NOTE`
-- `INDEPENDENT`
+- `MANUAL`
 
 约束固定为：
 
 - `FROM_NOTE` 时 `source_note_id` 必填
-- `INDEPENDENT` 时 `source_note_id` 必须为空
+- `MANUAL` 时 `source_note_id` 必须为空
 
 ### 2.3 Idea 生命周期
 
@@ -74,7 +91,16 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 - `IN_PROGRESS`
 - `ARCHIVED`
 
-当前只实现 create 进入 `CAPTURED`，尚未实现 assess / promote / archive 等后续状态推进命令。
+当前已实现的状态推进：
+
+- create：进入 `CAPTURED`
+- assess：`CAPTURED -> ASSESSED`
+- generate-task：`ASSESSED -> PLANNED`
+
+当前仍未实现：
+
+- `PLANNED -> IN_PROGRESS`
+- Archive / Reopen 相关状态命令
 
 ---
 
@@ -97,10 +123,10 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 
 当前真实约束：
 
-- `source_mode in ('FROM_NOTE', 'INDEPENDENT')`
+- `source_mode in ('FROM_NOTE', 'MANUAL')`
 - `status in ('CAPTURED', 'ASSESSED', 'PLANNED', 'IN_PROGRESS', 'ARCHIVED')`
 - `source_note_id` 外键指向 `notes(id)`
-- `FROM_NOTE` / `INDEPENDENT` 与 `source_note_id` 的交叉校验
+- `FROM_NOTE` / `MANUAL` 与 `source_note_id` 的交叉校验
 
 当前真实索引：
 
@@ -134,7 +160,7 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 
 - schema 层默认值仍为 `{}`，用于兜底数据库写入
 - 当前 create 路径会显式写入 `IdeaAssessmentResult.empty()` 对应的空 assessment 结构，读取后统一表现为“尚未 assess”
-- 本切片只保证结构稳定与可映射，不代表 assess 接口已存在
+- 当前 assess 接口已真实存在，并以该合同写回 `ideas.assessment_result`
 
 ### 3.3 DTO / API 基线
 
@@ -142,7 +168,9 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 
 - `AssessIdeaRequest`
 - `CreateIdeaRequest`
+- `IdeaDetailResponse`
 - `IdeaResponse`
+- `IdeaSummaryResponse`
 
 字段命名统一使用 snake_case：
 
@@ -157,12 +185,51 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 
 - DTO 已用于当前 create / assess / task-generation 路由
 - 当前真实已注册：
+  - `GET /api/v1/ideas`
+  - `GET /api/v1/ideas/{id}`
   - `POST /api/v1/ideas`
   - `POST /api/v1/ideas/{id}/assess`
   - `POST /api/v1/ideas/{id}/generate-task`
-- 当前尚未注册：
-  - `GET /api/v1/ideas`
-  - `GET /api/v1/ideas/{id}`
+
+### 3.3.1 Idea Query 当前语义
+
+`GET /api/v1/ideas`
+
+当前请求字段：
+
+- `user_id`
+
+当前真实行为：
+
+- 按 `updated_at desc` 返回当前用户的 Idea 列表
+- 列表项包含：
+  - `id`
+  - `user_id`
+  - `source_mode`
+  - `source_note_id`
+  - `title`
+  - `status`
+  - `updated_at`
+- 返回 `ApiEnvelope`
+- `trace_id=null`
+
+`GET /api/v1/ideas/{id}`
+
+当前请求字段：
+
+- `user_id`
+
+当前真实行为：
+
+- 仅按 `idea_id + user_id` 读取单条 Idea
+- 详情包含：
+  - `raw_description`
+  - `assessment_result`
+  - `created_at`
+  - `updated_at`
+- 非法 UUID 返回受控 `400`
+- Idea 不存在返回受控 `404`
+- 读接口不触发状态迁移，也不新增 trace / event / tool log
 
 ### 3.4 Create Idea 当前语义
 
@@ -178,7 +245,7 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 
 当前真实行为：
 
-- `source_mode=INDEPENDENT` 时创建独立 Idea
+- `source_mode=MANUAL` 时创建独立 Idea
 - `source_mode=FROM_NOTE` 时要求 `source_note_id` 存在且属于当前 `user_id`
 - 初始状态固定写入 `CAPTURED`
 - `assessment_result` 初始写入空 assessment 结构，并在 repository 侧统一映射为 `IdeaAssessmentResult.empty()`
@@ -261,13 +328,13 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 
 以下能力仍属于后续 Step，不应误判为已落地现实：
 
-1. Step 3.5：Idea Web 工作台
-2. Step 3.6：Phase 3 文档与治理收口
+1. Promote to Plan / Archive / Reopen 的正式生命周期交互
 
 特别说明：
 
-- 当前 `IdeaRepository` 只提供 `create(...)`、`findByIdAndUserId(...)`、`updateAssessment(...)` 与 `updateStatus(...)`
-- 当前没有 `GET /api/v1/ideas` / `GET /api/v1/ideas/{id}`
+- 当前 `IdeaRepository` 已提供 `findAllByUserId(...)`，用于 Idea List 查询
+- 当前 `GET /api/v1/ideas` / `GET /api/v1/ideas/{id}` 已落地
+- 当前 Web 已提供单页 Idea List / Detail / Assess / Generate Tasks / View Tasks 的最小入口
 - 当前 assess 仍是 `StubIdeaAgent`，不代表真实 provider 已接入
 - 当前 task generation 仍不包含复杂批量拆解、优先级学习或计划时间推断
 
@@ -307,7 +374,7 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 
 当前可以标记为：
 
-- `Step 3.4 已完成最小闭环`
+- `Step 3.6 已完成最小闭环`
 
 当前**不能**标记为：
 
@@ -315,6 +382,11 @@ Idea 是独立实体，但仍保持 Note-first 约束：
 
 因为以下条件仍未满足：
 
-1. Web 能展示 Idea 主路径
-2. Idea List / Detail 尚未可用
+1. Promote to Plan / Archive / Reopen 尚未实现
+2. Idea Create 的 Web 入口尚未补齐
 3. 复杂计划推进和后续状态交互尚未实现
+
+补充说明：
+
+- 按 `docs/codex/Plan.md` 的最小 create / assess / task / web / docs 链路，当前仓库已经完成到 Step 3.6
+- 但按更高优先级的 `AGENTS.md` 约束，Idea Workspace 的正式生命周期动作仍未收口，因此整个 Phase 3 不能宣告完成

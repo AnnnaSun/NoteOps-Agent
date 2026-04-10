@@ -11,6 +11,7 @@ import com.noteops.agent.model.task.TaskStatus;
 import com.noteops.agent.repository.idea.IdeaRepository;
 import com.noteops.agent.service.idea.IdeaApplicationService;
 import com.noteops.agent.service.idea.IdeaAssessmentService;
+import com.noteops.agent.service.idea.IdeaQueryService;
 import com.noteops.agent.service.idea.IdeaTaskGenerationService;
 import com.noteops.agent.service.task.TaskApplicationService;
 import org.junit.jupiter.api.Test;
@@ -23,11 +24,13 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -46,7 +49,74 @@ class IdeaControllerTest {
     private IdeaAssessmentService ideaAssessmentService;
 
     @MockBean
+    private IdeaQueryService ideaQueryService;
+
+    @MockBean
     private IdeaTaskGenerationService ideaTaskGenerationService;
+
+    @Test
+    void listsIdeasWithEnvelope() throws Exception {
+        UUID ideaId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+
+        when(ideaQueryService.list(userId.toString())).thenReturn(List.of(
+            new IdeaQueryService.IdeaSummaryView(
+                ideaId,
+                userId,
+                IdeaSourceMode.FROM_NOTE,
+                noteId,
+                "Idea from note",
+                IdeaStatus.ASSESSED,
+                Instant.parse("2026-04-09T09:00:00Z")
+            )
+        ));
+
+        mockMvc.perform(get("/api/v1/ideas").param("user_id", userId.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.trace_id").value(nullValue()))
+            .andExpect(jsonPath("$.data[0].id").value(ideaId.toString()))
+            .andExpect(jsonPath("$.data[0].user_id").value(userId.toString()))
+            .andExpect(jsonPath("$.data[0].source_mode").value("FROM_NOTE"))
+            .andExpect(jsonPath("$.data[0].source_note_id").value(noteId.toString()))
+            .andExpect(jsonPath("$.data[0].title").value("Idea from note"))
+            .andExpect(jsonPath("$.data[0].status").value("ASSESSED"))
+            .andExpect(jsonPath("$.meta.server_time").exists());
+    }
+
+    @Test
+    void getsIdeaDetailWithEnvelope() throws Exception {
+        UUID ideaId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        when(ideaQueryService.get(ideaId.toString(), userId.toString())).thenReturn(
+            new IdeaQueryService.IdeaDetailView(
+                ideaId,
+                userId,
+                IdeaSourceMode.MANUAL,
+                null,
+                "Manual idea",
+                "Detailed description",
+                IdeaStatus.CAPTURED,
+                IdeaAssessmentResult.empty(),
+                Instant.parse("2026-04-09T08:00:00Z"),
+                Instant.parse("2026-04-09T09:00:00Z")
+            )
+        );
+
+        mockMvc.perform(get("/api/v1/ideas/{id}", ideaId).param("user_id", userId.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.trace_id").value(nullValue()))
+            .andExpect(jsonPath("$.data.id").value(ideaId.toString()))
+            .andExpect(jsonPath("$.data.user_id").value(userId.toString()))
+            .andExpect(jsonPath("$.data.source_mode").value("MANUAL"))
+            .andExpect(jsonPath("$.data.source_note_id").value(nullValue()))
+            .andExpect(jsonPath("$.data.raw_description").value("Detailed description"))
+            .andExpect(jsonPath("$.data.status").value("CAPTURED"))
+            .andExpect(jsonPath("$.meta.server_time").exists());
+    }
 
     @Test
     void createsIdeaWithEnvelope() throws Exception {
@@ -57,9 +127,9 @@ class IdeaControllerTest {
             new IdeaRepository.IdeaRecord(
                 ideaId,
                 userId,
-                IdeaSourceMode.INDEPENDENT,
+                IdeaSourceMode.MANUAL,
                 null,
-                "Independent idea",
+                "Manual idea",
                 "Raw description",
                 IdeaStatus.CAPTURED,
                 IdeaAssessmentResult.empty(),
@@ -74,8 +144,8 @@ class IdeaControllerTest {
                 .content("""
                     {
                       "user_id": "%s",
-                      "source_mode": "INDEPENDENT",
-                      "title": "Independent idea",
+                      "source_mode": "MANUAL",
+                      "title": "Manual idea",
                       "raw_description": "Raw description"
                     }
                     """.formatted(userId)))
@@ -83,7 +153,7 @@ class IdeaControllerTest {
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.trace_id").value("trace-idea-1"))
             .andExpect(jsonPath("$.data.id").value(ideaId.toString()))
-            .andExpect(jsonPath("$.data.source_mode").value("INDEPENDENT"))
+            .andExpect(jsonPath("$.data.source_mode").value("MANUAL"))
             .andExpect(jsonPath("$.data.status").value("CAPTURED"))
             .andExpect(jsonPath("$.meta.server_time").exists());
     }
@@ -122,9 +192,9 @@ class IdeaControllerTest {
             new IdeaRepository.IdeaRecord(
                 ideaId,
                 userId,
-                IdeaSourceMode.INDEPENDENT,
+                IdeaSourceMode.MANUAL,
                 null,
-                "Independent idea",
+                "Manual idea",
                 "Raw description",
                 IdeaStatus.ASSESSED,
                 new IdeaAssessmentResult(
@@ -168,9 +238,9 @@ class IdeaControllerTest {
             new IdeaRepository.IdeaRecord(
                 ideaId,
                 userId,
-                IdeaSourceMode.INDEPENDENT,
+                IdeaSourceMode.MANUAL,
                 null,
-                "Independent idea",
+                "Manual idea",
                 "Raw description",
                 IdeaStatus.PLANNED,
                 new IdeaAssessmentResult(

@@ -40,7 +40,7 @@ Phase 3 需要完成的不是单纯的 `ideas` 数据表或 CRUD 页面，而是
   - `ARCHIVED`
 3. 创建 Idea：
   - `FROM_NOTE`
-  - `INDEPENDENT`
+  - `MANUAL`
 4. 最小 Idea assess AI 切片
 5. Idea -> Task 派生
 6. Idea 工作台最小可用
@@ -104,7 +104,7 @@ Phase 3 需要完成的不是单纯的 `ideas` 数据表或 CRUD 页面，而是
 ### 范围
 支持两种来源：
 1. `FROM_NOTE`
-2. `INDEPENDENT`
+2. `MANUAL`
 
 ### 交付
 1. `POST /api/v1/ideas`

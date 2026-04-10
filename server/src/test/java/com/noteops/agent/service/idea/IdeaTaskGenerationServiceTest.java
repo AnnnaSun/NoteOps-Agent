@@ -101,7 +101,7 @@ class IdeaTaskGenerationServiceTest {
         ideaRepository.store(new IdeaRepository.IdeaRecord(
             ideaId,
             userId,
-            IdeaSourceMode.INDEPENDENT,
+            IdeaSourceMode.MANUAL,
             null,
             "Assessed idea",
             null,
@@ -143,7 +143,7 @@ class IdeaTaskGenerationServiceTest {
         ideaRepository.store(new IdeaRepository.IdeaRecord(
             ideaId,
             userId,
-            IdeaSourceMode.INDEPENDENT,
+            IdeaSourceMode.MANUAL,
             null,
             "Captured idea",
             null,
@@ -176,7 +176,7 @@ class IdeaTaskGenerationServiceTest {
         ideaRepository.store(new IdeaRepository.IdeaRecord(
             ideaId,
             userId,
-            IdeaSourceMode.INDEPENDENT,
+            IdeaSourceMode.MANUAL,
             null,
             "Assessed idea",
             null,
@@ -234,6 +234,13 @@ class IdeaTaskGenerationServiceTest {
                 return Optional.empty();
             }
             return Optional.of(record);
+        }
+
+        @Override
+        public List<IdeaRecord> findAllByUserId(UUID userId) {
+            return ideas.values().stream()
+                .filter(record -> record.userId().equals(userId))
+                .toList();
         }
 
         @Override
