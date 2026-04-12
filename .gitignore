@@ -63,5 +63,5 @@ artifacts/uiux/**
 *.palette.csv
 *.typography.csv
 *.styles.csv
-.codex
-.superpowers
+.codex/**
+.superpowers/**
