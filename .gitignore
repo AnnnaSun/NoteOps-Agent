@@ -64,3 +64,4 @@ artifacts/uiux/**
 *.typography.csv
 *.styles.csv
 .codex
+.superpowers
