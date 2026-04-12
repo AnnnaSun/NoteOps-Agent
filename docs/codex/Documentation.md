@@ -156,6 +156,19 @@ Preference Learning 正式闭环、PWA 与移动端仍未进入当前主线。
 - 当前 `PROMOTE_TO_IDEA` 失败会返回 `TREND_IDEA_CONVERSION_FAILED`
 - `Trend -> Idea` 后的 assess 仍保持显式用户动作，不在转化步骤里自动触发
 
+### 1.7 Step 4.7 当前落地状态
+
+当前仓库已完成 Phase 4 文档与治理收口：
+- `docs/codex/Documentation.md` 已与当前 Trend 最小闭环对齐
+- `docs/codex/Plan.md` 仍保持 Phase 4 切片边界一致，没有把 Phase 5 能力误记为已完成
+- `AGENTS.md` / `docs/codex/Implement.md` 仍与当前实现和 Phase 4 范围一致
+- Trend 相关 `trace` / `log` / `event` / 转化语义已在文档中显式记录
+- 本次收口没有新增 deferred item；当前 deferred backlog 继续由第 10 节承载
+
+说明：
+- Step 4.7 只做文档与治理对齐，不新增业务功能
+- 当前仓库仍明确不做自动批量转化、复杂 Trend 平台化、Preference Learning 正式闭环
+
 ---
 
 ## 2. Phase 4 目标说明
@@ -478,11 +491,14 @@ Phase 4 新增核心链路必须补齐：
 
 这些事件将作为未来偏好学习和排序评估输入。
 
-当前 Step 4.4 已落地的最小 `tool_invocation_logs` 包括：
+当前 Trend 最小闭环已落地的最小 `tool_invocation_logs` 包括：
 - `trend.source_registry.resolve`
 - `trend.source.fetch`
 - `trend.item.upsert`
 - `trend.item.analyze`
+- `trend.item.action`
+- `trend.note.convert`
+- `trend.idea.convert`
 
 ---
 
