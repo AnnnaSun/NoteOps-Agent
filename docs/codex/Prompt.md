@@ -3,42 +3,52 @@
 
 ## 1. 文件目的
 
-本文件定义 Codex / coding agent 在 NoteOps 仓库中执行 **Phase 3** 任务时的直接提示基线。
+本文件定义 Codex / coding agent 在 NoteOps 仓库中执行 **Phase 4** 任务时的直接提示基线。
 
 当前唯一开发目标为：
 
-**Phase 3：Idea Lifecycle / Idea Workspace / Minimal Idea AI Assess Slice**
+**Phase 4：Trend Source Registry / Trend Inbox / Trend-to-Note-Idea Flow**
 
 注意：
-- 当前阶段不是 Trend，不是 Preference Learning 正式闭环。
-- 当前阶段也不是只做 `ideas` 表和 CRUD。
-- 当前阶段必须完成 Idea 的最小产品闭环：**创建 -> 评估 -> 生成下一步动作 -> 派生 Task -> Web 可见**。
+- 当前阶段不是继续扩写 Phase 3 Idea 细节，也不是正式 Preference Learning 闭环。
+- 当前阶段也不是做一个通用抓取平台或任意网站爬虫系统。
+- 当前阶段必须完成 Trend 的最小产品闭环：
+  **注册来源 -> 拉取候选 -> 结构化分析 -> 进入 Trend Inbox -> 转为 Note / 提升为 Idea**。
 
 ---
 
-## 2. Phase 3 冻结目标
+## 2. Phase 4 冻结目标
 
-你当前正在推进的是 **NoteOps Agent 的 Phase 3**。
-本阶段必须严格围绕 **Idea** 展开，而不是发散到 Trend、Preference、PWA 或移动端。
+你当前正在推进的是 **NoteOps Agent 的 Phase 4**。
+本阶段必须严格围绕 **Trend** 展开，而不是发散到 Preference、PWA、移动端或复杂推荐系统。
 
 本阶段的正式目标：
 
-1. 落地 `ideas` 领域模型与生命周期。
-2. 支持 Idea 两种来源：
-   - `FROM_NOTE`
-   - `MANUAL`
-3. 提供最小可用的 Idea 工作台：
-   - Idea List
-   - Idea Detail
-   - Assess 入口
-   - Assessment 展示
-4. 提供最小 **Idea AI assess** 切片：
-   - `POST /api/v1/ideas/{id}/assess`
-   - 受控调用 Idea Agent / Assessment Service
-   - 输出结构化 assessment result
-   - 将 Idea 从 `CAPTURED` 推进到 `ASSESSED`
-5. 支持由 assessment 结果派生 1~N 个 `SYSTEM` task。
-6. 保持 trace / event / structured logging / documentation 与当前仓库治理方式一致。
+1. 落地 Trend 的最小领域模型与接入基线。
+2. 提供最小 Trend Source Registry。
+3. 提供系统默认 Trend Plan：
+    - 来源：`HN`、`GITHUB`
+    - 频率：固定调度（可先 daily）
+    - 输出：Trend Inbox 候选
+4. 提供最小 Trend ingest 闭环：
+    - 拉取候选
+    - 归一化
+    - 去重
+    - 写入 `trend_items`
+5. 提供最小 Trend AI 分析切片：
+    - 简练摘要
+    - 标签/主题提取
+    - `suggested_action` 建议
+    - `note_worthy` / `idea_worthy` 判断
+6. 提供 Trend Inbox：
+    - `IGNORE`
+    - `SAVE_AS_NOTE`
+    - `PROMOTE_TO_IDEA`
+7. 提供转化闭环：
+    - Trend -> Note
+    - Trend -> Idea
+    - 转 Idea 后复用既有 Idea assess 能力
+8. 保持 trace / event / structured logging / documentation 与当前仓库治理方式一致。
 
 ---
 
@@ -46,16 +56,16 @@
 
 以下能力本阶段可预留，但不做正式闭环：
 
-1. Trend Inbox / Trend source registry / Trend scoring
-2. `user_preference_profiles` 正式重算与回写
-3. Prompt 自我改写或自由演化系统
-4. 复杂 Idea 打分算法、复杂商业评分器、复杂优先级学习
-5. 真正成熟的多 provider AI 编排系统
-6. 周/月日历重构
-7. 原生移动端
-8. 导出中心
-9. 任意网站抓取
-10. 为未来 Trend / Preference 提前铺大量抽象层
+1. 任意网站自由抓取
+2. 复杂多来源 connector 平台化
+3. 正式 `user_preference_profiles` 重算与自动影响排序
+4. 自动静默创建大量 Note / Idea
+5. 多 provider 复杂 AI 编排平台
+6. 复杂个性化推荐算法
+7. 周/月日历重构
+8. 原生移动端
+9. 导出中心
+10. Prompt 自我演化系统
 
 ---
 
@@ -64,35 +74,37 @@
 ### 4.1 最小闭环原则
 
 每次只实现一个最小可验收切片。
-不要一次把 schema、AI provider、前端、复杂治理、复杂 prompt 系统全部做完。
+不要一次把 registry、scheduler、connector、AI、前端、偏好学习全部做完。
 
 ### 4.2 Note-first 原则
 
-Idea 是独立实体，但仍属于 Note-first 体系：
-- Idea 可以来源于 Note
-- Idea 可以派生 Task
-- Idea 的评估与推进不能脱离主知识链路
+Trend 本身不是最终价值对象。
+Trend 的价值在于把高价值外部输入带进主知识链路：
+- 可转为 Note
+- 可提升为 Idea
+- 后续再进入 Task / Review / Preference 输入
 
 ### 4.3 AI 受控原则
 
-Idea 的 AI 能力必须是 **受控 assessment**，而不是自由生成器。
+Trend 的 AI 不是网页抓取器，而是 **结构化分析与转化建议器**。
 
 AI 只负责：
-- 结构化理解输入
-- 生成 assessment
-- 给出验证路径与下一步动作建议
+- 压缩摘要
+- 提取主题与标签
+- 解释“为什么值得关注”
+- 判断更适合转 Note 还是转 Idea
+- 给出 `suggested_action`
 
 AI 不负责：
-- 直接拍板改数据库
-- 绕过状态机推进多个对象
-- 静默改写 Idea 主记录核心字段
-- 直接替用户创建不可追溯的结果
+- 直接抓取网页
+- 越权写数据库主对象
+- 静默批量创建 Note / Idea
+- 绕过用户决策直接推进高影响动作
 
 ### 4.4 治理一致性原则
 
-Idea assess 不是例外。
-它必须延续当前仓库的治理语义：
-
+Trend 不是例外。
+它必须延续当前仓库治理语义：
 - 可追溯
 - 可验证
 - 可观察
@@ -100,10 +112,10 @@ Idea assess 不是例外。
 - 不静默越权
 
 凡涉及：
-- 状态推进
-- 自动任务生成
-- AI assessment 结果落库
-- 后续建议生成
+- 候选入库
+- 趋势分析
+- 转 Note / 转 Idea
+- 用户忽略 / 收藏 / 保存动作
 
 都必须同步考虑：
 - `agent_traces`
@@ -114,91 +126,119 @@ Idea assess 不是例外。
 
 ---
 
-## 5. Phase 3 推荐切片顺序
+## 5. Phase 4 推荐切片顺序
 
 推荐按以下顺序推进：
 
-### Step 3.1
-`ideas` schema / enum / entity / repository / DTO / API contract
+### Step 4.1
+Trend schema / enum / entity / repository / DTO / API contract 基线
 
-### Step 3.2
-Idea create 最小闭环：
-- `FROM_NOTE`
-- `MANUAL`
+### Step 4.2
+Trend Source Registry 最小版：
+- Source type 定义
+- Registry interface
+- 默认 `HN` / `GITHUB` source registration
+- Default Trend Plan config
 
-### Step 3.3
-Idea assess 最小 AI 切片：
-- `/api/v1/ideas/{id}/assess`
-- `IdeaAssessmentService`
-- `IdeaAgent` interface / stub
-- `assessment_result` 落库
-- 状态推进到 `ASSESSED`
-- trace / log / event 补齐
+### Step 4.3
+Trend ingest 最小闭环：
+- 拉取候选
+- 归一化
+- 去重
+- 入库 `trend_items`
 
-### Step 3.4
-Idea -> Task 派生：
-- 基于 assessment 生成 `SYSTEM` task
-- 进入 Today / Upcoming
+### Step 4.4
+Trend AI 分析最小切片：
+- summary
+- topic/tags
+- `note_worthy`
+- `idea_worthy`
+- `suggested_action`
+- 结构化 analysis payload 落库
 
-### Step 3.5
-Idea Web 工作台：
-- List / Detail / Assess 按钮 / Assessment 展示 / Generate Tasks
+### Step 4.5
+Trend Inbox：
+- List
+- 过滤/排序（最小）
+- IGNORE / SAVE_AS_NOTE / PROMOTE_TO_IDEA
 
-### Step 3.6
-Phase 3 文档与治理收口：
+### Step 4.6
+Trend -> Note / Idea 转化：
+- 生成 Note
+- 生成 Idea
+- 保留来源链
+- Trend -> Idea 后允许复用既有 assess 流
+
+### Step 4.7
+Phase 4 文档与治理收口：
 - 文档同步
 - 风险记录
 - deferred backlog 记录
 
 ---
 
-## 6. Idea Assess 最小 AI 切片的硬要求
+## 6. 默认 Trend Plan 的硬要求
 
-这是 Phase 3 的关键补丁，不允许遗漏。
+这是当前阶段的关键交付之一，不允许遗漏。
 
-最小 assess 切片必须满足：
+默认 Trend Plan 至少必须满足：
 
-1. 有正式接口：`POST /api/v1/ideas/{id}/assess`
-2. 有正式领域服务，而不是 controller 里直接拼 prompt
-3. assessment 输出必须结构化，不接受只返回一段自由文本
-4. 结果至少包含：
-   - `problem_statement`
-   - `target_user`
-   - `core_hypothesis`
-   - `mvp_validation_path`
-   - `next_actions`
-5. 成功后 Idea 状态从 `CAPTURED` -> `ASSESSED`
-6. assessment 过程必须写 trace
-7. 关键链路必须写结构化日志
-8. 至少写入一个与 Idea assess 相关的 `user_action_event` 或等价治理记录
-9. AI provider 可先 stub / mock / minimal adapter，但 contract 必须稳定
-10. 未做的增强项必须记录到 deferred backlog
+1. 系统内置一个默认计划，而不是只有手动导入
+2. 默认来源至少包含：
+    - `HN`
+    - `GITHUB`
+3. 默认抓取结果不是直接创建 Note / Idea，而是先进入 Trend Inbox
+4. 默认计划允许配置：
+    - source list
+    - fetch limit
+    - schedule
+    - keyword bias（可最小实现）
+5. 默认行为：
+    - `auto_ingest = true`
+    - `auto_convert = false`
+6. Trend 候选必须保留来源信息与原始链接
+7. 转化动作必须由用户触发或显式确认，不得默认静默执行
+
+建议最小配置如下：
+
+```json
+{
+  "plan_key": "default_ai_engineering_trends",
+  "enabled": true,
+  "sources": ["HN", "GITHUB"],
+  "fetch_limit_per_source": 5,
+  "schedule": "DAILY",
+  "keyword_bias": ["agent", "llm", "memory", "retrieval", "tooling", "coding"],
+  "auto_ingest": true,
+  "auto_convert": false
+}
+```
+
+允许后续扩展，但当前阶段不要为了“以后可能会有用户自定义平台”提前过度设计。
 
 ---
 
-## 7. assessment_result 建议合同
+## 7. Trend AI 分析合同建议
 
 最小结构建议如下：
 
 ```json
 {
-  "problem_statement": "string",
-  "target_user": "string",
-  "core_hypothesis": "string",
-  "mvp_validation_path": [
-    "string"
-  ],
-  "next_actions": [
-    "string"
-  ],
-  "risks": [
-    "string"
-  ],
+  "summary": "string",
+  "why_it_matters": "string",
+  "topic_tags": ["string"],
+  "signal_type": "string",
+  "note_worthy": true,
+  "idea_worthy": false,
+  "suggested_action": "SAVE_AS_NOTE",
   "reasoning_summary": "string"
 }
 ```
 
-允许后续扩展，但当前阶段不要为了“以后可能会加”引入复杂泛化协议。
+说明：
+- 当前阶段不要求复杂个性化排序
+- 当前阶段不要求成熟评分系统
+- 当前阶段优先保证结构稳定、可展示、可落库
 
 ---
 
@@ -206,11 +246,14 @@ Phase 3 文档与治理收口：
 
 当前阶段允许简化：
 
-1. AI provider 先走单一 provider
-2. prompt 模板先写成单一模板
-3. assessment 不做复杂打分
-4. `next_actions` 先只生成 1~3 条
-5. Idea -> Task 先做显式触发，不做完全自动批量编排
+1. 先只接 1 个 mock + 1 个最小真实 provider 适配层
+2. HN / GitHub 的拉取可以先走最小公共接口，不做通用 connector 大平台
+3. 先按固定规则做基础 score / rank
+4. `suggested_action` 先限定为：
+    - `IGNORE`
+    - `SAVE_AS_NOTE`
+    - `PROMOTE_TO_IDEA`
+5. 转 Idea 后复用现有 assess，不在 Trend 阶段重复实现 Idea 分析
 6. Web UI 先做最小可读，不做重视觉
 
 ---
@@ -219,14 +262,14 @@ Phase 3 文档与治理收口：
 
 以下简化不可接受：
 
-1. 只有 `ideas` CRUD，没有 assess
-2. 只有 assess 按钮，没有正式后端接口
-3. assessment 结果不落库
-4. 评估后不推进状态
+1. 只有 `trend_items` 表，没有真实 ingest
+2. 只有列表页，没有来源入库
+3. 没有 Trend Inbox，只是后端写表
+4. 没有转 Note / 转 Idea 的真实后端路径
 5. 核心链路没有 trace / logs
-6. 直接在 controller 写死 AI prompt 调用
-7. 只做前端假数据，不打通真实合同
-8. 把 Phase 4 Trend 逻辑顺手塞进来
+6. 在 controller 里直接写死抓取与模型调用逻辑
+7. 静默自动创建 Note / Idea 而不记录来源与事件
+8. 把 Preference 正式画像或复杂推荐顺手塞进来
 
 ---
 

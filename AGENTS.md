@@ -25,7 +25,7 @@ Do not change the language of existing repository files unless the task explicit
 
 本文件是 NoteOps 仓库级执行契约。Codex 在执行任何任务前，必须先遵守这里的边界、优先级、目录路由、验证要求与完成定义。
 
-本仓库对应的产品不是通用笔记软件，而是 **以 Note 为第一公民的多 Agent Knowledge-to-Action 系统**。当前开发基线已进入 **Phase 3：Idea Lifecycle / Idea Workspace**，后续实现必须优先满足“可控、可追溯、可验证”，而不是一次性铺开全部未来能力。
+本仓库对应的产品不是通用笔记软件，而是 **以 Note 为第一公民的多 Agent Knowledge-to-Action 系统**。当前开发基线已进入 **Phase 4：Trend Source Registry / Trend Inbox / Trend Conversion**。后续实现必须优先满足“可控、可追溯、可验证”，而不是一次性铺开全部未来能力。
 
 ---
 
@@ -34,129 +34,99 @@ Do not change the language of existing repository files unless the task explicit
 ### 2.1 产品与数据根原则
 
 1. **Note 是第一公民**  
-   Task、Review、ChangeProposal、Idea、Trend、Preference Learning 均围绕 Note 展开，不允许把 Task/Idea 设计成脱离主知识链路的独立系统。
+   Task、Review、ChangeProposal、Idea、Trend、Preference Learning 均围绕 Note 展开，不允许把 Task / Idea / Trend 设计成脱离主知识链路的独立系统。
 
 2. **服务端 PostgreSQL 是唯一真相源**  
-   客户端（Web/PWA/未来移动端）只负责缓存、离线操作记录和回传，不得将客户端本地状态视为最终真相。
+   客户端（Web / PWA / 未来移动端）只负责缓存、离线操作记录和回传，不得将客户端本地状态视为最终真相。
 
 3. **原始内容与当前解释层分离**
-  - `note_contents`：保存原始内容、更新块、证据块、转写块等追加型历史内容。
-  - `notes`：保存当前视图，如 `current_summary`、`current_key_points`、`current_tags`。
-  - ChangeProposal 只能作用于解释层、元数据层、关系层，不得静默覆盖原始正文。
+    - `note_contents`：保存原始内容、更新块、证据块、转写块等追加型历史内容。
+    - `notes`：保存当前视图，如 `current_summary`、`current_key_points`、`current_tags`。
+    - ChangeProposal 只能作用于解释层、元数据层、关系层，不得静默覆盖原始正文。
 
 4. **自动化变更必须可治理**
-  - 低风险：可建议、可一键应用、可撤销
-  - 中风险：必须人工确认
-  - 高风险：只提示冲突，不直接改写正文
+    - 低风险：可建议、可一键应用、可撤销
+    - 中风险：必须人工确认
+    - 高风险：只提示冲突，不直接改写正文
 
-5. **所有核心聚合预留 `user_id`**
+5. **所有核心聚合预留 `user_id`**  
    V1 可以是单用户运行，但模型、查询、索引、接口设计都必须保留未来多用户边界。
 
 6. **阶段性跳过 ≠ 永久删除**  
    为了完成当前阶段最小闭环而暂时跳过的功能，必须记录到 deferred backlog / documentation 中，后续阶段必须补回，不允许因为“先不做”而永久遗漏。
 
-### 2.7 可观测性根原则
+### 2.2 可观测性根原则
 
 7. **关键链路必须具备可监控、可定位、可关联的结构化日志**
-  - 任何核心业务链路，不允许只靠零散 `console.log` 或无法关联上下文的纯文本输出。
-  - 以下场景默认必须补充结构化日志：
-    - 请求入口与核心命令入口
-    - 状态迁移与状态机流转
-    - 外部调用开始 / 成功 / 失败
-    - proposal apply / rollback
-    - review complete / partial / recall requeue
-    - idea create / assess / promote_to_plan / archive / reopen
-    - idea task generation / idea follow-up decision
-    - 任何会写入 `agent_traces`、`tool_invocation_logs`、`user_action_events` 的关键动作
-  - 日志字段至少应包含：
-    - `trace_id`
-    - `user_id`
-    - 模块名或 service / controller 名
-    - 接口路径或命令名
-    - 关键业务标识，如 `note_id`、`idea_id`、`task_id`、`proposal_id`
-    - `action`
-    - `result`
-    - `duration_ms`（如适用）
-    - `error_code`、`error_message`（失败时）
-  - 同一条请求链路中的日志应可通过 `trace_id` 关联，保证问题可以从入口追到落库、外调和状态变更。
-  - 新增涉及核心状态变更、外部调用、调度决策的实现时，如未补日志，视为未完成最小闭环。
-
-### 2.8 代码注释根原则
-
-8. **关键方法入口必须补中文注释**
-   - 新增或修改 `controller`、`service`、`orchestrator`、`client` 等关键入口方法时，必须在方法入口或关键业务分支前补简短中文注释。
-   - 注释重点说明业务意图、前置条件、状态迁移、路由/调度决策、外部调用、落库与回滚行为。
-   - 优先覆盖对外接口、复杂编排、状态机分支、失败重试和 fallback 流程。
-   - 纯 DTO/record、getter/setter、简单映射、常量和无业务判断的辅助函数，不强制加注释，避免噪音。
-   - 新增或重构时，同一业务链路的注释风格要一致，中文要简洁、直接，不写重复性的“赋值/返回值说明”。
-   - `repository` 和 `model` 中涉及复杂状态机、枚举转换、JSON/Map 互转、时间转换、回滚或重试决策的逻辑，也应补少量必要的中文注释，说明转换前后状态和特殊分支。
-   - 修改已有复杂逻辑时，也必须同步检查并更新相关中文注释，避免行为变了但注释仍停留在旧版本。
+    - 任何核心业务链路，不允许只靠零散 `console.log` 或无法关联上下文的纯文本输出。
+    - 以下场景默认必须补充结构化日志：
+        - 请求入口与核心命令入口
+        - 状态迁移与状态机流转
+        - 外部调用开始 / 成功 / 失败
+        - proposal apply / rollback
+        - trend ingest / normalize / score / convert
+        - trend ignore / save / promote 行为
+        - task 创建、完成、跳过、重排
+        - 任何会写入 `agent_traces`、`tool_invocation_logs`、`user_action_events` 的关键动作
+    - 日志字段至少应包含：
+        - `trace_id`
+        - `user_id`
+        - 模块名或 service / controller 名
+        - 接口路径或命令名
+        - 关键业务标识，如 `trend_item_id`、`note_id`、`idea_id`、`task_id`、`proposal_id`
+        - `action`
+        - `result`
+        - `duration_ms`（如适用）
+        - `error_code`、`error_message`（失败时）
+    - 同一条请求链路中的日志应可通过 `trace_id` 关联，保证问题可以从入口追到落库、外调和状态变更。
+    - 新增涉及核心状态变更、外部调用、调度决策的实现时，如未补日志，视为未完成最小闭环。
 
 ---
 
-## 3. 当前阶段边界（Phase 3）
+## 3. 当前阶段边界（Phase 4）
 
-当前以 **Phase 3：Idea Lifecycle / Idea Workspace** 为唯一开发目标。
+当前以 **Phase 4：Trend Source Registry / Trend Inbox / Trend Conversion** 为唯一开发目标。
 
-### 3.1 Phase 3 必做
+### 3.1 Phase 4 必做
 
-1. Idea 生命周期真正落地：
-  - `CAPTURED`
-  - `ASSESSED`
-  - `PLANNED`
-  - `IN_PROGRESS`
-  - `ARCHIVED`
+1. 最小 Trend source registry 真正落地：默认支持 `HN` 与 `GITHUB` 两类来源
+2. 默认 Trend plan 真正落地：可按固定计划抓取少量高价值候选
+3. Trend ingest 最小闭环：抓取、去重、归一化、落库 `trend_items`
+4. Trend AI 最小分析闭环：
+    - 生成简练摘要
+    - 生成 topic tags / why-it-matters
+    - 给出 `note_worthy` / `idea_worthy`
+    - 给出 `suggested_action`
+5. Trend Inbox 最小工作台：
+    - 列表展示
+    - 来源展示
+    - 分数与摘要展示
+    - 动作入口：`IGNORE` / `SAVE_AS_NOTE` / `PROMOTE_TO_IDEA`
+6. Trend -> Note 转化闭环：保留来源链、必要 evidence、trace / event / log
+7. Trend -> Idea 转化闭环：创建 Idea 后可显式进入现有 Idea assess 主链
+8. Trend 相关 `agent_traces` / `tool_invocation_logs` / `user_action_events` 补齐
+9. API / DTO / 文档同步到 Phase 4 语义
+10. Web 页面最小可用：Trend Inbox 主路径连真实接口
 
-2. Idea 创建最小闭环：
-  - 支持 `FROM_NOTE`
-  - 支持独立创建
-  - 允许保留未来来源的扩展位，但当前不实现 Trend 驱动正式流
+### 3.2 Phase 4 可预留但不做正式闭环
 
-3. Idea Assess 最小闭环：
-  - 输出 `problem_statement`
-  - 输出 `target_user`
-  - 输出 `core_hypothesis` 或等价假设摘要
-  - 输出 `mvp_validation_path`
-  - 输出 `next_actions`
+1. 用户自定义复杂 Trend 规则编辑器
+2. 多 provider 趋势采集平台化
+3. 个性化偏好重排与在线学习
+4. 自动静默转 Note / 转 Idea
+5. 复杂评分算法、复杂趋势聚类、复杂主题漂移分析
+6. 任意网站自由抓取
+7. 高保真视觉重构与高级看板
 
-4. Idea 与 Task 的主链路打通：
-  - Assess 后可生成 `SYSTEM` task
-  - 生成的 task 能进入 Today / Upcoming
-  - task 与 `IDEA` 关联可追溯
+### 3.3 Phase 4 明确不做
 
-5. Idea Workspace 最小可用：
-  - `Idea List`
-  - `Idea Detail`
-  - `Assess` 入口
-  - `Promote to Plan / Archive / Reopen` 的基础交互
-
-6. Idea 相关 Proposal / Event / Trace 补强：
-  - 关键字段更新需可追溯
-  - assess、状态迁移、task 派生必须写 trace / event / logs
-  - 高风险更新继续走 proposal 治理链路
-
-7. API / DTO / 文档同步到 Phase 3 语义
-
-8. Web 页面最小可用：Idea 主路径连真实接口
-
-### 3.2 Phase 3 可预留但不做正式闭环
-
-1. Trend source registry 与 Trend Inbox
-2. `user_preference_profiles` 正式画像重算与稳定排序影响
-3. 复杂 Idea 打分算法、市场评分、竞品自动分析
-4. Kanban / Pipeline 高级视图
-5. 复杂任务批量拆解
-6. 真实外部 research provider 的正式接入（可先保留接口与 stub/mock）
-
-### 3.3 Phase 3 明确不做
-
-1. 完整账号体系
-2. 原生 Android / iOS
-3. 原始音视频处理
-4. 任意网站自由抓取
+1. Preference Learning 正式画像重算器
+2. PWA 正式离线趋势抓取
+3. 原生 Android / iOS
+4. 原始音视频处理
 5. 完整导出中心
-6. Trend 正式闭环
-7. Preference Learning 的成熟画像重算器
+6. 无边界的网页抓取平台
+7. Trend 驱动的自动大规模知识重写
 
 ---
 
@@ -197,7 +167,7 @@ Do not change the language of existing repository files unless the task explicit
 3. `docs/codex/Prompt.md`
 4. `docs/codex/Plan.md`
 5. `docs/codex/Documentation.md`
-6. 已冻结的产品/架构/表结构/API 文档
+6. 已冻结的产品 / 架构 / 表结构 / API 文档
 7. 现有代码与测试
 8. 旧注释、旧草稿、推测
 
@@ -214,113 +184,65 @@ Do not change the language of existing repository files unless the task explicit
 - 原始内容默认只追加，不覆盖
 - `latest_content_id` 应可回指当前最新内容块
 - `content_type` 至少覆盖：
-  - `PRIMARY`
-  - `UPDATE`
-  - `EVIDENCE`
-  - `TRANSCRIPT`
-  - `CAPTURE_RAW`
+    - `PRIMARY`
+    - `UPDATE`
+    - `EVIDENCE`
+    - `TRANSCRIPT`
+    - `CAPTURE_RAW`
 
-### 7.2 Review
+### 7.2 Trend
 
-Review 仍保持 Phase 2 既有语义，不允许在 Phase 3 回退：
-- 双池：`SCHEDULE` / `RECALL`
-- 完成状态：
-  - `COMPLETED`
-  - `PARTIAL`
-  - `NOT_STARTED`
-  - `ABANDONED`
-- 完成原因：
-  - `TIME_LIMIT`
-  - `TOO_HARD`
-  - `VAGUE_MEMORY`
-  - `DEFERRED`
+Trend 必须支持“来源注册 + 候选入箱 + 用户决策 + 转化”语义。
 
-Review 默认展示对象仍是 **当前摘要 + 关键点 + 必要延伸**，不是整条 Note 全文直出。
+当前阶段至少支持：
+- `HN`
+- `GITHUB`
+
+TrendItem 至少要保留：
+- `source_type`
+- `title`
+- `url`
+- `summary`
+- `normalized_score` 或等价综合分
+- 结构化分析载荷（如 `analysis_payload` / `extra_attributes`）
+
+Trend 不允许被简化为“纯抓取结果列表”。至少要体现：
+- 候选筛选
+- 候选摘要
+- 转化建议
+- 用户动作
+- 与 Note / Idea 的来源关联
 
 ### 7.3 Task
 
 Task 统一承接两类来源：
-
 - `SYSTEM`
 - `USER`
 
-Task 必须支持绑定以下对象：
-
-- `NOTE`
-- `IDEA`
-- `REVIEW`
-- `NONE`
-
-Task 状态保持轻量：
-
-- `TODO`
-- `IN_PROGRESS`
-- `DONE`
-- `SKIPPED`
-- `CANCELLED`
-
-Phase 3 中，Idea 派生 task 必须显式设置：
-- `task_source`
-- `task_type`
-- `related_entity_type=IDEA`
-- `related_entity_id=<idea_id>`
-- `due_at`（如存在计划时间）
+Trend 生成的 follow-up task 仍必须进入统一 Task Domain，不要新造独立待办系统。
 
 ### 7.4 ChangeProposal
 
-ChangeProposal 必须显式包含：
+Trend 场景下若外部内容要影响内部解释层，必须通过：
+- `EVIDENCE` block，或
+- `ChangeProposal`
 
-- `target_layer`：
-  - `INTERPRETATION`
-  - `METADATA`
-  - `RELATION`
-- `risk_level`
-- `before_snapshot`
-- `after_snapshot`
-- `diff_summary`
-- `rollback_token`
+禁止直接静默覆盖 `notes.current_*`。
 
-ChangeProposal 不是正文覆盖器。  
-Phase 3 中，Idea 的关键字段更新也不得绕开 proposal / trace / event 治理链路。
+### 7.5 Search / External Evidence 继承规则
 
-### 7.5 Idea
+即使进入 Trend 阶段，也不能打破既有外部证据治理边界：
+- 外部结果可以形成 evidence block
+- 外部结果可以生成 proposal
+- 外部结果不能直接覆盖内部知识当前解释层
 
-Idea 是独立实体，但不能脱离主知识链路。
-
-Idea 至少支持：
-- `FROM_NOTE`
-- `MANUAL`
-
-Idea 状态机必须保持：
-- `CAPTURED`
-- `ASSESSED`
-- `PLANNED`
-- `IN_PROGRESS`
-- `ARCHIVED`
-
-Idea Assess 输出至少包含：
-- `problem_statement`
-- `target_user`
-- `core_hypothesis` 或等价字段
-- `mvp_validation_path`
-- `next_actions`
-
-Assess 结果可以保存到 `assessment_result`，但关键状态推进、任务派生、人工改写都必须可追溯。
-
-### 7.6 Search / Trend / Preference 的阶段边界
-
-- Search 保持已有能力，但 Phase 3 不以 Search 为主线扩展目标
-- Trend 仍属于后续阶段，不应提前做正式 Inbox / 转化流
-- `user_preference_profiles` 仍可预留或只读占位，不做正式学习闭环与静默生效
-
-### 7.7 CaptureJob
+### 7.6 CaptureJob
 
 V1 仍只支持：
-
 - `TEXT`
 - `URL`
 
-Phase 3 不应为了 Idea 扩大 Capture 输入边界。
+Trend 阶段不应为了抓趋势而扩大用户 Capture 输入边界；Trend 来源接入应走 Trend Source / Connector，而不是篡改 Capture 语义。
 
 ---
 
@@ -334,10 +256,10 @@ Phase 3 不应为了 Idea 扩大 Capture 输入边界。
    负责 DTO、参数校验、响应 envelope、错误码映射。
 
 2. Application / Orchestration 层  
-   负责编排 Idea / Task / Proposal / Trace 等流程、写 Trace、组织规则决策。
+   负责编排 Trend ingest、Trend analyze、Trend convert、写 Trace、组织规则决策。
 
 3. Domain 层  
-   负责 Note、Review、Task、Idea、Proposal 等核心业务规则与状态机。
+   负责 Trend、Note、Idea、Task、Proposal 等核心业务规则与状态机。
 
 4. Persistence 层  
    负责 Repository、ORM 映射、查询与迁移。
@@ -347,11 +269,122 @@ Phase 3 不应为了 Idea 扩大 Capture 输入边界。
 
 ### 8.2 Worker Agent 边界
 
-当前 Phase 3 只允许最小 Worker Agent 扩展点，不要把未来 Phase 4/5/6 的完整逻辑提前实现。
+当前 Phase 4 只允许最小 Worker Agent 扩展点，不要把未来 Phase 5/6 的完整逻辑提前实现。
 
 最小边界：
-- Capture Worker
-- Review Worker
-- Search Worker
-- Idea Worker
-- Workspace Aggregation Worker（如 Today / Idea 聚合需要）
+- Trend Source Connector / Provider
+- Trend Normalizer
+- Trend Agent（摘要 / 标签 / 转化建议）
+- Trend Conversion Service
+- 必要时复用现有 Idea Agent / Note Service
+
+---
+
+## 9. Phase 4 特殊规则
+
+### 9.1 默认 Trend Plan
+
+Phase 4 允许并鼓励提供默认内置 Trend plan，但必须满足：
+- 默认源有限且可解释
+- 默认计划可显式查看或可在代码 / 文档中明确说明
+- 默认行为是“进入 Inbox + 给出建议”，而不是静默自动转化
+
+推荐默认计划：
+- `HN` + `GITHUB`
+- 固定抓取窗口
+- 固定关键词偏置
+- 固定 top-N 限制
+
+### 9.2 Trend AI 介入边界
+
+Trend AI 负责：
+- 结构化分析
+- 简练摘要
+- why-it-matters
+- topic tags
+- `note_worthy` / `idea_worthy`
+- `suggested_action`
+
+Trend AI 不负责：
+- 静默批量创建 Note
+- 静默批量创建 Idea
+- 直接覆盖内部知识主体
+- 越过治理链路写多个核心对象
+
+### 9.3 Trend -> Idea 复用规则
+
+Trend 提升为 Idea 后，应优先复用已有 Idea 生命周期与 assess 逻辑。  
+禁止在 Trend 侧重新发明一套与 Idea assess 重复的独立创意分析系统。
+
+### 9.4 Today / Workspace 影响边界
+
+Trend 阶段可以新增 Trend Inbox，但不要为了它破坏已有 Today / Review / Search / Idea 主路径。  
+若 Trend 转化生成任务，这些任务进入统一 Task / Workspace，而不是新造趋势专属任务面板。
+
+---
+
+## 10. 何时必须同步文档
+
+出现以下任一情况，执行结束前必须更新文档：
+
+- 新增或修改 Trend 相关表、字段、索引
+- 新增或修改 Trend API 路径或字段
+- Trend 来源语义、候选语义、转化语义发生变化
+- 默认 Trend plan 或默认来源集合发生变化
+- 当前已完成子步骤变更
+- 已知风险新增或消除
+- 新增 deferred item 或移除 deferred item
+
+最少更新：
+- `docs/codex/Documentation.md`
+
+必要时再更新：
+- README
+- schema / API 补充说明
+- `docs/codex/Plan.md`
+
+---
+
+## 11. 验证策略
+
+### 11.1 默认验证顺序
+
+1. 最窄范围单元测试 / 集成测试
+2. 构建 / 类型检查
+3. 必要时的数据库迁移验证
+4. 必要时的手工链路检查
+
+### 11.2 验证输出要求
+
+必须明确写出：
+- 跑了什么
+- 结果如何
+- 哪些没跑
+- 还剩什么风险
+
+禁止用“理论上可以”“按理说没问题”代替验证结果。
+
+---
+
+## 12. 每次输出模板
+
+默认按下面结构向用户汇报：
+
+### 本次完成
+- 说明完成的具体小目标
+
+### 修改文件
+- 列出关键文件与职责
+
+### 验证结果
+- 列出命令 / 测试 / 构建结果
+
+### 日志覆盖
+- 列出关键日志点
+- 说明哪些链路带 `trace_id`
+- 说明失败场景如何定位
+
+### 风险与下一步
+- 写清尚未覆盖的边界
+- 标出 deferred items
+- 给出最合理的下一个子步骤

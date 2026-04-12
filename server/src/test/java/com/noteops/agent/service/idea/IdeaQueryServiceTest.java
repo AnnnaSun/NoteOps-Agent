@@ -27,6 +27,7 @@ class IdeaQueryServiceTest {
             userId,
             IdeaSourceMode.FROM_NOTE,
             noteId,
+            null,
             "First idea",
             "First description",
             IdeaStatus.ASSESSED,
@@ -39,6 +40,7 @@ class IdeaQueryServiceTest {
             userId,
             IdeaSourceMode.MANUAL,
             null,
+            null,
             "Second idea",
             "Second description",
             IdeaStatus.CAPTURED,
@@ -50,6 +52,7 @@ class IdeaQueryServiceTest {
             UUID.randomUUID(),
             UUID.randomUUID(),
             IdeaSourceMode.MANUAL,
+            null,
             null,
             "Other user idea",
             null,
@@ -73,12 +76,14 @@ class IdeaQueryServiceTest {
     void getsIdeaDetailForRequestedUser() {
         UUID userId = UUID.randomUUID();
         UUID ideaId = UUID.randomUUID();
+        UUID trendItemId = UUID.randomUUID();
         InMemoryIdeaRepository ideaRepository = new InMemoryIdeaRepository();
         ideaRepository.detail = Optional.of(new IdeaRepository.IdeaRecord(
             ideaId,
             userId,
-            IdeaSourceMode.MANUAL,
+            IdeaSourceMode.FROM_TREND,
             null,
+            trendItemId,
             "Detailed idea",
             "A richer description",
             IdeaStatus.PLANNED,
@@ -102,6 +107,7 @@ class IdeaQueryServiceTest {
         assertThat(detail.id()).isEqualTo(ideaId);
         assertThat(detail.title()).isEqualTo("Detailed idea");
         assertThat(detail.status()).isEqualTo(IdeaStatus.PLANNED);
+        assertThat(detail.sourceTrendItemId()).isEqualTo(trendItemId);
         assertThat(detail.assessmentResult().problemStatement()).isEqualTo("Problem statement");
     }
 
@@ -132,6 +138,7 @@ class IdeaQueryServiceTest {
         public IdeaRecord create(UUID userId,
                                  IdeaSourceMode sourceMode,
                                  UUID sourceNoteId,
+                                 UUID sourceTrendItemId,
                                  String title,
                                  String rawDescription,
                                  IdeaStatus status,

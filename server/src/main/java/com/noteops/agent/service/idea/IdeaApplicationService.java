@@ -15,7 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Clock;
+import java.util.Locale;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,32 +30,16 @@ public class IdeaApplicationService {
     private final NoteRepository noteRepository;
     private final AgentTraceRepository agentTraceRepository;
     private final UserActionEventRepository userActionEventRepository;
-    private final Clock clock;
 
     @Autowired
     public IdeaApplicationService(IdeaRepository ideaRepository,
                                   NoteRepository noteRepository,
                                   AgentTraceRepository agentTraceRepository,
                                   UserActionEventRepository userActionEventRepository) {
-        this(
-            ideaRepository,
-            noteRepository,
-            agentTraceRepository,
-            userActionEventRepository,
-            Clock.systemUTC()
-        );
-    }
-
-    IdeaApplicationService(IdeaRepository ideaRepository,
-                           NoteRepository noteRepository,
-                           AgentTraceRepository agentTraceRepository,
-                           UserActionEventRepository userActionEventRepository,
-                           Clock clock) {
         this.ideaRepository = ideaRepository;
         this.noteRepository = noteRepository;
         this.agentTraceRepository = agentTraceRepository;
         this.userActionEventRepository = userActionEventRepository;
-        this.clock = clock;
     }
 
     @Transactional
@@ -75,15 +59,22 @@ public class IdeaApplicationService {
             title
         );
 
-        IdeaRepository.IdeaRecord idea = ideaRepository.create(
-            userId,
-            sourceMode,
-            sourceNoteId,
-            title,
-            rawDescription,
-            IdeaStatus.CAPTURED,
-            IdeaAssessmentResult.empty()
-        );
+        IdeaRepository.IdeaRecord idea = sourceMode == IdeaSourceMode.FROM_NOTE
+            ? ideaRepository.createFromNote(
+                userId,
+                sourceNoteId,
+                title,
+                rawDescription,
+                IdeaStatus.CAPTURED,
+                IdeaAssessmentResult.empty()
+            )
+            : ideaRepository.createManual(
+                userId,
+                title,
+                rawDescription,
+                IdeaStatus.CAPTURED,
+                IdeaAssessmentResult.empty()
+            );
 
         Map<String, Object> traceState = new LinkedHashMap<>();
         traceState.put("idea_id", idea.id());
@@ -139,7 +130,18 @@ public class IdeaApplicationService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_SOURCE_MODE", "source_mode must be provided");
         }
         try {
-            return IdeaSourceMode.valueOf(rawValue);
+            String normalized = rawValue.trim().toUpperCase(Locale.ROOT);
+            IdeaSourceMode sourceMode = IdeaSourceMode.valueOf(normalized);
+            if (sourceMode == IdeaSourceMode.FROM_TREND) {
+                throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "SOURCE_MODE_NOT_ALLOWED",
+                    "source_mode FROM_TREND is internal-only"
+                );
+            }
+            return sourceMode;
+        } catch (ApiException exception) {
+            throw exception;
         } catch (Exception exception) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_SOURCE_MODE", "source_mode is invalid");
         }

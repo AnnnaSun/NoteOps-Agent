@@ -223,7 +223,14 @@ class IdeaTaskGenerationServiceTest {
         }
 
         @Override
-        public IdeaRecord create(UUID userId, IdeaSourceMode sourceMode, UUID sourceNoteId, String title, String rawDescription, IdeaStatus status, IdeaAssessmentResult assessmentResult) {
+        public IdeaRecord create(UUID userId,
+                                 IdeaSourceMode sourceMode,
+                                 UUID sourceNoteId,
+                                 UUID sourceTrendItemId,
+                                 String title,
+                                 String rawDescription,
+                                 IdeaStatus status,
+                                 IdeaAssessmentResult assessmentResult) {
             throw new UnsupportedOperationException();
         }
 
@@ -256,6 +263,7 @@ class IdeaTaskGenerationServiceTest {
                 current.userId(),
                 current.sourceMode(),
                 current.sourceNoteId(),
+                current.sourceTrendItemId(),
                 current.title(),
                 current.rawDescription(),
                 status,

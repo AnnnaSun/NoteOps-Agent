@@ -28,6 +28,19 @@ public class JdbcAgentTraceRepository implements AgentTraceRepository {
                        List<String> workerSequence,
                        Map<String, Object> orchestratorState) {
         UUID traceId = UUID.randomUUID();
+        create(traceId, userId, entryType, goal, rootEntityType, rootEntityId, workerSequence, orchestratorState);
+        return traceId;
+    }
+
+    @Override
+    public UUID create(UUID traceId,
+                       UUID userId,
+                       String entryType,
+                       String goal,
+                       String rootEntityType,
+                       UUID rootEntityId,
+                       List<String> workerSequence,
+                       Map<String, Object> orchestratorState) {
         jdbcClient.sql("""
             insert into agent_traces (
                 id, user_id, entry_type, goal, root_entity_type, root_entity_id, status, orchestrator_state,

@@ -26,6 +26,25 @@ public interface AgentTraceRepository {
                 List<String> workerSequence,
                 Map<String, Object> orchestratorState);
 
+    default UUID create(UUID traceId,
+                        UUID userId,
+                        String entryType,
+                        String goal,
+                        String rootEntityType,
+                        UUID rootEntityId,
+                        List<String> workerSequence,
+                        Map<String, Object> orchestratorState) {
+        return create(
+            userId,
+            entryType,
+            goal,
+            rootEntityType,
+            rootEntityId,
+            workerSequence,
+            orchestratorState
+        );
+    }
+
     void markCompleted(UUID traceId, String resultSummary, Map<String, Object> orchestratorState);
 
     void markFailed(UUID traceId, String resultSummary, Map<String, Object> orchestratorState);

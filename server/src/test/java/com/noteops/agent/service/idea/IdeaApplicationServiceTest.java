@@ -11,7 +11,6 @@ import com.noteops.agent.repository.trace.AgentTraceRepository;
 import com.noteops.agent.service.note.NoteQueryService;
 import org.junit.jupiter.api.Test;
 
-import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -158,6 +157,29 @@ class IdeaApplicationServiceTest {
             .hasMessage("note not found");
     }
 
+    @Test
+    void rejectsFromTrendSourceModeFromPublicCreatePath() {
+        UUID userId = UUID.randomUUID();
+        IdeaApplicationService service = newService(
+            new InMemoryIdeaRepository(),
+            new InMemoryNoteRepository(),
+            new InMemoryAgentTraceRepository(),
+            new InMemoryUserActionEventRepository()
+        );
+
+        assertThatThrownBy(() -> service.create(
+            new IdeaApplicationService.CreateIdeaCommand(
+                userId.toString(),
+                "FROM_TREND",
+                null,
+                "Bad idea",
+                null
+            )
+        ))
+            .isInstanceOf(ApiException.class)
+            .hasMessage("source_mode FROM_TREND is internal-only");
+    }
+
     private IdeaApplicationService newService(IdeaRepository ideaRepository,
                                               NoteRepository noteRepository,
                                               AgentTraceRepository traceRepository,
@@ -166,8 +188,7 @@ class IdeaApplicationServiceTest {
             ideaRepository,
             noteRepository,
             traceRepository,
-            eventRepository,
-            Clock.fixed(NOW, ZoneOffset.UTC)
+            eventRepository
         );
     }
 
@@ -179,6 +200,7 @@ class IdeaApplicationServiceTest {
         public IdeaRecord create(UUID userId,
                                  IdeaSourceMode sourceMode,
                                  UUID sourceNoteId,
+                                 UUID sourceTrendItemId,
                                  String title,
                                  String rawDescription,
                                  IdeaStatus status,
@@ -189,6 +211,7 @@ class IdeaApplicationServiceTest {
                 userId,
                 sourceMode,
                 sourceNoteId,
+                sourceTrendItemId,
                 title,
                 rawDescription,
                 status,

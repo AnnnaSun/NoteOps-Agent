@@ -29,78 +29,63 @@ public class JdbcIdeaRepository implements IdeaRepository {
     public IdeaRecord create(UUID userId,
                              IdeaSourceMode sourceMode,
                              UUID sourceNoteId,
+                             UUID sourceTrendItemId,
                              String title,
                              String rawDescription,
                              IdeaStatus status,
                              IdeaAssessmentResult assessmentResult) {
+        requireNonNull(userId, "userId");
+        requireNonNull(sourceMode, "sourceMode");
+        requireNonNull(status, "status");
+        requireNonNull(title, "title");
         UUID ideaId = UUID.randomUUID();
         IdeaAssessmentResult effectiveAssessment = assessmentResult == null ? IdeaAssessmentResult.empty() : assessmentResult;
         jdbcClient.sql("""
             insert into ideas (
-                id, user_id, source_mode, source_note_id, title, raw_description, status, assessment_result
+                id, user_id, source_mode, source_note_id, source_trend_item_id, title, raw_description, status, assessment_result
             ) values (
-                :id, :userId, :sourceMode, :sourceNoteId, :title, :rawDescription, :status, cast(:assessmentResult as jsonb)
+                :id, :userId, :sourceMode, :sourceNoteId, :sourceTrendItemId, :title, :rawDescription, :status, cast(:assessmentResult as jsonb)
             )
             """)
             .param("id", ideaId)
             .param("userId", userId)
             .param("sourceMode", sourceMode.name())
             .param("sourceNoteId", sourceNoteId)
+            .param("sourceTrendItemId", sourceTrendItemId)
             .param("title", title)
             .param("rawDescription", rawDescription)
             .param("status", status.name())
             .param("assessmentResult", jsonSupport.write(effectiveAssessment.toMap()))
             .update();
-        return findByIdAndUserId(ideaId, userId).orElseThrow();
+        return findByIdAndUserId(ideaId, userId)
+            .orElseThrow(() -> new IllegalStateException("created idea could not be reloaded: idea_id=" + ideaId + " user_id=" + userId));
     }
 
     @Override
     public Optional<IdeaRecord> findByIdAndUserId(UUID ideaId, UUID userId) {
         return jdbcClient.sql("""
-            select id, user_id, source_mode, source_note_id, title, raw_description, status,
+            select id, user_id, source_mode, source_note_id, source_trend_item_id, title, raw_description, status,
                    assessment_result, created_at, updated_at
             from ideas
             where id = :ideaId and user_id = :userId
             """)
             .param("ideaId", ideaId)
             .param("userId", userId)
-            .query((rs, rowNum) -> new IdeaRecord(
-                rs.getObject("id", UUID.class),
-                rs.getObject("user_id", UUID.class),
-                IdeaSourceMode.valueOf(rs.getString("source_mode")),
-                rs.getObject("source_note_id", UUID.class),
-                rs.getString("title"),
-                rs.getString("raw_description"),
-                IdeaStatus.valueOf(rs.getString("status")),
-                IdeaAssessmentResult.fromMap(jsonSupport.readMap(rs.getString("assessment_result"))),
-                timestampToInstant(rs.getTimestamp("created_at")),
-                timestampToInstant(rs.getTimestamp("updated_at"))
-            ))
+            .query((rs, rowNum) -> mapIdeaRecord(rs))
             .optional();
     }
 
     @Override
     public List<IdeaRecord> findAllByUserId(UUID userId) {
         return jdbcClient.sql("""
-            select id, user_id, source_mode, source_note_id, title, raw_description, status,
+            select id, user_id, source_mode, source_note_id, source_trend_item_id, title, raw_description, status,
                    assessment_result, created_at, updated_at
             from ideas
             where user_id = :userId
             order by updated_at desc
             """)
             .param("userId", userId)
-            .query((rs, rowNum) -> new IdeaRecord(
-                rs.getObject("id", UUID.class),
-                rs.getObject("user_id", UUID.class),
-                IdeaSourceMode.valueOf(rs.getString("source_mode")),
-                rs.getObject("source_note_id", UUID.class),
-                rs.getString("title"),
-                rs.getString("raw_description"),
-                IdeaStatus.valueOf(rs.getString("status")),
-                IdeaAssessmentResult.fromMap(jsonSupport.readMap(rs.getString("assessment_result"))),
-                timestampToInstant(rs.getTimestamp("created_at")),
-                timestampToInstant(rs.getTimestamp("updated_at"))
-            ))
+            .query((rs, rowNum) -> mapIdeaRecord(rs))
             .list();
     }
 
@@ -169,5 +154,32 @@ public class JdbcIdeaRepository implements IdeaRepository {
 
     private Instant timestampToInstant(Timestamp value) {
         return value == null ? null : value.toInstant();
+    }
+
+    private <T> T requireNonNull(T value, String fieldName) {
+        if (value == null) {
+            throw new IllegalArgumentException(fieldName + " must be provided");
+        }
+        return value;
+    }
+
+    private IdeaRecord mapIdeaRecord(java.sql.ResultSet rs) {
+        try {
+            return new IdeaRecord(
+                rs.getObject("id", UUID.class),
+                rs.getObject("user_id", UUID.class),
+                IdeaSourceMode.valueOf(rs.getString("source_mode")),
+                rs.getObject("source_note_id", UUID.class),
+                rs.getObject("source_trend_item_id", UUID.class),
+                rs.getString("title"),
+                rs.getString("raw_description"),
+                IdeaStatus.valueOf(rs.getString("status")),
+                IdeaAssessmentResult.fromMap(jsonSupport.readMap(rs.getString("assessment_result"))),
+                timestampToInstant(rs.getTimestamp("created_at")),
+                timestampToInstant(rs.getTimestamp("updated_at"))
+            );
+        } catch (java.sql.SQLException exception) {
+            throw new IllegalStateException("failed to map idea record", exception);
+        }
     }
 }

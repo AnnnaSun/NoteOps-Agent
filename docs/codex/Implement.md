@@ -6,7 +6,7 @@
 本文件定义 Codex 在 NoteOps 仓库内执行任务时的默认工作方式。  
 目标是减少发散、减少误改、减少“看起来做了很多但主线没推进”的情况。
 
-当前默认服务于 **Phase 3：Idea Lifecycle / Idea Workspace**。
+当前默认服务于 **Phase 4：Trend Source Registry / Trend Inbox / Trend Conversion**。
 
 ---
 
@@ -18,7 +18,7 @@
 2. 阅读 `docs/codex/Prompt.md`
 3. 阅读 `docs/codex/Plan.md`
 4. 阅读 `docs/codex/Implement.md`
-5. 确定当前任务所属 Phase 3 子步骤
+5. 确定当前任务所属 Phase 4 子步骤
 6. 只实现该子步骤的最小闭环
 7. 跑最小验证
 8. 需要时更新 `docs/codex/Documentation.md`
@@ -40,7 +40,7 @@
 不符合以下情况：
 
 - 为了“以后可能会用”提前铺很多抽象层
-- 把 Phase 4/5 的逻辑塞进 Phase 3
+- 把 Phase 5/6 的逻辑塞进 Phase 4
 - 一次改 schema、API、页面、算法、移动端预研全部内容
 - 大量生成占位文件却没有跑通主链路
 
@@ -75,16 +75,17 @@
 
 ### 5.1 总优先级
 
-Phase 3 默认按以下顺序推进：
+Phase 4 默认按以下顺序推进：
 
 1. schema / state machine / enum 正确性
-2. API contract 与 DTO 一致性
-3. Idea create / assess / state transition 主链路可用
-4. Idea 与 Task 派生关系可用
-5. Idea List / Detail / Assess 主路径可用
-6. Proposal / Event / Trace / Logs 治理链路补齐
-7. Web 页面接真实接口
-8. 复杂评分、Trend 集成、Preference 学习、视觉细节后置
+2. Trend API contract 与 DTO 一致性
+3. source registry / connector contract 可用
+4. ingest / normalize / dedupe 可用
+5. Trend AI 最小分析合同可用
+6. Trend Inbox 结果合同可用
+7. Trend -> Note / Idea 转化治理链路补齐
+8. Web 页面接真实接口
+9. 复杂算法、复杂 provider、复杂偏好学习、视觉细节后置
 
 ### 5.2 后端偏好
 
@@ -97,13 +98,12 @@ Phase 3 默认按以下顺序推进：
 
 关键日志默认必须覆盖：
 - controller 请求入口
-- service 核心命令入口与出口
-- idea create
-- idea assess
-- idea status transition
-- idea task generation
-- proposal apply / rollback
-- 外部调用开始 / 成功 / 失败（如 assess 中存在）
+- source connector 调用开始 / 成功 / 失败
+- trend ingest / normalize / dedupe
+- AI analyze 开始 / 成功 / 失败
+- trend convert to note / idea
+- trend ignore / save / promote
+- proposal apply / rollback（如涉及）
 - task create / complete / skip / reschedule
 
 日志至少包含：
@@ -116,9 +116,9 @@ Phase 3 默认按以下顺序推进：
 - `error_code` / `error_message`（失败时）
 
 可以暂时简化：
-- 复杂 Idea 打分算法
-- 复杂市场评估与竞品分析
-- Trend / Preference 正式接入质量
+- 智能评分算法
+- provider 覆盖范围
+- 个性化排序
 - UI 呈现细节
 - 高级优化
 
@@ -126,21 +126,22 @@ Phase 3 默认按以下顺序推进：
 - 关键链路日志
 - 可关联的 trace 信息
 - 核心失败分支日志
-- Idea 生命周期状态推进的最小验证
+- 转化时的来源链保留
 
 ### 5.3 前端偏好
 
 优先：
 - 页面能连上真实接口
-- Idea create / list / detail / assess 主路径能跑通
+- Trend Inbox 主路径能跑通
 - 状态边界清楚（加载、空、错误、成功）
-- Idea 详情中能清楚看到 assessment 与派生 task
+- 候选动作边界清晰（ignore / save / promote）
+- 来源、摘要、分数、建议动作可见
 
 不优先：
 - 复杂视觉效果
 - 完整组件系统
 - 动画、主题、多端适配细节
-- Kanban / 拖拽 / 高级 pipeline 视图
+- 高级筛选与看板视图
 
 ---
 
@@ -205,8 +206,6 @@ Phase 3 默认按以下顺序推进：
 
 ## 9. Proposal / 原始内容特殊规则
 
-这是 NoteOps 当前最容易被做错的地方，必须单列。
-
 ### 9.1 原始内容层
 以下内容默认只追加，不静默覆盖：
 
@@ -214,6 +213,7 @@ Phase 3 默认按以下顺序推进：
 - source snapshot
 - evidence 原文
 - transcript 原文
+- trend 来源原始摘要 / 原始载荷（如保留）
 
 ### 9.2 proposal 作用层
 Proposal 只允许作用于：
@@ -222,48 +222,54 @@ Proposal 只允许作用于：
 - `METADATA`
 - `RELATION`
 
-禁止把 proposal 设计成“直接改写原始 note_contents 正文”。
+禁止把 proposal 设计成“直接改写原始 `note_contents` 正文”。
 
-### 9.3 Idea 特殊规则
-Idea 的 assess / edit / promote 流程中：
-- 允许生成 assessment 结果
-- 允许更新 Idea 当前状态
-- 允许派生 task
-- 不允许绕开 trace / event / proposal 治理链路静默改动关键字段
+### 9.3 Trend 特殊规则
+外部趋势结果：
+
+- 可以进入 `trend_items`
+- 可以形成 note evidence block
+- 可以生成 change proposal
+- 可以转为 idea
+- 不能直接覆盖 `notes.current_summary/current_key_points/current_tags`
 
 ---
 
-## 10. Idea / Task / Workspace 特殊规则
+## 10. Trend / Task / Workspace 特殊规则
 
-### 10.1 Idea
-不要把 Idea 简化成：
-- 只有标题和备注的临时草稿
-- 没有状态机的轻量卡片
-- assess 后不产生任何可执行结果
+### 10.1 Trend
+不要把 Trend 简化成：
+- 单纯抓取列表
+- 没有用户动作的被动展示页
+- 没有结构化摘要与转化建议的原始链接堆积
 
 必须体现：
-- `status`
-- `assessment_result`
-- `FROM_NOTE` 与独立创建两种来源
-- assess 后可产生 `next_actions`
-- 需要时可派生 task
+- 来源注册或等价 provider contract
+- 候选入箱
+- AI 结构化分析
+- 用户动作
+- 转化链路
 
-### 10.2 Task
-不要把 Phase 3 的 task 派生做成纯前端假数据。  
-Phase 3 中 Idea 派生 task 至少要支持：
+### 10.2 AI 介入边界
+Trend AI 应只负责：
+- 简练摘要
+- why-it-matters
+- topic tags
+- `note_worthy` / `idea_worthy`
+- `suggested_action`
 
-- 创建 system task
-- 与 idea 建立可追溯关联
-- 进入 Today / Upcoming
-- 完成 / 跳过后能回写状态或事件
+不要让 Trend AI：
+- 静默创建 Note
+- 静默创建 Idea
+- 绕过治理链路直接改主对象
+- 在 Trend 侧复制一套 Idea assess 系统
 
-### 10.3 Workspace
-Idea Workspace 不是简单列表页。至少要保证：
-
-- Idea List 与 Idea Detail 都可用
-- 详情中 assessment 结果可见
-- 状态流转入口清晰
-- 派生 task 可查看或可跳转
+### 10.3 Task / Workspace
+Trend 转化若生成 follow-up task：
+- 仍进入统一 Task Domain
+- 仍在 Today / Upcoming 统一展示
+- 必须保留 `task_source`
+- 排序规则应可解释
 
 ---
 
@@ -278,13 +284,14 @@ Idea Workspace 不是简单列表页。至少要保证：
 则采用以下策略：
 
 ### 11.1 文档冲突
-优先采用当前 Phase 3 基线中的冻结结论，尤其是：
-- Phase 3 主目标是 Idea，而不是 Trend
-- Idea 生命周期
-- Idea assess 产出结构
-- Idea 到 Task 的派生链路
-- Proposal / Trace / Event 治理不被绕开
-- Trend / Preference 继续后置
+优先采用当前 Phase 4 基线中的冻结结论，尤其是：
+- Trend source registry
+- Trend Inbox
+- HN / GITHUB 默认计划
+- AI 只做摘要 / 标签 / 建议动作
+- Trend -> Note / Idea 转化
+- 外部证据不得静默覆盖解释层
+- Proposal / Trace / Event 治理链路
 
 ### 11.2 代码与文档不一致
 优先保护当前冻结文档中的主边界，不要盲从现有草稿代码。
@@ -321,7 +328,7 @@ Idea Workspace 不是简单列表页。至少要保证：
 - 新增或修改状态迁移
 - 新增外部调用
 - 新增调度逻辑
-- 新增 proposal / idea / task 核心流程
+- 新增 proposal / trend / conversion / task 核心流程
 
 输出结果中必须额外写明：
 1. 本次新增了哪些关键日志点

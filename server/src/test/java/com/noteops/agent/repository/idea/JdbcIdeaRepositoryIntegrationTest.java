@@ -34,6 +34,7 @@ class JdbcIdeaRepositoryIntegrationTest {
     @BeforeEach
     void setUpSchema() {
         jdbcClient.sql("drop table if exists ideas").update();
+        jdbcClient.sql("drop table if exists trend_items").update();
         jdbcClient.sql("drop table if exists notes").update();
         jdbcClient.sql("drop domain if exists jsonb").update();
         jdbcClient.sql("create domain jsonb as varchar(8192)").update();
@@ -58,11 +59,17 @@ class JdbcIdeaRepositoryIntegrationTest {
             )
             """).update();
         jdbcClient.sql("""
+            create table trend_items (
+                id uuid primary key
+            )
+            """).update();
+        jdbcClient.sql("""
             create table ideas (
                 id uuid primary key,
                 user_id uuid not null,
                 source_mode varchar(32) not null,
                 source_note_id uuid,
+                source_trend_item_id uuid,
                 title varchar(255) not null,
                 raw_description text,
                 status varchar(32) not null,
@@ -70,11 +77,13 @@ class JdbcIdeaRepositoryIntegrationTest {
                 created_at timestamp with time zone not null default current_timestamp,
                 updated_at timestamp with time zone not null default current_timestamp,
                 constraint fk_ideas_source_note_id foreign key (source_note_id) references notes (id),
-                constraint chk_ideas_source_mode check (source_mode in ('FROM_NOTE', 'MANUAL')),
+                constraint fk_ideas_source_trend_item_id foreign key (source_trend_item_id) references trend_items (id),
+                constraint chk_ideas_source_mode check (source_mode in ('FROM_NOTE', 'MANUAL', 'FROM_TREND')),
                 constraint chk_ideas_status check (status in ('CAPTURED', 'ASSESSED', 'PLANNED', 'IN_PROGRESS', 'ARCHIVED')),
                 constraint chk_ideas_source_binding check (
-                    (source_mode = 'FROM_NOTE' and source_note_id is not null)
-                    or (source_mode = 'MANUAL' and source_note_id is null)
+                    (source_mode = 'FROM_NOTE' and source_note_id is not null and source_trend_item_id is null)
+                    or (source_mode = 'FROM_TREND' and source_trend_item_id is not null and source_note_id is null)
+                    or (source_mode = 'MANUAL' and source_note_id is null and source_trend_item_id is null)
                 )
             )
             """).update();
@@ -140,6 +149,29 @@ class JdbcIdeaRepositoryIntegrationTest {
         assertThat(created.sourceNoteId()).isNull();
         assertThat(created.assessmentResult()).isEqualTo(IdeaAssessmentResult.empty());
         assertThat(created.rawDescription()).isNull();
+    }
+
+    @Test
+    void createsAndLoadsIdeaFromTrend() {
+        UUID userId = UUID.randomUUID();
+        UUID trendItemId = UUID.randomUUID();
+        insertTrendItem(trendItemId);
+
+        IdeaRepository.IdeaRecord created = ideaRepository.createFromTrend(
+            userId,
+            trendItemId,
+            "Trend title",
+            "Trend summary",
+            IdeaStatus.CAPTURED,
+            null
+        );
+
+        assertThat(created.sourceMode()).isEqualTo(IdeaSourceMode.FROM_TREND);
+        assertThat(created.sourceNoteId()).isNull();
+        assertThat(created.sourceTrendItemId()).isEqualTo(trendItemId);
+
+        IdeaRepository.IdeaRecord loaded = ideaRepository.findByIdAndUserId(created.id(), userId).orElseThrow();
+        assertThat(loaded).isEqualTo(created);
     }
 
     @Test
@@ -263,6 +295,18 @@ class JdbcIdeaRepositoryIntegrationTest {
             .param("currentRelationSummary", "{}")
             .param("importanceScore", 50)
             .param("extraAttributes", "{}")
+            .update();
+    }
+
+    private void insertTrendItem(UUID trendItemId) {
+        jdbcClient.sql("""
+            insert into trend_items (
+                id
+            ) values (
+                :id
+            )
+            """)
+            .param("id", trendItemId)
             .update();
     }
 }
