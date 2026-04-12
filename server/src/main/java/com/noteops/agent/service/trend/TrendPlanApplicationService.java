@@ -29,6 +29,7 @@ public class TrendPlanApplicationService {
     private final TrendProperties trendProperties;
     private final TrendSourceRegistry trendSourceRegistry;
     private final TrendCandidateNormalizer trendCandidateNormalizer;
+    private final TrendAnalysisService trendAnalysisService;
     private final TrendItemRepository trendItemRepository;
     private final AgentTraceRepository agentTraceRepository;
     private final ToolInvocationLogRepository toolInvocationLogRepository;
@@ -37,6 +38,7 @@ public class TrendPlanApplicationService {
     public TrendPlanApplicationService(TrendProperties trendProperties,
                                        TrendSourceRegistry trendSourceRegistry,
                                        TrendCandidateNormalizer trendCandidateNormalizer,
+                                       TrendAnalysisService trendAnalysisService,
                                        TrendItemRepository trendItemRepository,
                                        AgentTraceRepository agentTraceRepository,
                                        ToolInvocationLogRepository toolInvocationLogRepository,
@@ -44,6 +46,7 @@ public class TrendPlanApplicationService {
         this.trendProperties = trendProperties;
         this.trendSourceRegistry = trendSourceRegistry;
         this.trendCandidateNormalizer = trendCandidateNormalizer;
+        this.trendAnalysisService = trendAnalysisService;
         this.trendItemRepository = trendItemRepository;
         this.agentTraceRepository = agentTraceRepository;
         this.toolInvocationLogRepository = toolInvocationLogRepository;
@@ -68,10 +71,10 @@ public class TrendPlanApplicationService {
             traceId,
             userId,
             "TREND_INGEST",
-            "Ingest default trend plan " + (defaultPlan == null ? "unknown" : defaultPlan.planKey()),
+            "Ingest and analyze default trend plan " + (defaultPlan == null ? "unknown" : defaultPlan.planKey()),
             "TREND_PLAN",
             null,
-            List.of("trend-source-fetch", "trend-candidate-normalize", "trend-item-upsert"),
+            List.of("trend-source-fetch", "trend-candidate-normalize", "trend-item-upsert", "trend-item-analyze"),
             traceState
         );
 
@@ -170,24 +173,42 @@ public class TrendPlanApplicationService {
                 persistSummary.insertedCount(),
                 persistSummary.dedupedCount()
             );
+            activeToolName = "trend.item.analyze";
+            activeInputDigest = Map.of(
+                "plan_key", defaultPlan.planKey(),
+                "persisted_trend_item_ids", persistSummary.persistedItems().stream().map(item -> item.id().toString()).toList()
+            );
+            TrendAnalysisService.AnalysisSummary analysisSummary = trendAnalysisService.analyzePersistedItems(
+                userId,
+                traceId,
+                persistSummary.persistedItems()
+            );
+            log.info(
+                "module=TrendPlanApplicationService action=trend_analysis_summary trace_id={} user_id={} result=COMPLETED analyzed_count={}",
+                traceId,
+                userId,
+                analysisSummary.analyzedCount()
+            );
 
             Map<String, Object> completedState = new LinkedHashMap<>(traceState);
             completedState.put("fetched_count", persistSummary.fetchedCount());
             completedState.put("inserted_count", persistSummary.insertedCount());
             completedState.put("deduped_count", persistSummary.dedupedCount());
+            completedState.put("analyzed_count", analysisSummary.analyzedCount());
             completedState.put("result", "COMPLETED");
-            agentTraceRepository.markCompleted(traceId, "Ingested default trend plan candidates", completedState);
+            agentTraceRepository.markCompleted(traceId, "Ingested and analyzed default trend plan candidates", completedState);
 
             int totalDurationMs = durationMs(startedAt);
             log.info(
-                "module=TrendPlanApplicationService action=trend_ingest_success trace_id={} user_id={} plan_key={} result=COMPLETED duration_ms={} fetched_count={} inserted_count={} deduped_count={}",
+                "module=TrendPlanApplicationService action=trend_ingest_success trace_id={} user_id={} plan_key={} result=COMPLETED duration_ms={} fetched_count={} inserted_count={} deduped_count={} analyzed_count={}",
                 traceId,
                 userId,
                 defaultPlan.planKey(),
                 totalDurationMs,
                 persistSummary.fetchedCount(),
                 persistSummary.insertedCount(),
-                persistSummary.dedupedCount()
+                persistSummary.dedupedCount(),
+                analysisSummary.analyzedCount()
             );
 
             return new TriggerResult(
@@ -240,7 +261,7 @@ public class TrendPlanApplicationService {
         failedState.put("result", "FAILED");
         failedState.put("error_code", exception.errorCode());
         failedState.put("error_message", exception.getMessage());
-        agentTraceRepository.markFailed(traceId, "Failed to ingest default trend plan candidates", failedState);
+        agentTraceRepository.markFailed(traceId, "Failed to ingest or analyze default trend plan candidates", failedState);
         log.warn(
             "module=TrendPlanApplicationService action=trend_ingest_fail trace_id={} user_id={} plan_key={} source_types={} result=FAILED duration_ms={} error_code={} error_message={}",
             traceId,
@@ -279,6 +300,7 @@ public class TrendPlanApplicationService {
                                                        List<FetchedSourceBatch> fetchedSourceBatches,
                                                        Instant lastIngestedAt) {
         List<SourceResult> sourceResults = new ArrayList<>();
+        List<TrendItemRepository.TrendItemRecord> persistedItems = new ArrayList<>();
         int fetchedCount = 0;
         int insertedCount = 0;
         int dedupedCount = 0;
@@ -299,6 +321,7 @@ public class TrendPlanApplicationService {
                     normalizedCandidate.sourcePublishedAt(),
                     lastIngestedAt
                 );
+                persistedItems.add(ingestResult.trendItem());
                 if (ingestResult.action() == TrendItemRepository.IngestAction.INSERTED) {
                     sourceInsertedCount++;
                 } else {
@@ -318,7 +341,7 @@ public class TrendPlanApplicationService {
             ));
         }
 
-        return new PersistSummary(fetchedCount, insertedCount, dedupedCount, sourceResults);
+        return new PersistSummary(fetchedCount, insertedCount, dedupedCount, sourceResults, persistedItems);
     }
 
     private void validateDefaultPlan(TrendProperties.DefaultPlan defaultPlan) {
@@ -392,7 +415,8 @@ public class TrendPlanApplicationService {
         int fetchedCount,
         int insertedCount,
         int dedupedCount,
-        List<SourceResult> sourceResults
+        List<SourceResult> sourceResults,
+        List<TrendItemRepository.TrendItemRecord> persistedItems
     ) {
     }
 }

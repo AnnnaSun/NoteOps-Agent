@@ -14,6 +14,8 @@ public record IdeaDetailResponse(
     String sourceMode,
     @JsonProperty("source_note_id")
     String sourceNoteId,
+    @JsonProperty("source_trend_item_id")
+    String sourceTrendItemId,
     String title,
     @JsonProperty("raw_description")
     String rawDescription,
@@ -32,6 +34,7 @@ public record IdeaDetailResponse(
             view.userId().toString(),
             view.sourceMode().name(),
             view.sourceNoteId() == null ? null : view.sourceNoteId().toString(),
+            view.sourceTrendItemId() == null ? null : view.sourceTrendItemId().toString(),
             view.title(),
             view.rawDescription(),
             view.status().name(),

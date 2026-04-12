@@ -1,3 +1,4 @@
+-- Trend provenance is extended in V5.
 update ideas
 set source_mode = 'MANUAL'
 where source_mode = 'INDEPENDENT';

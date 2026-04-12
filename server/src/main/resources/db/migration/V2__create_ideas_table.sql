@@ -1,3 +1,4 @@
+-- Trend provenance is extended in V5.
 create table if not exists ideas (
     id uuid primary key,
     user_id uuid not null,

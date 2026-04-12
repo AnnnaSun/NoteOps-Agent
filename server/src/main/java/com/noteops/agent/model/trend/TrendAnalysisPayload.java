@@ -49,7 +49,7 @@ public record TrendAnalysisPayload(
             asString(raw.get("signal_type")),
             asBoolean(raw.get("note_worthy")),
             asBoolean(raw.get("idea_worthy")),
-            suggestedAction == null || suggestedAction.isBlank() ? null : TrendActionType.valueOf(suggestedAction),
+            parseSuggestedAction(suggestedAction),
             asString(raw.get("reasoning_summary"))
         );
     }
@@ -66,5 +66,16 @@ public record TrendAnalysisPayload(
             return Boolean.parseBoolean(stringValue);
         }
         return false;
+    }
+
+    private static TrendActionType parseSuggestedAction(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return TrendActionType.valueOf(value.trim());
+        } catch (Exception exception) {
+            return null;
+        }
     }
 }

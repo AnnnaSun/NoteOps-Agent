@@ -188,6 +188,49 @@ class JdbcTrendItemRepositoryIntegrationTest {
     }
 
     @Test
+    void listsInboxItemsByDefaultStatusOrderedByUpdatedAtDesc() {
+        UUID userId = UUID.randomUUID();
+        UUID olderAnalyzedId = UUID.randomUUID();
+        UUID newerAnalyzedId = UUID.randomUUID();
+        UUID ignoredId = UUID.randomUUID();
+
+        insertTrendItem(olderAnalyzedId, userId, "older-analyzed", "Older analyzed item", 12.0, "ANALYZED", "2026-04-10T05:00:00Z", "HN");
+        insertTrendItem(newerAnalyzedId, userId, "newer-analyzed", "Newer analyzed item", 82.0, "ANALYZED", "2026-04-10T06:00:00Z", "GITHUB");
+        insertTrendItem(ignoredId, userId, "ignored-item", "Ignored item", 99.0, "IGNORED", "2026-04-10T07:00:00Z", "HN");
+
+        List<TrendItemRepository.TrendItemRecord> items = trendItemRepository.findInboxByUserId(
+            userId,
+            TrendItemStatus.ANALYZED,
+            null
+        );
+
+        assertThat(items).extracting(TrendItemRepository.TrendItemRecord::id)
+            .containsExactly(newerAnalyzedId, olderAnalyzedId);
+        assertThat(items).extracting(TrendItemRepository.TrendItemRecord::status)
+            .containsExactly(TrendItemStatus.ANALYZED, TrendItemStatus.ANALYZED);
+    }
+
+    @Test
+    void listsInboxItemsByStatusAndSourceType() {
+        UUID userId = UUID.randomUUID();
+        UUID analyzedGithubId = UUID.randomUUID();
+        UUID analyzedHnId = UUID.randomUUID();
+
+        insertTrendItem(analyzedGithubId, userId, "github-analyzed", "GitHub analyzed item", 70.0, "ANALYZED", "2026-04-10T06:30:00Z", "GITHUB");
+        insertTrendItem(analyzedHnId, userId, "hn-analyzed", "HN analyzed item", 80.0, "ANALYZED", "2026-04-10T06:45:00Z", "HN");
+
+        List<TrendItemRepository.TrendItemRecord> items = trendItemRepository.findInboxByUserId(
+            userId,
+            TrendItemStatus.ANALYZED,
+            TrendSourceType.GITHUB
+        );
+
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).id()).isEqualTo(analyzedGithubId);
+        assertThat(items.get(0).sourceType()).isEqualTo(TrendSourceType.GITHUB);
+    }
+
+    @Test
     void updatesStatusWithoutApplyingConversionLogic() {
         UUID userId = UUID.randomUUID();
         UUID noteId = UUID.randomUUID();
@@ -279,6 +322,51 @@ class JdbcTrendItemRepositoryIntegrationTest {
         assertThat(count).isEqualTo(1);
     }
 
+    @Test
+    void updatesAnalysisPayloadSummaryAndSuggestedAction() {
+        UUID userId = UUID.randomUUID();
+
+        TrendItemRepository.TrendItemRecord created = trendItemRepository.create(
+            userId,
+            TrendSourceType.HN,
+            "hn-789",
+            "Trend analysis candidate",
+            "https://news.ycombinator.com/item?id=789",
+            null,
+            88.8,
+            TrendAnalysisPayload.empty(),
+            Map.of("seed", "hn-789"),
+            TrendItemStatus.INGESTED,
+            null,
+            Instant.parse("2026-04-10T10:00:00Z"),
+            Instant.parse("2026-04-10T10:05:00Z"),
+            null,
+            null
+        );
+
+        TrendAnalysisPayload analysisPayload = new TrendAnalysisPayload(
+            "Compact trend summary",
+            "This points to durable agent workflow demand",
+            List.of("agents", "workflow"),
+            "DISCUSSION",
+            true,
+            false,
+            TrendActionType.SAVE_AS_NOTE,
+            "High score and explanatory discussion make this a note candidate"
+        );
+
+        TrendItemRepository.TrendItemRecord updated = trendItemRepository.updateAnalysis(
+            created.id(),
+            userId,
+            analysisPayload
+        );
+
+        assertThat(updated.status()).isEqualTo(TrendItemStatus.ANALYZED);
+        assertThat(updated.summary()).isEqualTo("Compact trend summary");
+        assertThat(updated.analysisPayload()).isEqualTo(analysisPayload);
+        assertThat(updated.suggestedAction()).isEqualTo(TrendActionType.SAVE_AS_NOTE);
+    }
+
     private void insertTrendItem(UUID id,
                                  UUID userId,
                                  String sourceItemKey,
@@ -286,19 +374,31 @@ class JdbcTrendItemRepositoryIntegrationTest {
                                  double normalizedScore,
                                  String status,
                                  String updatedAt) {
+        insertTrendItem(id, userId, sourceItemKey, title, normalizedScore, status, updatedAt, "HN");
+    }
+
+    private void insertTrendItem(UUID id,
+                                 UUID userId,
+                                 String sourceItemKey,
+                                 String title,
+                                 double normalizedScore,
+                                 String status,
+                                 String updatedAt,
+                                 String sourceType) {
         jdbcClient.sql("""
             insert into trend_items (
                 id, user_id, source_type, source_item_key, title, url, summary, normalized_score,
                 analysis_payload, extra_attributes, status, suggested_action, source_published_at,
                 last_ingested_at, converted_note_id, converted_idea_id, created_at, updated_at
             ) values (
-                :id, :userId, 'HN', :sourceItemKey, :title, :url, null, :normalizedScore,
+                :id, :userId, :sourceType, :sourceItemKey, :title, :url, null, :normalizedScore,
                 cast(:analysisPayload as jsonb), cast(:extraAttributes as jsonb), :status, null, null, null,
                 null, null, :createdAt, :updatedAt
             )
             """)
             .param("id", id)
             .param("userId", userId)
+            .param("sourceType", sourceType)
             .param("sourceItemKey", sourceItemKey)
             .param("title", title)
             .param("url", "https://example.com/" + sourceItemKey)

@@ -253,3 +253,45 @@ export type IdeaTaskGenerationResult = {
   status: string;
   generated_tasks: TaskItem[];
 };
+
+export type TrendAnalysisPayload = {
+  summary?: string | null;
+  why_it_matters?: string | null;
+  topic_tags?: string[];
+  signal_type?: string | null;
+  note_worthy?: boolean;
+  idea_worthy?: boolean;
+  suggested_action?: string | null;
+  reasoning_summary?: string | null;
+};
+
+export type TrendInboxItem = {
+  trend_item_id: string;
+  user_id: string;
+  source_type: string;
+  source_item_key: string;
+  title: string;
+  url: string;
+  summary: string;
+  normalized_score: number;
+  status: string;
+  suggested_action: string | null;
+  analysis_payload: TrendAnalysisPayload;
+  source_published_at: string | null;
+  last_ingested_at: string | null;
+  updated_at: string;
+};
+
+export type TrendActionRequest = {
+  user_id: string;
+  action: string;
+  operator_note?: string | null;
+};
+
+export type TrendActionResponse = {
+  trace_id: string | null;
+  trend_item_id: string;
+  action_result: string;
+  converted_note_id: string | null;
+  converted_idea_id: string | null;
+};

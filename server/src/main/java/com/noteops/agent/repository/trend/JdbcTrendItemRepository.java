@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -141,6 +142,47 @@ public class JdbcTrendItemRepository implements TrendItemRepository {
     }
 
     @Override
+    public List<TrendItemRecord> findInboxByUserId(UUID userId, TrendItemStatus status, TrendSourceType sourceType) {
+        Objects.requireNonNull(status, "status must not be null");
+        StringBuilder sql = new StringBuilder(BASE_SELECT)
+            .append("""
+                where user_id = :userId
+                  and status = :status
+                """);
+        if (sourceType != null) {
+            sql.append("  and source_type = :sourceType\n");
+        }
+        sql.append("order by updated_at desc");
+
+        var query = jdbcClient.sql(sql.toString())
+            .param("userId", userId)
+            .param("status", status.name());
+        if (sourceType != null) {
+            query = query.param("sourceType", sourceType.name());
+        }
+        return query.query((rs, rowNum) -> mapRow(
+            rs.getObject("id", UUID.class),
+            rs.getObject("user_id", UUID.class),
+            rs.getString("source_type"),
+            rs.getString("source_item_key"),
+            rs.getString("title"),
+            rs.getString("url"),
+            rs.getString("summary"),
+            rs.getDouble("normalized_score"),
+            rs.getString("analysis_payload"),
+            rs.getString("extra_attributes"),
+            rs.getString("status"),
+            rs.getString("suggested_action"),
+            rs.getTimestamp("source_published_at"),
+            rs.getTimestamp("last_ingested_at"),
+            rs.getObject("converted_note_id", UUID.class),
+            rs.getObject("converted_idea_id", UUID.class),
+            rs.getTimestamp("created_at"),
+            rs.getTimestamp("updated_at")
+        )).list();
+    }
+
+    @Override
     public TrendItemIngestResult upsertIngested(UUID userId,
                                                 TrendSourceType sourceType,
                                                 String sourceItemKey,
@@ -233,6 +275,31 @@ public class JdbcTrendItemRepository implements TrendItemRepository {
             .param("suggestedAction", suggestedAction == null ? null : suggestedAction.name())
             .param("convertedNoteId", convertedNoteId)
             .param("convertedIdeaId", convertedIdeaId)
+            .param("trendItemId", trendItemId)
+            .param("userId", userId)
+            .update();
+        return findByIdAndUserId(trendItemId, userId).orElseThrow();
+    }
+
+    @Override
+    public TrendItemRecord updateAnalysis(UUID trendItemId,
+                                          UUID userId,
+                                          TrendAnalysisPayload analysisPayload) {
+        TrendAnalysisPayload effectivePayload = analysisPayload == null ? TrendAnalysisPayload.empty() : analysisPayload;
+        jdbcClient.sql("""
+            update trend_items
+            set summary = :summary,
+                analysis_payload = cast(:analysisPayload as jsonb),
+                suggested_action = :suggestedAction,
+                status = :status,
+                updated_at = current_timestamp
+            where id = :trendItemId
+              and user_id = :userId
+            """)
+            .param("summary", effectivePayload.summary())
+            .param("analysisPayload", jsonSupport.write(effectivePayload.toMap()))
+            .param("suggestedAction", effectivePayload.suggestedAction() == null ? null : effectivePayload.suggestedAction().name())
+            .param("status", TrendItemStatus.ANALYZED.name())
             .param("trendItemId", trendItemId)
             .param("userId", userId)
             .update();

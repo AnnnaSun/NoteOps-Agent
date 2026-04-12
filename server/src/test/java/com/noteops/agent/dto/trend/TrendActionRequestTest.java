@@ -11,12 +11,12 @@ class TrendActionRequestTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void serializesOnlyActionAndOperatorNote() throws Exception {
-        TrendActionRequest request = new TrendActionRequest("SAVE_AS_NOTE", "keep source lineage");
+    void serializesUserIdActionAndOperatorNote() throws Exception {
+        TrendActionRequest request = new TrendActionRequest("11111111-1111-1111-1111-111111111111", "SAVE_AS_NOTE", "keep source lineage");
 
         JsonNode payload = objectMapper.readTree(objectMapper.writeValueAsString(request));
 
-        assertThat(payload.has("user_id")).isFalse();
+        assertThat(payload.get("user_id").asText()).isEqualTo("11111111-1111-1111-1111-111111111111");
         assertThat(payload.get("action").asText()).isEqualTo("SAVE_AS_NOTE");
         assertThat(payload.get("operator_note").asText()).isEqualTo("keep source lineage");
     }

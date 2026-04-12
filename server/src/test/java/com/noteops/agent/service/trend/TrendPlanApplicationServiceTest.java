@@ -17,6 +17,7 @@ import org.springframework.transaction.support.DefaultTransactionStatus;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +51,7 @@ class TrendPlanApplicationServiceTest {
             trendProperties(true, List.of(TrendSourceType.HN, TrendSourceType.GITHUB)),
             registry,
             new TrendCandidateNormalizer(),
+            new TrendAnalysisService(trendItemRepository, toolRepository, new StubTrendAgent(), transactionManager()),
             trendItemRepository,
             traceRepository,
             toolRepository,
@@ -72,7 +74,9 @@ class TrendPlanApplicationServiceTest {
             "trend.source_registry.resolve",
             "trend.source.fetch",
             "trend.source.fetch",
-            "trend.item.upsert"
+            "trend.item.upsert",
+            "trend.item.analyze",
+            "trend.item.analyze"
         );
         assertThat(toolRepository.statuses).containsOnly("COMPLETED");
         assertThat(trendItemRepository.itemsByCompositeKey).hasSize(2);
@@ -92,6 +96,7 @@ class TrendPlanApplicationServiceTest {
                 )
             )),
             new TrendCandidateNormalizer(),
+            new TrendAnalysisService(trendItemRepository, new RecordingToolInvocationLogRepository(), new StubTrendAgent(), transactionManager()),
             trendItemRepository,
             new RecordingAgentTraceRepository(traceId),
             new RecordingToolInvocationLogRepository(),
@@ -113,6 +118,198 @@ class TrendPlanApplicationServiceTest {
     }
 
     @Test
+    void analyzesPersistedTrendItemsAndWritesAnalysisToolLogs() {
+        UUID traceId = UUID.randomUUID();
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository(traceId);
+        RecordingToolInvocationLogRepository toolRepository = new RecordingToolInvocationLogRepository();
+        InMemoryTrendItemRepository trendItemRepository = new InMemoryTrendItemRepository();
+        TrendPlanApplicationService service = new TrendPlanApplicationService(
+            trendProperties(true, List.of(TrendSourceType.HN)),
+            new TrendSourceRegistry(List.of(
+                connector(
+                    TrendSourceType.HN,
+                    "Hacker News",
+                    List.of(candidate(TrendSourceType.HN, "hn-1", "Agent memory on HN", "https://news.ycombinator.com/item?id=1", 91.0))
+                )
+            )),
+            new TrendCandidateNormalizer(),
+            new TrendAnalysisService(trendItemRepository, toolRepository, new StubTrendAgent(), transactionManager()),
+            trendItemRepository,
+            traceRepository,
+            toolRepository,
+            transactionManager()
+        );
+
+        TrendPlanApplicationService.TriggerResult result = service.triggerDefaultPlan(
+            new TrendPlanApplicationService.TriggerCommand("11111111-1111-1111-1111-111111111111", traceId.toString())
+        );
+
+        assertThat(result.insertedCount()).isEqualTo(1);
+        assertThat(toolRepository.toolNames).contains("trend.item.analyze");
+        TrendItemRepository.TrendItemRecord analyzed = trendItemRepository.findAllByUserId(UUID.fromString("11111111-1111-1111-1111-111111111111"))
+            .getFirst();
+        assertThat(analyzed.status()).isEqualTo(TrendItemStatus.ANALYZED);
+        assertThat(analyzed.summary()).isNotBlank();
+        assertThat(analyzed.analysisPayload().summary()).isEqualTo(analyzed.summary());
+        assertThat(analyzed.analysisPayload().whyItMatters()).isNotBlank();
+        assertThat(analyzed.analysisPayload().topicTags()).isNotEmpty();
+        assertThat(analyzed.analysisPayload().suggestedAction()).isEqualTo(TrendActionType.PROMOTE_TO_IDEA);
+        assertThat(analyzed.suggestedAction()).isEqualTo(TrendActionType.PROMOTE_TO_IDEA);
+    }
+
+    @Test
+    void marksAnalysisFailuresWithTrendItemAnalyzeToolLog() {
+        UUID traceId = UUID.randomUUID();
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository(traceId);
+        RecordingToolInvocationLogRepository toolRepository = new RecordingToolInvocationLogRepository();
+        InMemoryTrendItemRepository trendItemRepository = new InMemoryTrendItemRepository();
+        TrendPlanApplicationService service = new TrendPlanApplicationService(
+            trendProperties(true, List.of(TrendSourceType.HN)),
+            new TrendSourceRegistry(List.of(
+                connector(
+                    TrendSourceType.HN,
+                    "Hacker News",
+                    List.of(candidate(TrendSourceType.HN, "hn-1", "Agent memory on HN", "https://news.ycombinator.com/item?id=1", 91.0))
+                )
+            )),
+            new TrendCandidateNormalizer(),
+            new TrendAnalysisService(trendItemRepository, toolRepository, new FailingTrendAgent(), transactionManager()),
+            trendItemRepository,
+            traceRepository,
+            toolRepository,
+            transactionManager()
+        );
+
+        assertThatThrownBy(() -> service.triggerDefaultPlan(
+            new TrendPlanApplicationService.TriggerCommand("11111111-1111-1111-1111-111111111111", traceId.toString())
+        ))
+            .isInstanceOf(ApiException.class)
+            .hasMessage("trend analysis failed")
+            .extracting("traceId")
+            .isEqualTo(traceId.toString());
+        assertThat(traceRepository.failedTraceIds).containsExactly(traceId);
+        assertThat(toolRepository.toolNames).contains("trend.item.analyze");
+        assertThat(toolRepository.statuses).contains("FAILED");
+    }
+
+    @Test
+    void doesNotAppendTrendItemUpsertFailureLogWhenAnalysisFails() {
+        UUID traceId = UUID.randomUUID();
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository(traceId);
+        RecordingToolInvocationLogRepository toolRepository = new RecordingToolInvocationLogRepository();
+        InMemoryTrendItemRepository trendItemRepository = new InMemoryTrendItemRepository();
+        TrendPlanApplicationService service = new TrendPlanApplicationService(
+            trendProperties(true, List.of(TrendSourceType.HN)),
+            new TrendSourceRegistry(List.of(
+                connector(
+                    TrendSourceType.HN,
+                    "Hacker News",
+                    List.of(candidate(TrendSourceType.HN, "hn-1", "Agent memory on HN", "https://news.ycombinator.com/item?id=1", 91.0))
+                )
+            )),
+            new TrendCandidateNormalizer(),
+            new TrendAnalysisService(trendItemRepository, toolRepository, new FailingTrendAgent(), transactionManager()),
+            trendItemRepository,
+            traceRepository,
+            toolRepository,
+            transactionManager()
+        );
+
+        assertThatThrownBy(() -> service.triggerDefaultPlan(
+            new TrendPlanApplicationService.TriggerCommand("11111111-1111-1111-1111-111111111111", traceId.toString())
+        ))
+            .isInstanceOf(ApiException.class)
+            .hasMessage("trend analysis failed");
+
+        assertThat(toolRepository.toolNames).containsExactly(
+            "trend.source_registry.resolve",
+            "trend.source.fetch",
+            "trend.item.upsert",
+            "trend.item.analyze"
+        );
+        assertThat(toolRepository.statuses).containsExactly(
+            "COMPLETED",
+            "COMPLETED",
+            "COMPLETED",
+            "FAILED"
+        );
+    }
+
+    @Test
+    void rejectsAnalysisPayloadMissingFrozenContractFields() {
+        UUID traceId = UUID.randomUUID();
+        RecordingToolInvocationLogRepository toolRepository = new RecordingToolInvocationLogRepository();
+        InMemoryTrendItemRepository trendItemRepository = new InMemoryTrendItemRepository();
+        TrendPlanApplicationService service = new TrendPlanApplicationService(
+            trendProperties(true, List.of(TrendSourceType.HN)),
+            new TrendSourceRegistry(List.of(
+                connector(
+                    TrendSourceType.HN,
+                    "Hacker News",
+                    List.of(candidate(TrendSourceType.HN, "hn-1", "Agent memory on HN", "https://news.ycombinator.com/item?id=1", 91.0))
+                )
+            )),
+            new TrendCandidateNormalizer(),
+            new TrendAnalysisService(trendItemRepository, toolRepository, new IncompleteTrendAgent(), transactionManager()),
+            trendItemRepository,
+            new RecordingAgentTraceRepository(traceId),
+            toolRepository,
+            transactionManager()
+        );
+
+        assertThatThrownBy(() -> service.triggerDefaultPlan(
+            new TrendPlanApplicationService.TriggerCommand("11111111-1111-1111-1111-111111111111", traceId.toString())
+        ))
+            .isInstanceOf(ApiException.class)
+            .hasMessage("trend analysis payload is incomplete");
+
+        TrendItemRepository.TrendItemRecord persisted = trendItemRepository.findAllByUserId(UUID.fromString("11111111-1111-1111-1111-111111111111"))
+            .getFirst();
+        assertThat(persisted.status()).isEqualTo(TrendItemStatus.INGESTED);
+        assertThat(persisted.summary()).isNull();
+        assertThat(persisted.analysisPayload()).isEqualTo(TrendAnalysisPayload.empty());
+    }
+
+    @Test
+    void doesNotAnalyzeTheSameTrendItemTwiceWithinOneTrigger() {
+        UUID traceId = UUID.randomUUID();
+        RecordingToolInvocationLogRepository toolRepository = new RecordingToolInvocationLogRepository();
+        InMemoryTrendItemRepository trendItemRepository = new InMemoryTrendItemRepository();
+        TrendPlanApplicationService service = new TrendPlanApplicationService(
+            trendProperties(true, List.of(TrendSourceType.HN)),
+            new TrendSourceRegistry(List.of(
+                connector(
+                    TrendSourceType.HN,
+                    "Hacker News",
+                    List.of(
+                        candidate(TrendSourceType.HN, "hn-1", "Agent memory on HN", "https://news.ycombinator.com/item?id=1", 91.0),
+                        candidate(TrendSourceType.HN, "hn-1", "Agent memory on HN", "https://news.ycombinator.com/item?id=1", 91.0)
+                    )
+                )
+            )),
+            new TrendCandidateNormalizer(),
+            new TrendAnalysisService(trendItemRepository, toolRepository, new StubTrendAgent(), transactionManager()),
+            trendItemRepository,
+            new RecordingAgentTraceRepository(traceId),
+            toolRepository,
+            transactionManager()
+        );
+
+        TrendPlanApplicationService.TriggerResult result = service.triggerDefaultPlan(
+            new TrendPlanApplicationService.TriggerCommand("11111111-1111-1111-1111-111111111111", traceId.toString())
+        );
+
+        assertThat(result.insertedCount()).isEqualTo(1);
+        assertThat(result.dedupedCount()).isEqualTo(1);
+        assertThat(toolRepository.toolNames).containsExactly(
+            "trend.source_registry.resolve",
+            "trend.source.fetch",
+            "trend.item.upsert",
+            "trend.item.analyze"
+        );
+    }
+
+    @Test
     void rejectsDisabledDefaultPlanWithTrackedTrace() {
         UUID traceId = UUID.randomUUID();
         RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository(traceId);
@@ -124,6 +321,7 @@ class TrendPlanApplicationServiceTest {
                 connector(TrendSourceType.GITHUB, "GitHub", List.of())
             )),
             new TrendCandidateNormalizer(),
+            new TrendAnalysisService(new InMemoryTrendItemRepository(), toolRepository, new StubTrendAgent(), transactionManager()),
             new InMemoryTrendItemRepository(),
             traceRepository,
             toolRepository,
@@ -155,6 +353,7 @@ class TrendPlanApplicationServiceTest {
                 failingConnector(TrendSourceType.GITHUB, "GitHub", new ApiException(org.springframework.http.HttpStatus.BAD_GATEWAY, "TREND_SOURCE_FETCH_FAILED", "GitHub fetch failed"))
             )),
             new TrendCandidateNormalizer(),
+            new TrendAnalysisService(trendItemRepository, toolRepository, new StubTrendAgent(), transactionManager()),
             trendItemRepository,
             traceRepository,
             toolRepository,
@@ -189,6 +388,7 @@ class TrendPlanApplicationServiceTest {
                 )
             )),
             new TrendCandidateNormalizer(),
+            new TrendAnalysisService(new FailingUpsertTrendItemRepository(), toolRepository, new StubTrendAgent(), transactionManager()),
             new FailingUpsertTrendItemRepository(),
             traceRepository,
             toolRepository,
@@ -483,6 +683,16 @@ class TrendPlanApplicationServiceTest {
         }
 
         @Override
+        public List<TrendItemRecord> findInboxByUserId(UUID userId, TrendItemStatus status, TrendSourceType sourceType) {
+            return itemsByCompositeKey.values().stream()
+                .filter(item -> item.userId().equals(userId))
+                .filter(item -> status == null || item.status() == status)
+                .filter(item -> sourceType == null || item.sourceType() == sourceType)
+                .sorted(Comparator.comparing(TrendItemRecord::updatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+        }
+
+        @Override
         public TrendItemRecord updateStatus(UUID trendItemId,
                                             UUID userId,
                                             TrendItemStatus status,
@@ -490,6 +700,35 @@ class TrendPlanApplicationServiceTest {
                                             UUID convertedNoteId,
                                             UUID convertedIdeaId) {
             throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public TrendItemRecord updateAnalysis(UUID trendItemId,
+                                              UUID userId,
+                                              TrendAnalysisPayload analysisPayload) {
+            TrendItemRecord existing = findByIdAndUserId(trendItemId, userId).orElseThrow();
+            TrendItemRecord analyzed = new TrendItemRecord(
+                existing.id(),
+                existing.userId(),
+                existing.sourceType(),
+                existing.sourceItemKey(),
+                existing.title(),
+                existing.url(),
+                analysisPayload.summary(),
+                existing.normalizedScore(),
+                analysisPayload,
+                existing.extraAttributes(),
+                TrendItemStatus.ANALYZED,
+                analysisPayload.suggestedAction(),
+                existing.sourcePublishedAt(),
+                existing.lastIngestedAt(),
+                existing.convertedNoteId(),
+                existing.convertedIdeaId(),
+                existing.createdAt(),
+                Instant.now()
+            );
+            itemsByCompositeKey.put(key(userId, existing.sourceType(), existing.sourceItemKey()), analyzed);
+            return analyzed;
         }
 
         private String key(UUID userId, TrendSourceType sourceType, String sourceItemKey) {
@@ -510,6 +749,31 @@ class TrendPlanApplicationServiceTest {
                                                     Instant sourcePublishedAt,
                                                     Instant lastIngestedAt) {
             throw new ApiException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "TREND_ITEM_UPSERT_FAILED", "trend item upsert failed");
+        }
+    }
+
+    private static final class FailingTrendAgent implements TrendAgent {
+
+        @Override
+        public TrendAnalysisPayload analyze(AnalyzeTrendRequest request) {
+            throw new ApiException(org.springframework.http.HttpStatus.BAD_GATEWAY, "TREND_ANALYSIS_FAILED", "trend analysis failed");
+        }
+    }
+
+    private static final class IncompleteTrendAgent implements TrendAgent {
+
+        @Override
+        public TrendAnalysisPayload analyze(AnalyzeTrendRequest request) {
+            return new TrendAnalysisPayload(
+                "Compact summary",
+                "Why this matters",
+                List.of("agents"),
+                null,
+                true,
+                false,
+                TrendActionType.SAVE_AS_NOTE,
+                null
+            );
         }
     }
 }

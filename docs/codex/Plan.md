@@ -243,21 +243,47 @@ Phase 4 需要完成的不是一个简单的“热点列表”，而是一个最
 
 ---
 
-## Step 4.6：Trend -> Note / Idea 转化
+## Step 4.6A：Trend -> Note 转化
 
 ### 目标
-把 Trend 的价值真正推进到主知识链路。
+把 Trend 的价值先推进到 Note 主知识链路，优先保证最小闭环可验证。
 
 ### 交付
 1. `SAVE_AS_NOTE`：生成 Note 并保留来源链
-2. `PROMOTE_TO_IDEA`：生成 Idea 并保留来源链
-3. 必要时记录 Trend 与目标对象的关联 id
-4. 相关 `user_action_events`
-5. 相关 trace/log
-6. Trend -> Idea 后允许走既有 assess 流程
+2. 必要时记录 Trend 与目标 Note 的关联 id
+3. 相关 `user_action_events`
+4. 相关 trace/log
+5. 转化成功后前端跳转到 Note 详情
 
 ### 最小验收
 - 至少能从一个 trend item 成功生成 Note
+- 转化后来源链可追溯
+- 相关事件与日志可查
+- Note 详情页可直接读取新建结果
+
+### deferred
+- 自动批量转化
+- 智能二次整理
+- 转化后的复杂 proposal 治理
+
+### 建议后续
+Step 4.6B 已完成，见 `docs/codex/Documentation.md` 中的当前落地状态。
+
+---
+
+## Step 4.6B：Trend -> Idea 转化（已完成）
+
+### 目标
+把 Trend 的价值真正推进到 Idea 主知识链路。
+
+### 交付
+1. `PROMOTE_TO_IDEA`：生成 Idea 并保留来源链
+2. 必要时记录 Trend 与目标 Idea 的关联 id
+3. 相关 `user_action_events`
+4. 相关 trace/log
+5. Trend -> Idea 后允许走既有 assess 流程
+
+### 最小验收
 - 至少能从一个 trend item 成功生成 Idea
 - 转化后来源链可追溯
 - 相关事件与日志可查

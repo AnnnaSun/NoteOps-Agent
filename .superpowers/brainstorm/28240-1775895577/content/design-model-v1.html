@@ -1,0 +1,95 @@
+<h2>NoteOps 设计模型 v1</h2>
+<p class="subtitle">基于你的选择：B 方案信息架构 + 极轻首页 + 独立内容页面。视觉方向结合 ui-ux-pro-max：calm editorial + teal 主色 + orange 行动强调。</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Home / 轻首页</div>
+    <div class="mockup-body" style="background:linear-gradient(180deg,#f6fdfa,#eefbf8);padding:18px;border-radius:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+        <div>
+          <div class="label">NoteOps</div>
+          <div style="font-size:28px;font-weight:700;color:#134E4A;font-family:Georgia,serif;">Today Focus</div>
+        </div>
+        <button class="mock-button" style="background:#F97316;color:white;border:none;">Capture</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+        <div class="placeholder" style="background:white;border:1px solid #CCFBF1;">12<br/>Notes</div>
+        <div class="placeholder" style="background:white;border:1px solid #CCFBF1;">5<br/>Ideas</div>
+        <div class="placeholder" style="background:white;border:1px solid #CCFBF1;">7<br/>Today Items</div>
+        <div class="placeholder" style="background:white;border:1px solid #CCFBF1;">9<br/>Trends</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="placeholder" style="min-height:90px;background:white;border:1px solid #99F6E4;">Notes →</div>
+        <div class="placeholder" style="min-height:90px;background:white;border:1px solid #99F6E4;">Ideas →</div>
+        <div class="placeholder" style="min-height:90px;background:white;border:1px solid #99F6E4;">Workspace →</div>
+        <div class="placeholder" style="min-height:90px;background:white;border:1px solid #FB923C;">Trend Inbox →</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Trend Inbox / 独立页</div>
+    <div class="mockup-body" style="background:linear-gradient(180deg,#ffffff,#f8fcfb);padding:18px;border-radius:16px;">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:18px;">
+        <div>
+          <div class="label">Trend Inbox</div>
+          <div style="font-size:26px;font-weight:700;color:#134E4A;font-family:Georgia,serif;">Actionable External Signals</div>
+          <div style="font-size:13px;color:#47756f;margin-top:6px;">只看趋势候选，不混入 Notes / Ideas / Workspace。</div>
+        </div>
+        <div style="font-size:12px;color:#0D9488;">9 analyzed</div>
+      </div>
+
+      <div style="display:grid;gap:12px;">
+        <div style="background:white;border:1px solid #CCFBF1;border-radius:14px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;gap:10px;">
+            <div>
+              <div style="font-weight:700;color:#134E4A;">OpenAI launches new coding workflow primitives</div>
+              <div style="font-size:12px;color:#5b7d78;margin-top:4px;">GITHUB · score 0.92 · suggested SAVE_AS_NOTE</div>
+            </div>
+            <div style="font-size:12px;color:#0D9488;">ANALYZED</div>
+          </div>
+          <div style="margin-top:10px;font-size:13px;color:#345954;">Why it matters: impacts agent tool orchestration and developer workflow design.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <span style="padding:4px 8px;border-radius:999px;background:#F0FDFA;border:1px solid #99F6E4;">agent</span>
+            <span style="padding:4px 8px;border-radius:999px;background:#F0FDFA;border:1px solid #99F6E4;">tooling</span>
+            <span style="padding:4px 8px;border-radius:999px;background:#FFF7ED;border:1px solid #FDBA74;">note-worthy</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="mock-button" style="background:#0D9488;color:white;border:none;">Ignore</button>
+            <button class="mock-button">Save as Note</button>
+            <button class="mock-button">Promote to Idea</button>
+          </div>
+        </div>
+
+        <div style="background:white;border:1px solid #CCFBF1;border-radius:14px;padding:14px;opacity:0.88;">
+          <div style="font-weight:700;color:#134E4A;">HN discussion on memory architectures for coding agents</div>
+          <div style="font-size:12px;color:#5b7d78;margin-top:4px;">HN · score 0.81 · suggested PROMOTE_TO_IDEA</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>本轮设计约束</h3>
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>保留</h4>
+      <ul>
+        <li>浅色、冷静、偏编辑感，不走重型 dashboard 风格。</li>
+        <li>首页只给 summary 和入口，不给内容列表。</li>
+        <li>Trend Inbox 是独立页，动作重心放在卡片内。</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>暂不做</h4>
+      <ul>
+        <li>不在首页预览 Trends 列表。</li>
+        <li>不在这一步引入复杂筛选和可视化图表。</li>
+        <li>不让 Trend 页面混入 Notes / Ideas 的内容详情。</li>
+      </ul>
+    </div>
+  </div>
+</div>

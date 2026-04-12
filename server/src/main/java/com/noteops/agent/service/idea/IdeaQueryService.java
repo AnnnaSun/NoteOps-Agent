@@ -30,6 +30,7 @@ public class IdeaQueryService {
                 record.userId(),
                 record.sourceMode(),
                 record.sourceNoteId(),
+                record.sourceTrendItemId(),
                 record.title(),
                 record.status(),
                 record.updatedAt()
@@ -48,6 +49,7 @@ public class IdeaQueryService {
             idea.userId(),
             idea.sourceMode(),
             idea.sourceNoteId(),
+            idea.sourceTrendItemId(),
             idea.title(),
             idea.rawDescription(),
             idea.status(),
@@ -70,10 +72,21 @@ public class IdeaQueryService {
         UUID userId,
         IdeaSourceMode sourceMode,
         UUID sourceNoteId,
+        UUID sourceTrendItemId,
         String title,
         IdeaStatus status,
         Instant updatedAt
     ) {
+
+        public IdeaSummaryView(UUID id,
+                               UUID userId,
+                               IdeaSourceMode sourceMode,
+                               UUID sourceNoteId,
+                               String title,
+                               IdeaStatus status,
+                               Instant updatedAt) {
+            this(id, userId, sourceMode, sourceNoteId, null, title, status, updatedAt);
+        }
     }
 
     public record IdeaDetailView(
@@ -81,6 +94,7 @@ public class IdeaQueryService {
         UUID userId,
         IdeaSourceMode sourceMode,
         UUID sourceNoteId,
+        UUID sourceTrendItemId,
         String title,
         String rawDescription,
         IdeaStatus status,
@@ -88,5 +102,30 @@ public class IdeaQueryService {
         Instant createdAt,
         Instant updatedAt
     ) {
+
+        public IdeaDetailView(UUID id,
+                              UUID userId,
+                              IdeaSourceMode sourceMode,
+                              UUID sourceNoteId,
+                              String title,
+                              String rawDescription,
+                              IdeaStatus status,
+                              IdeaAssessmentResult assessmentResult,
+                              Instant createdAt,
+                              Instant updatedAt) {
+            this(
+                id,
+                userId,
+                sourceMode,
+                sourceNoteId,
+                null,
+                title,
+                rawDescription,
+                status,
+                assessmentResult,
+                createdAt,
+                updatedAt
+            );
+        }
     }
 }

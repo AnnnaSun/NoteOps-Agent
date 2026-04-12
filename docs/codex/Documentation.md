@@ -76,6 +76,86 @@ Preference Learning 正式闭环、PWA 与移动端仍未进入当前主线。
 - 当前单个 source fetch 失败时，整次 trigger 失败
 - Step 4.4 才开始写 `analysis_payload` 和 `suggested_action`
 
+### 1.4 Step 4.4 当前落地状态
+
+当前仓库已完成 Step 4.4 的最小 Trend AI 分析闭环：
+- 新增 `TrendAnalysisService`
+- 新增 `TrendAgent` interface，并提供本地 `StubTrendAgent`
+- `POST /api/v1/trends/plans/default/trigger` 在 ingest 后会同步执行最小结构化分析
+- 分析结果会写回 `trend_items.summary`
+- 分析结果会写回 `trend_items.analysis_payload`
+- 分析结果会写回 `trend_items.suggested_action`
+- 已落 `ANALYZED` 状态
+- analysis 链路已补齐 `agent_traces` 关联、结构化日志、`tool_invocation_logs`
+
+当前仓库在 Step 4.4 仍明确不做：
+- 真实外部模型 provider
+- 个性化排序
+- Trend Inbox controller / page
+- Trend -> Note / Idea 转化
+- 用户动作事件
+
+说明：
+- 当前实现使用本地 deterministic stub，先稳定 analysis contract 与治理链路
+- 当前 `trigger_mode` 仍保持 `INGEST`，但 trigger 运行时已包含 analyze 阶段
+- 当前 analysis 对单条 trend item 的写库与 `trend.item.analyze` completed log 在同一事务内提交
+- 当前 analysis 失败时，失败条目的分析写回会回滚到 `INGESTED`；同一 trigger 中已成功提交的更早条目会保留 `ANALYZED`
+- 当前 analysis 失败时，trace 与 trigger 结果会标记失败；已完成 ingest 的 `trend_items` 仍保留为后续重试输入
+
+### 1.5 Step 4.5 当前落地状态
+
+当前仓库已完成 Trend Inbox 的后端查询链路：
+- `GET /api/v1/trends/inbox` 已可用
+- 默认只返回当前用户的 `ANALYZED` trend items
+- 支持可选 `status` 与 `source_type` 过滤
+- 查询结果按 `updated_at desc` 返回
+- 返回体复用 `TrendInboxItemResponse`
+- 查询链路已补齐 controller / service 结构化日志，包含 `trace_id`、`user_id` 与过滤条件
+
+当前仓库已完成 Step 4.5 的前端最小闭环：
+- `#/trends` 已接入独立 Trend Inbox 视图，不再是导航壳
+- Trend Inbox 页面为单列阅读流，包含最小 `status` / `source_type` 过滤
+- 页面支持 loading / empty / error 态
+- `IGNORE` 为真实动作，执行后会更新 `trend_items.status = IGNORED` 并刷新列表
+- `IGNORE` 失败以卡片级错误提示呈现，不会把整页当成列表加载失败
+- `IGNORE`、`SAVE_AS_NOTE`、`PROMOTE_TO_IDEA` 的失败尝试都会保留 `trace_id`，便于从前端错误回查服务端日志
+- `SAVE_AS_NOTE` 现在是真实动作，成功后会创建 Note、回写 `converted_note_id`，并跳转到 Notes 详情
+- `PROMOTE_TO_IDEA` 现在是真实动作，成功后会创建 Idea、回写 `converted_idea_id`，并跳转到 Ideas 详情
+- `Home` 现在是轻量入口页，保留 Capture；Capture 成功后跳转到 Notes 并打开新 Note 详情
+
+说明：
+- 当前 inbox 已补齐最小动作链路：`POST /api/v1/trends/{trendItemId}/actions`
+- 当前真实支持 `IGNORE`、`SAVE_AS_NOTE` 与 `PROMOTE_TO_IDEA`
+- `IGNORE` 链路已写 `agent_traces`、`tool_invocation_logs`、`user_action_events`
+- `SAVE_AS_NOTE` 链路已写 `agent_traces`、`tool_invocation_logs`、`user_action_events`
+- `PROMOTE_TO_IDEA` 链路已写 `agent_traces`、`tool_invocation_logs`、`user_action_events`
+- 成功响应会回传 `trace_id`
+
+### 1.6 Step 4.6 当前落地状态
+
+当前仓库已完成 Step 4.6A / Step 4.6B 的 `Trend -> Note / Idea` 真闭环：
+- `SAVE_AS_NOTE` 已接真实转化服务
+- 转化成功后会创建 Note，并保留 trend 来源链与分析载荷
+- 转化成功后会回写 `trend_items.status = SAVED_AS_NOTE`
+- 转化成功后会回写 `converted_note_id`
+- 前端会自动跳转到 `Notes` 并打开新建 Note 详情
+- `PROMOTE_TO_IDEA` 已接真实转化服务
+- 转化成功后会创建 Idea，并保留 trend 来源链与分析载荷
+- 转化成功后会回写 `trend_items.status = PROMOTED_TO_IDEA`
+- 转化成功后会回写 `converted_idea_id`
+- 前端会自动跳转到 `Ideas` 并打开新建 Idea 详情
+- 转化链路已补齐 `agent_traces`、`tool_invocation_logs`、`user_action_events`
+
+当前仓库在 Step 4.6 仍明确不做：
+- `PROMOTE_TO_IDEA` 自动批量转化
+- Trend -> Idea 后自动触发 assess 主链
+- Trend 转化后的复杂 proposal 治理
+
+说明：
+- 当前 `SAVE_AS_NOTE` 失败会返回 `TREND_NOTE_CONVERSION_FAILED`
+- 当前 `PROMOTE_TO_IDEA` 失败会返回 `TREND_IDEA_CONVERSION_FAILED`
+- `Trend -> Idea` 后的 assess 仍保持显式用户动作，不在转化步骤里自动触发
+
 ---
 
 ## 2. Phase 4 目标说明
@@ -123,7 +203,7 @@ Trend 是高价值输入增强模块：
 
 当前仓库在 Step 4.2 已落地的最小语义：
 - plan 配置来源于 `noteops.trend.default-plan`
-- 当前 trigger 会真实执行双 source ingest
+- 当前 trigger 会真实执行双 source ingest，并在 ingest 后同步执行最小 Trend analysis
 - 返回 `trigger_mode = INGEST`
 
 ---
@@ -168,6 +248,27 @@ AI 不负责：
 - Inbox 展示
 - 转化命令执行
 - trace / log / event
+
+### 4.3 Step 4.4 当前实现说明
+
+当前最小 runtime 采用以下边界：
+- `TrendPlanApplicationService` 负责编排默认 plan trigger、ingest summary、trace 完成态
+- `TrendAnalysisService` 负责逐条调用 `TrendAgent`、校验结果、写回 `trend_items`
+- `StubTrendAgent` 负责基于 source type、title、score 生成确定性结构化 payload
+
+当前最小写回语义：
+- `summary` 使用 analysis summary
+- `status` 由 `INGESTED` 升级为 `ANALYZED`
+- `analysis_payload` 保存结构化分析载荷
+- `suggested_action` 保存当前建议动作
+- 同一 trigger 内重复命中的同一 `trend_item_id` 只 analyze 一次
+
+当前最小失败语义：
+- source fetch / upsert 失败仍按 Step 4.3 视为整次 trigger 失败
+- analysis 失败时，当前 trigger 也视为失败
+- `trendAgent` 或 payload contract 校验失败会返回 `TREND_ANALYSIS_FAILED` / `TREND_ANALYSIS_INVALID`
+- analysis 写库或 completed tool log 落库失败会返回 `TREND_ANALYSIS_PERSIST_FAILED`
+- 失败条目的 analysis 写回会回滚；已落库的 ingest 结果保留，便于后续 retry analyze
 
 ---
 
@@ -276,6 +377,7 @@ AI 不负责：
 - 校验默认 plan 配置
 - 解析 `HN` / `GITHUB` source registration
 - 拉取候选并执行最小 ingest
+- 对本次 ingest / dedupe 命中的条目执行最小结构化分析
 - 写 trace / tool log
 
 当前输入语义：
@@ -298,10 +400,12 @@ AI 不负责：
 - `result`
 
 说明：
-- 当前 Step 4.3 已执行真实抓取并写入 `trend_items`
+- 当前 Step 4.4 已执行真实抓取并写入 `trend_items`
+- 当前 Step 4.4 会同步写入 `summary`、`analysis_payload`、`suggested_action`
 - 当前 Step 4.3 的最小 dedupe 语义是：重复命中仅刷新 `last_ingested_at`（必要时补齐缺失的 `source_published_at`），不覆盖既有 `title`、`url`、`normalized_score`、`extra_attributes`
 - 当前 Step 4.3 的最小失败语义是：若 normalize / upsert 中途失败，则本次 ingest 视为整体失败，不保留部分 `trend_items` 写入
-- 当前 Step 4.3 不写 `analysis_payload`
+- 当前 Step 4.4 的最小 analysis 语义是：按去重后的 `trend_item_id` 写 `trend.item.analyze` tool log，并在 trace 完成态补 `analyzed_count`
+- 当前 Step 4.4 的最小 analysis 失败语义是：trigger 返回失败，trace 标记失败；失败条目回滚到 `INGESTED`，但已成功提交的更早分析条目保留
 - 当前 Step 4.3 不写 Trend Inbox 用户动作事件
 
 ---
@@ -374,6 +478,12 @@ Phase 4 新增核心链路必须补齐：
 
 这些事件将作为未来偏好学习和排序评估输入。
 
+当前 Step 4.4 已落地的最小 `tool_invocation_logs` 包括：
+- `trend.source_registry.resolve`
+- `trend.source.fetch`
+- `trend.item.upsert`
+- `trend.item.analyze`
+
 ---
 
 ## 9. Web 交付基线（Phase 4）
@@ -418,7 +528,10 @@ Phase 4 新增核心链路必须补齐：
 
 5. Trend 批量转化与自动化规则
     - 原因：当前坚持建议优先，不做静默高影响动作
-    - 预计补回：Phase 5 以后
+
+6. Trend 真实模型 provider / prompt 治理
+    - 原因：当前先用本地 stub 稳定 analysis contract、trace 与日志链路
+    - 预计补回：Phase 4 后段
 
 ---
 

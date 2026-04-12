@@ -33,6 +33,8 @@ public interface TrendItemRepository {
 
     Optional<TrendItemRecord> findBySourceKey(UUID userId, TrendSourceType sourceType, String sourceItemKey);
 
+    List<TrendItemRecord> findInboxByUserId(UUID userId, TrendItemStatus status, TrendSourceType sourceType);
+
     TrendItemIngestResult upsertIngested(UUID userId,
                                          TrendSourceType sourceType,
                                          String sourceItemKey,
@@ -51,6 +53,10 @@ public interface TrendItemRepository {
                                  TrendActionType suggestedAction,
                                  UUID convertedNoteId,
                                  UUID convertedIdeaId);
+
+    TrendItemRecord updateAnalysis(UUID trendItemId,
+                                   UUID userId,
+                                   TrendAnalysisPayload analysisPayload);
 
     record TrendItemRecord(
         UUID id,

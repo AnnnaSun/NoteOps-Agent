@@ -80,6 +80,7 @@ class IdeaControllerTest {
             .andExpect(jsonPath("$.data[0].user_id").value(userId.toString()))
             .andExpect(jsonPath("$.data[0].source_mode").value("FROM_NOTE"))
             .andExpect(jsonPath("$.data[0].source_note_id").value(noteId.toString()))
+            .andExpect(jsonPath("$.data[0].source_trend_item_id").value(nullValue()))
             .andExpect(jsonPath("$.data[0].title").value("Idea from note"))
             .andExpect(jsonPath("$.data[0].status").value("ASSESSED"))
             .andExpect(jsonPath("$.meta.server_time").exists());
@@ -89,14 +90,16 @@ class IdeaControllerTest {
     void getsIdeaDetailWithEnvelope() throws Exception {
         UUID ideaId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
+        UUID trendItemId = UUID.randomUUID();
 
         when(ideaQueryService.get(ideaId.toString(), userId.toString())).thenReturn(
             new IdeaQueryService.IdeaDetailView(
                 ideaId,
                 userId,
-                IdeaSourceMode.MANUAL,
+                IdeaSourceMode.FROM_TREND,
                 null,
-                "Manual idea",
+                trendItemId,
+                "Trend idea",
                 "Detailed description",
                 IdeaStatus.CAPTURED,
                 IdeaAssessmentResult.empty(),
@@ -111,8 +114,9 @@ class IdeaControllerTest {
             .andExpect(jsonPath("$.trace_id").value(nullValue()))
             .andExpect(jsonPath("$.data.id").value(ideaId.toString()))
             .andExpect(jsonPath("$.data.user_id").value(userId.toString()))
-            .andExpect(jsonPath("$.data.source_mode").value("MANUAL"))
+            .andExpect(jsonPath("$.data.source_mode").value("FROM_TREND"))
             .andExpect(jsonPath("$.data.source_note_id").value(nullValue()))
+            .andExpect(jsonPath("$.data.source_trend_item_id").value(trendItemId.toString()))
             .andExpect(jsonPath("$.data.raw_description").value("Detailed description"))
             .andExpect(jsonPath("$.data.status").value("CAPTURED"))
             .andExpect(jsonPath("$.meta.server_time").exists());
@@ -128,6 +132,7 @@ class IdeaControllerTest {
                 ideaId,
                 userId,
                 IdeaSourceMode.MANUAL,
+                null,
                 null,
                 "Manual idea",
                 "Raw description",
@@ -194,6 +199,7 @@ class IdeaControllerTest {
                 userId,
                 IdeaSourceMode.MANUAL,
                 null,
+                null,
                 "Manual idea",
                 "Raw description",
                 IdeaStatus.ASSESSED,
@@ -239,6 +245,7 @@ class IdeaControllerTest {
                 ideaId,
                 userId,
                 IdeaSourceMode.MANUAL,
+                null,
                 null,
                 "Manual idea",
                 "Raw description",

@@ -15,6 +15,9 @@ import type {
   SearchEvidenceResult,
   SearchResult,
   TaskItem,
+  TrendActionRequest,
+  TrendActionResponse,
+  TrendInboxItem,
   WorkspaceToday,
   WorkspaceUpcoming
 } from "./types";
@@ -30,15 +33,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init
   });
 
+  const rawBody = await response.text();
   let envelope: ApiEnvelope<T>;
   try {
-    envelope = (await response.json()) as ApiEnvelope<T>;
+    envelope = JSON.parse(rawBody) as ApiEnvelope<T>;
   } catch {
-    throw new Error(`Unexpected response from ${path}`);
+    const snippet = rawBody.trim() ? ` body=${rawBody.slice(0, 120)}` : "";
+    throw new Error(`Unexpected response from ${path} (status=${response.status} ${response.statusText})${snippet}`);
   }
 
   if (!response.ok || !envelope.success || envelope.data == null) {
-    throw new Error(envelope.error?.message ?? `Request failed for ${path}`);
+    const baseMessage = envelope.error?.message ?? `Request failed for ${path}`;
+    const traceSuffix = envelope.trace_id ? ` (trace_id=${envelope.trace_id})` : "";
+    throw new Error(`${baseMessage}${traceSuffix}`);
   }
   return envelope.data;
 }
@@ -233,5 +240,31 @@ export function rollbackChangeProposal(proposalId: string, userId: string): Prom
     body: JSON.stringify({
       user_id: userId
     })
+  });
+}
+
+export function listTrendInbox(
+  userId: string,
+  filters?: {
+    status?: string;
+    sourceType?: string;
+  }
+): Promise<TrendInboxItem[]> {
+  const params = new URLSearchParams({
+    user_id: userId
+  });
+  if (filters?.status) {
+    params.set("status", filters.status);
+  }
+  if (filters?.sourceType) {
+    params.set("source_type", filters.sourceType);
+  }
+  return request(`/api/v1/trends/inbox?${params.toString()}`);
+}
+
+export function actOnTrend(trendItemId: string, payload: TrendActionRequest): Promise<TrendActionResponse> {
+  return request(`/api/v1/trends/${encodeURIComponent(trendItemId)}/actions`, {
+    method: "POST",
+    body: JSON.stringify(payload)
   });
 }
