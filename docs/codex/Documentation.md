@@ -487,11 +487,14 @@ Phase 4 新增核心链路必须补齐：
 
 这些事件将作为未来偏好学习和排序评估输入。
 
-当前 Step 4.4 已落地的最小 `tool_invocation_logs` 包括：
+当前 Trend 最小闭环已落地的最小 `tool_invocation_logs` 包括：
 - `trend.source_registry.resolve`
 - `trend.source.fetch`
 - `trend.item.upsert`
 - `trend.item.analyze`
+- `trend.item.action`
+- `trend.note.convert`
+- `trend.idea.convert`
 
 ---
 
