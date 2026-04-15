@@ -3,6 +3,7 @@ package com.noteops.agent.controller.proposal;
 import com.noteops.agent.dto.proposal.ApplyChangeProposalRequest;
 import com.noteops.agent.dto.proposal.ChangeProposalResponse;
 import com.noteops.agent.dto.proposal.CreateChangeProposalRequest;
+import com.noteops.agent.dto.proposal.RejectChangeProposalRequest;
 import com.noteops.agent.dto.proposal.RollbackChangeProposalRequest;
 
 import com.noteops.agent.dto.ApiEnvelope;
@@ -76,6 +77,16 @@ public class ChangeProposalController {
         log.info("action=change_proposal_rollback_request proposal_id={} user_id={}", proposalId, request.userId());
         ChangeProposalApplicationService.ChangeProposalCommandResult result =
             changeProposalApplicationService.rollback(proposalId, request.userId());
+        return ApiEnvelope.success(result.traceId(), ChangeProposalResponse.from(result.proposal()));
+    }
+
+    // 拒绝待处理的 proposal，保留 Note 当前解释层。
+    @PostMapping("/change-proposals/{proposalId}/reject")
+    public ApiEnvelope<ChangeProposalResponse> reject(@PathVariable String proposalId,
+                                                      @RequestBody RejectChangeProposalRequest request) {
+        log.info("action=change_proposal_reject_request proposal_id={} user_id={}", proposalId, request.userId());
+        ChangeProposalApplicationService.ChangeProposalCommandResult result =
+            changeProposalApplicationService.reject(proposalId, request.userId());
         return ApiEnvelope.success(result.traceId(), ChangeProposalResponse.from(result.proposal()));
     }
 }

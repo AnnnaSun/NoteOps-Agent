@@ -88,6 +88,42 @@ class ChangeProposalApplicationServiceTest {
     }
 
     @Test
+    void rejectsPendingProposalAndAppendsRejectedEvent() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.store(note(userId, noteId));
+        InMemoryChangeProposalRepository proposalRepository = new InMemoryChangeProposalRepository();
+        InMemoryAgentTraceRepository traceRepository = new InMemoryAgentTraceRepository();
+        InMemoryToolInvocationLogRepository toolInvocationLogRepository = new InMemoryToolInvocationLogRepository();
+        InMemoryUserActionEventRepository eventRepository = new InMemoryUserActionEventRepository();
+
+        ChangeProposalApplicationService service = newService(
+            noteRepository,
+            proposalRepository,
+            traceRepository,
+            toolInvocationLogRepository,
+            eventRepository
+        );
+        ChangeProposalApplicationService.ChangeProposalView proposal = service.generate(noteId.toString(), userId.toString()).proposal();
+
+        ChangeProposalApplicationService.ChangeProposalCommandResult result =
+            service.reject(proposal.id().toString(), userId.toString());
+
+        assertThat(result.proposal().status()).isEqualTo(ChangeProposalStatus.REJECTED);
+        assertThat(result.proposal().rollbackToken()).isNull();
+        assertThat(eventRepository.eventTypes).contains("CHANGE_PROPOSAL_REJECTED");
+        assertThat(traceRepository.entryTypes).contains("CHANGE_PROPOSAL_REJECT");
+        assertThat(toolInvocationLogRepository.toolNames).contains("proposal.reject");
+        assertThat(eventRepository.payloads).hasSize(2);
+        assertThat(eventRepository.payloads.getLast())
+            .containsEntry("note_id", noteId)
+            .containsEntry("target_layer", "INTERPRETATION")
+            .containsEntry("risk_level", "LOW")
+            .containsEntry("status", "REJECTED");
+    }
+
+    @Test
     void rejectsApplyWhenProposalIsAlreadyApplied() {
         UUID userId = UUID.randomUUID();
         UUID noteId = UUID.randomUUID();
@@ -104,14 +140,83 @@ class ChangeProposalApplicationServiceTest {
             .hasMessage("change proposal is already applied");
     }
 
+    @Test
+    void rejectsRejectWhenProposalIsAlreadyApplied() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.store(note(userId, noteId));
+        InMemoryChangeProposalRepository proposalRepository = new InMemoryChangeProposalRepository();
+
+        ChangeProposalApplicationService service = newService(noteRepository, proposalRepository);
+        ChangeProposalApplicationService.ChangeProposalView proposal = service.generate(noteId.toString(), userId.toString()).proposal();
+        service.apply(noteId.toString(), proposal.id().toString(), userId.toString());
+
+        assertThatThrownBy(() -> service.reject(proposal.id().toString(), userId.toString()))
+            .isInstanceOf(ApiException.class)
+            .extracting(throwable -> ((ApiException) throwable).errorCode())
+            .isEqualTo("CHANGE_PROPOSAL_ALREADY_APPLIED");
+    }
+
+    @Test
+    void rejectsRejectWhenProposalIsAlreadyRolledBack() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.store(note(userId, noteId));
+        InMemoryChangeProposalRepository proposalRepository = new InMemoryChangeProposalRepository();
+
+        ChangeProposalApplicationService service = newService(noteRepository, proposalRepository);
+        ChangeProposalApplicationService.ChangeProposalView proposal = service.generate(noteId.toString(), userId.toString()).proposal();
+        service.apply(noteId.toString(), proposal.id().toString(), userId.toString());
+        service.rollback(proposal.id().toString(), userId.toString());
+
+        assertThatThrownBy(() -> service.reject(proposal.id().toString(), userId.toString()))
+            .isInstanceOf(ApiException.class)
+            .extracting(throwable -> ((ApiException) throwable).errorCode())
+            .isEqualTo("CHANGE_PROPOSAL_ALREADY_ROLLED_BACK");
+    }
+
+    @Test
+    void rejectsRejectWhenProposalIsAlreadyRejected() {
+        UUID userId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        InMemoryNoteRepository noteRepository = new InMemoryNoteRepository();
+        noteRepository.store(note(userId, noteId));
+        InMemoryChangeProposalRepository proposalRepository = new InMemoryChangeProposalRepository();
+
+        ChangeProposalApplicationService service = newService(noteRepository, proposalRepository);
+        ChangeProposalApplicationService.ChangeProposalView proposal = service.generate(noteId.toString(), userId.toString()).proposal();
+        service.reject(proposal.id().toString(), userId.toString());
+
+        assertThatThrownBy(() -> service.reject(proposal.id().toString(), userId.toString()))
+            .isInstanceOf(ApiException.class)
+            .extracting(throwable -> ((ApiException) throwable).errorCode())
+            .isEqualTo("CHANGE_PROPOSAL_ALREADY_REJECTED");
+    }
+
     private ChangeProposalApplicationService newService(InMemoryNoteRepository noteRepository,
                                                         InMemoryChangeProposalRepository proposalRepository) {
-        return new ChangeProposalApplicationService(
-            proposalRepository,
+        return newService(
             noteRepository,
+            proposalRepository,
             new InMemoryAgentTraceRepository(),
             new InMemoryToolInvocationLogRepository(),
             new InMemoryUserActionEventRepository()
+        );
+    }
+
+    private ChangeProposalApplicationService newService(InMemoryNoteRepository noteRepository,
+                                                        InMemoryChangeProposalRepository proposalRepository,
+                                                        InMemoryAgentTraceRepository agentTraceRepository,
+                                                        InMemoryToolInvocationLogRepository toolInvocationLogRepository,
+                                                        InMemoryUserActionEventRepository userActionEventRepository) {
+        return new ChangeProposalApplicationService(
+            proposalRepository,
+            noteRepository,
+            agentTraceRepository,
+            toolInvocationLogRepository,
+            userActionEventRepository
         );
     }
 
@@ -289,6 +394,8 @@ class ChangeProposalApplicationServiceTest {
 
     private static final class InMemoryAgentTraceRepository implements AgentTraceRepository {
 
+        private final List<String> entryTypes = new ArrayList<>();
+
         @Override
         public UUID create(UUID userId,
                            String entryType,
@@ -297,6 +404,7 @@ class ChangeProposalApplicationServiceTest {
                            UUID rootEntityId,
                            List<String> workerSequence,
                            Map<String, Object> orchestratorState) {
+            entryTypes.add(entryType);
             return UUID.randomUUID();
         }
 
@@ -311,6 +419,8 @@ class ChangeProposalApplicationServiceTest {
 
     private static final class InMemoryToolInvocationLogRepository implements ToolInvocationLogRepository {
 
+        private final List<String> toolNames = new ArrayList<>();
+
         @Override
         public void append(UUID userId,
                            UUID traceId,
@@ -321,12 +431,14 @@ class ChangeProposalApplicationServiceTest {
                            Integer latencyMs,
                            String errorCode,
                            String errorMessage) {
+            toolNames.add(toolName);
         }
     }
 
     private static final class InMemoryUserActionEventRepository implements UserActionEventRepository {
 
         private final List<String> eventTypes = new ArrayList<>();
+        private final List<Map<String, Object>> payloads = new ArrayList<>();
 
         @Override
         public void append(UUID userId,
@@ -336,6 +448,7 @@ class ChangeProposalApplicationServiceTest {
                            UUID traceId,
                            Map<String, Object> payload) {
             eventTypes.add(eventType);
+            payloads.add(payload);
         }
     }
 }

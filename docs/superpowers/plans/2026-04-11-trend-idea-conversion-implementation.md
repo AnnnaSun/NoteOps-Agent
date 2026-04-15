@@ -211,7 +211,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/codex/Documentation.md docs/codex/Plan.md server/src/test/java/com/noteops/agent/service/trend/TrendIdeaConversionServiceIntegrationTest.java server/src/test/java/com/noteops/agent/controller/idea/IdeaControllerTest.java
+git add docs/codex/Documentation-phase4.md docs/codex/Plan-phase4.md server/src/test/java/com/noteops/agent/service/trend/TrendIdeaConversionServiceIntegrationTest.java server/src/test/java/com/noteops/agent/controller/idea/IdeaControllerTest.java
 git commit -m "docs: sync trend idea conversion and phase 4"
 ```
 

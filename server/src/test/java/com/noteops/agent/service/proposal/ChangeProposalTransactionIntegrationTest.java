@@ -29,6 +29,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest(properties = {
@@ -150,6 +151,40 @@ class ChangeProposalTransactionIntegrationTest {
 
         NoteQueryService.NoteDetailView note = noteRepository.findByIdAndUserId(noteId, userId).orElseThrow();
         assertThat(note.currentSummary()).isEqualTo("Kickoff covered timeline. We aligned owners. Risks were called out.");
+        assertThat(changeProposalRepository.findByIdAndUserId(proposal.id(), userId).orElseThrow())
+            .extracting(ChangeProposalApplicationService.ChangeProposalView::status)
+            .isEqualTo(ChangeProposalStatus.PENDING_REVIEW);
+    }
+
+    @Test
+    void rollsBackRejectWhenUserActionEventWriteFails() {
+        ChangeProposalApplicationService.ChangeProposalView proposal = changeProposalRepository.create(
+            userId,
+            noteId,
+            UUID.randomUUID(),
+            "REFRESH_INTERPRETATION",
+            ChangeProposalTargetLayer.INTERPRETATION,
+            ChangeProposalRiskLevel.LOW,
+            "Refresh current_summary and current_key_points from the latest note content.",
+            Map.of(
+                "current_summary", "Kickoff covered timeline. We aligned owners. Risks were called out.",
+                "current_key_points", List.of("Kickoff covered timeline.", "We aligned owners.", "Risks were called out.")
+            ),
+            Map.of(
+                "current_summary", "Kickoff. Key points: Kickoff covered timeline. We aligned owners. Risks were called out.",
+                "current_key_points", List.of("Kickoff covered timeline.", "We aligned owners.", "Risks were called out.")
+            ),
+            List.of(Map.of("content_type", "CAPTURE_RAW"))
+        );
+
+        doThrow(new RuntimeException("simulated user action event failure"))
+            .when(userActionEventRepository)
+            .append(any(), any(), any(), any(), any(), any());
+
+        assertThatThrownBy(() -> changeProposalApplicationService.reject(proposal.id().toString(), userId.toString()))
+            .isInstanceOf(RuntimeException.class)
+            .hasMessage("simulated user action event failure");
+
         assertThat(changeProposalRepository.findByIdAndUserId(proposal.id(), userId).orElseThrow())
             .extracting(ChangeProposalApplicationService.ChangeProposalView::status)
             .isEqualTo(ChangeProposalStatus.PENDING_REVIEW);

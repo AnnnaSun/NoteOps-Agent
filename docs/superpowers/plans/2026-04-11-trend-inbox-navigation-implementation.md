@@ -1128,7 +1128,7 @@ Run the local app and verify:
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/codex/Documentation.md
+git add docs/codex/Documentation-phase4.md
 git commit -m "docs: sync trend inbox step 4.5 status"
 ```
 
