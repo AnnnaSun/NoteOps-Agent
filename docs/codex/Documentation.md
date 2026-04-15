@@ -158,16 +158,12 @@ Preference Learning 正式闭环、PWA 与移动端仍未进入当前主线。
 
 ### 1.7 Step 4.7 当前落地状态
 
-当前仓库已完成 Phase 4 文档与治理收口：
-- `docs/codex/Documentation.md` 已与当前 Trend 最小闭环对齐
-- `docs/codex/Plan.md` 仍保持 Phase 4 切片边界一致，没有把 Phase 5 能力误记为已完成
-- `AGENTS.md` / `docs/codex/Implement.md` 仍与当前实现和 Phase 4 范围一致
-- Trend 相关 `trace` / `log` / `event` / 转化语义已在文档中显式记录
-- 本次收口没有新增 deferred item；当前 deferred backlog 继续由第 10 节承载
+当前仓库已完成 Step 4.7 的文档与治理收口：
+- `docs/codex/Plan.md` 已同步标记 Step 4.7 完成，并把 Phase 4 最小闭环的完成定义收束到当前实现事实
+- `docs/codex/Documentation.md` 已对齐当前 Phase 4 落地范围、完成条件与 deferred backlog
+- `docs/codex/Prompt.md` 已与 Phase 4 推荐切片顺序保持一致，不再与 Plan / Documentation 漂移
 
-说明：
-- Step 4.7 只做文档与治理对齐，不新增业务功能
-- 当前仓库仍明确不做自动批量转化、复杂 Trend 平台化、Preference Learning 正式闭环
+当前仓库在 Step 4.7 不再追加新的业务能力，仅保留后续文档维护和治理对齐的常规工作。
 
 ---
 
@@ -529,25 +525,32 @@ Phase 4 新增核心链路必须补齐：
 1. 用户自定义 Trend Plan
     - 原因：当前先保证默认计划与最小闭环
     - 预计补回：Phase 4 后段或 Phase 5
+    - 当前限制：暂不支持按用户偏好调整 source、schedule 或 keyword bias
 
 2. 多来源正式 connector 平台
     - 原因：当前先保证 HN / GitHub 默认主线
     - 预计补回：Phase 4 后段
+    - 当前限制：除 HN / GitHub 外的 provider 仍需显式接入，不能直接平台化扩展
 
 3. Trend 个性化排序
     - 原因：Preference 正式闭环尚未开始
     - 预计补回：Phase 5
+    - 当前限制：Trend Inbox 只按当前阶段的最小规则排序，尚不依赖个体画像
 
 4. Trend 去重 / 聚类高级优化
     - 原因：当前先保证可运行，不做复杂质量工程
     - 预计补回：Phase 4 后段
+    - 当前限制：只保留最小 dedupe 语义，尚未做高级聚类、事件合并或主题漂移分析
 
 5. Trend 批量转化与自动化规则
     - 原因：当前坚持建议优先，不做静默高影响动作
+    - 预计补回：Phase 4 后段或 Phase 5
+    - 当前限制：所有高影响转化仍需用户显式动作，不提供静默批量转化
 
 6. Trend 真实模型 provider / prompt 治理
     - 原因：当前先用本地 stub 稳定 analysis contract、trace 与日志链路
     - 预计补回：Phase 4 后段
+    - 当前限制：分析结果仍由本地 deterministic stub 产生，尚未接入真实外部模型 provider
 
 ---
 

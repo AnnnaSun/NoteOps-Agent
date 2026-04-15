@@ -318,11 +318,14 @@ Step 4.6B 已完成，见 `docs/codex/Documentation.md` 中的当前落地状态
 - 未完成内容被显式记录
 - 没有把 Phase 5 能力误写成已实现
 
+### 当前状态
+已完成。当前仓库的 Step 4.7 只保留文档维护与治理对齐，不再作为未完成子步骤。
+
 ---
 
 ## 5. 阶段完成定义
 
-仅当以下条件同时满足，才可以说 Phase 4 达到最小闭环：
+仅当以下条件同时满足，才可以说 Phase 4 达到最小闭环并完成收口：
 
 1. 有默认 Trend Plan
 2. 能从 HN / GitHub 拉取候选
@@ -331,6 +334,7 @@ Step 4.6B 已完成，见 `docs/codex/Documentation.md` 中的当前落地状态
 5. 用户能执行 ignore / save as note / promote to idea
 6. 趋势候选可真实转为 Note / Idea
 7. trace / log / event / docs 已同步
+8. 文档与治理收口已完成，且 deferred backlog 已显式记录
 
 只完成表结构、静态列表页或手工写库，不算 Phase 4 闭环。
 

@@ -170,7 +170,7 @@ Trend -> Note / Idea 转化：
 - Trend -> Idea 后允许复用既有 assess 流
 
 ### Step 4.7
-Phase 4 文档与治理收口：
+Phase 4 文档与治理收口（已完成）：
 - 文档同步
 - 风险记录
 - deferred backlog 记录
