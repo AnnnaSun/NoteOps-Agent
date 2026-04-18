@@ -1,10 +1,13 @@
 package com.noteops.agent.service.search;
 
 import com.noteops.agent.common.ApiException;
+import com.noteops.agent.model.preference.InterestProfile;
 import com.noteops.agent.repository.event.UserActionEventRepository;
+import com.noteops.agent.repository.preference.UserPreferenceProfileRepository;
 import com.noteops.agent.repository.search.SearchRepository;
 import com.noteops.agent.repository.trace.AgentTraceRepository;
 import com.noteops.agent.repository.trace.ToolInvocationLogRepository;
+import com.noteops.agent.service.preference.PreferenceContextInjectionService;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -15,6 +18,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -124,7 +128,7 @@ class SearchApplicationServiceTest {
         assertThat(result.externalSupplements().getFirst().aiEnhanced()).isFalse();
         assertThat(result.aiEnhancementStatus()).isEqualTo("DEGRADED");
         assertThat(traceRepository.completed.orchestratorState()).containsEntry("ai_enhancement_status", "DEGRADED");
-        assertThat(userActionEventRepository.events).extracting(UserActionEventRecord::eventType)
+        assertThat(userActionEventRepository.events).extracting(UserActionEventRepository.UserActionEventRecord::eventType)
             .contains("SEARCH_AI_ENHANCEMENT_DEGRADED", "SEARCH_EXECUTED", "SEARCH_EXTERNAL_SUPPLEMENTS_GENERATED");
         assertThat(toolInvocationLogRepository.logs).extracting(ToolInvocationLogRecord::toolName)
             .contains("search.ai-enhancement", "search.execute", "search.external-supplement-generator");
@@ -168,7 +172,7 @@ class SearchApplicationServiceTest {
         assertThat(traceRepository.created.orchestratorState()).containsEntry("query", "kickoff alpha");
         assertThat(traceRepository.completed.traceId()).isEqualTo(traceRepository.traceId);
         assertThat(traceRepository.completed.resultSummary()).contains("2 exact matches", "1 related matches", "2 external supplements");
-        assertThat(userActionEventRepository.events).extracting(UserActionEventRecord::eventType)
+        assertThat(userActionEventRepository.events).extracting(UserActionEventRepository.UserActionEventRecord::eventType)
             .containsExactly("SEARCH_EXECUTED", "SEARCH_EXTERNAL_SUPPLEMENTS_GENERATED");
         assertThat(toolInvocationLogRepository.logs).extracting(ToolInvocationLogRecord::toolName)
             .containsExactly("search.ai-enhancement", "search.execute", "search.external-supplement-generator");
@@ -263,6 +267,203 @@ class SearchApplicationServiceTest {
             .hasMessage("user_id must be a valid UUID");
     }
 
+    @Test
+    void reranksRelatedMatchesByPreferredTopicsWhenPreferenceProfileExists() {
+        UUID userId = UUID.randomUUID();
+        UUID infraNoteId = UUID.randomUUID();
+        UUID agentsNoteId = UUID.randomUUID();
+        InMemorySearchRepository repository = new InMemorySearchRepository();
+        repository.store(candidate(
+            userId,
+            infraNoteId,
+            "Kickoff roadmap",
+            "team coordination",
+            List.of("owners aligned"),
+            List.of("infra"),
+            "kickoff details",
+            Instant.parse("2026-03-16T03:00:00Z")
+        ));
+        repository.store(candidate(
+            userId,
+            agentsNoteId,
+            "Kickoff review",
+            "team coordination",
+            List.of("owners aligned"),
+            List.of("agents"),
+            "kickoff follow-up",
+            Instant.parse("2026-03-16T02:00:00Z")
+        ));
+
+        InMemoryUserPreferenceProfileRepository preferenceRepository = new InMemoryUserPreferenceProfileRepository();
+        preferenceRepository.put(userId, new InterestProfile(
+            List.of("agents"),
+            List.of(),
+            Map.of(),
+            Map.of(),
+            Map.of()
+        ));
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        SearchApplicationService service = new SearchApplicationService(
+            repository,
+            request -> new SearchAiEnhancer.SearchAiEnhancementResult(Map.of(), Map.of()),
+            traceRepository,
+            new RecordingToolInvocationLogRepository(),
+            new RecordingUserActionEventRepository(),
+            new PreferenceContextInjectionService(preferenceRepository)
+        );
+
+        SearchApplicationService.SearchView result = service.search(userId.toString(), "kickoff alpha");
+
+        assertThat(result.relatedMatches()).extracting(SearchApplicationService.SearchRelatedMatchView::noteId)
+            .containsExactly(agentsNoteId, infraNoteId);
+        assertThat(traceRepository.completed.orchestratorState())
+            .containsEntry("preference_profile_loaded", true);
+        assertThat((Integer) traceRepository.completed.orchestratorState().get("preference_rerank_count"))
+            .isGreaterThan(0);
+    }
+
+    @Test
+    void downRanksRelatedMatchesWhenTopicsAreIgnoredByPreferenceProfile() {
+        UUID userId = UUID.randomUUID();
+        UUID infraNoteId = UUID.randomUUID();
+        UUID neutralNoteId = UUID.randomUUID();
+        InMemorySearchRepository repository = new InMemorySearchRepository();
+        repository.store(candidate(
+            userId,
+            infraNoteId,
+            "Kickoff roadmap",
+            "team coordination",
+            List.of("owners aligned"),
+            List.of("infra"),
+            "kickoff details",
+            Instant.parse("2026-03-16T03:00:00Z")
+        ));
+        repository.store(candidate(
+            userId,
+            neutralNoteId,
+            "Kickoff review",
+            "team coordination",
+            List.of("owners aligned"),
+            List.of("operations"),
+            "kickoff follow-up",
+            Instant.parse("2026-03-16T02:00:00Z")
+        ));
+
+        InMemoryUserPreferenceProfileRepository preferenceRepository = new InMemoryUserPreferenceProfileRepository();
+        preferenceRepository.put(userId, new InterestProfile(
+            List.of(),
+            List.of("infra"),
+            Map.of(),
+            Map.of(),
+            Map.of()
+        ));
+        SearchApplicationService service = new SearchApplicationService(
+            repository,
+            request -> new SearchAiEnhancer.SearchAiEnhancementResult(Map.of(), Map.of()),
+            new RecordingAgentTraceRepository(),
+            new RecordingToolInvocationLogRepository(),
+            new RecordingUserActionEventRepository(),
+            new PreferenceContextInjectionService(preferenceRepository)
+        );
+
+        SearchApplicationService.SearchView result = service.search(userId.toString(), "kickoff alpha");
+
+        assertThat(result.relatedMatches()).extracting(SearchApplicationService.SearchRelatedMatchView::noteId)
+            .containsExactly(neutralNoteId, infraNoteId);
+    }
+
+    @Test
+    void keepsOriginalRelatedOrderingWhenPreferenceProfileIsMissing() {
+        UUID userId = UUID.randomUUID();
+        UUID firstNoteId = UUID.randomUUID();
+        UUID secondNoteId = UUID.randomUUID();
+        InMemorySearchRepository repository = new InMemorySearchRepository();
+        repository.store(candidate(
+            userId,
+            firstNoteId,
+            "Kickoff roadmap",
+            "team coordination",
+            List.of("owners aligned"),
+            List.of("infra"),
+            "kickoff details",
+            Instant.parse("2026-03-16T03:00:00Z")
+        ));
+        repository.store(candidate(
+            userId,
+            secondNoteId,
+            "Kickoff review",
+            "team coordination",
+            List.of("owners aligned"),
+            List.of("agents"),
+            "kickoff follow-up",
+            Instant.parse("2026-03-16T02:00:00Z")
+        ));
+
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        SearchApplicationService service = new SearchApplicationService(
+            repository,
+            request -> new SearchAiEnhancer.SearchAiEnhancementResult(Map.of(), Map.of()),
+            traceRepository,
+            new RecordingToolInvocationLogRepository(),
+            new RecordingUserActionEventRepository(),
+            new PreferenceContextInjectionService(new InMemoryUserPreferenceProfileRepository())
+        );
+
+        SearchApplicationService.SearchView result = service.search(userId.toString(), "kickoff alpha");
+
+        assertThat(result.relatedMatches()).extracting(SearchApplicationService.SearchRelatedMatchView::noteId)
+            .containsExactly(firstNoteId, secondNoteId);
+        assertThat(traceRepository.completed.orchestratorState())
+            .containsEntry("preference_profile_loaded", false)
+            .containsEntry("preference_rerank_count", 0);
+    }
+
+    @Test
+    void degradesToEmptyPreferenceContextWhenProfileLoadFails() {
+        UUID userId = UUID.randomUUID();
+        UUID firstNoteId = UUID.randomUUID();
+        UUID secondNoteId = UUID.randomUUID();
+        InMemorySearchRepository repository = new InMemorySearchRepository();
+        repository.store(candidate(
+            userId,
+            firstNoteId,
+            "Kickoff roadmap",
+            "team coordination",
+            List.of("owners aligned"),
+            List.of("infra"),
+            "kickoff details",
+            Instant.parse("2026-03-16T03:00:00Z")
+        ));
+        repository.store(candidate(
+            userId,
+            secondNoteId,
+            "Kickoff review",
+            "team coordination",
+            List.of("owners aligned"),
+            List.of("agents"),
+            "kickoff follow-up",
+            Instant.parse("2026-03-16T02:00:00Z")
+        ));
+
+        RecordingAgentTraceRepository traceRepository = new RecordingAgentTraceRepository();
+        SearchApplicationService service = new SearchApplicationService(
+            repository,
+            request -> new SearchAiEnhancer.SearchAiEnhancementResult(Map.of(), Map.of()),
+            traceRepository,
+            new RecordingToolInvocationLogRepository(),
+            new RecordingUserActionEventRepository(),
+            new PreferenceContextInjectionService(new ThrowingUserPreferenceProfileRepository())
+        );
+
+        SearchApplicationService.SearchView result = service.search(userId.toString(), "kickoff alpha");
+
+        assertThat(result.relatedMatches()).extracting(SearchApplicationService.SearchRelatedMatchView::noteId)
+            .containsExactly(firstNoteId, secondNoteId);
+        assertThat(traceRepository.completed.orchestratorState())
+            .containsEntry("preference_profile_loaded", false)
+            .containsEntry("preference_rerank_count", 0);
+    }
+
     private SearchRepository.SearchCandidate candidate(UUID userId,
                                                        UUID noteId,
                                                        String title,
@@ -341,11 +542,20 @@ class SearchApplicationServiceTest {
 
     private static final class RecordingUserActionEventRepository implements UserActionEventRepository {
 
-        private final List<UserActionEventRecord> events = new ArrayList<>();
+        private final List<UserActionEventRepository.UserActionEventRecord> events = new ArrayList<>();
 
         @Override
         public void append(UUID userId, String eventType, String entityType, UUID entityId, UUID traceId, Map<String, Object> payload) {
-            events.add(new UserActionEventRecord(userId, eventType, entityType, entityId, traceId, payload));
+            events.add(new UserActionEventRepository.UserActionEventRecord(
+                UUID.randomUUID(),
+                userId,
+                eventType,
+                entityType,
+                entityId,
+                traceId,
+                payload,
+                Instant.now()
+            ));
         }
     }
 
@@ -378,6 +588,44 @@ class SearchApplicationServiceTest {
         }
     }
 
+    private static final class InMemoryUserPreferenceProfileRepository implements UserPreferenceProfileRepository {
+
+        private final Map<UUID, UserPreferenceProfileRecord> records = new LinkedHashMap<>();
+
+        @Override
+        public Optional<UserPreferenceProfileRecord> findByUserId(UUID userId) {
+            return Optional.ofNullable(records.get(userId));
+        }
+
+        @Override
+        public UserPreferenceProfileRecord upsert(UUID userId, InterestProfile interestProfile) {
+            UserPreferenceProfileRecord existing = records.get(userId);
+            Instant now = Instant.now();
+            UserPreferenceProfileRecord stored = existing == null
+                ? new UserPreferenceProfileRecord(UUID.randomUUID(), userId, interestProfile, now, now)
+                : new UserPreferenceProfileRecord(existing.id(), userId, interestProfile, existing.createdAt(), now);
+            records.put(userId, stored);
+            return stored;
+        }
+
+        private void put(UUID userId, InterestProfile interestProfile) {
+            Instant now = Instant.parse("2026-04-16T00:00:00Z");
+            records.put(userId, new UserPreferenceProfileRecord(UUID.randomUUID(), userId, interestProfile, now, now));
+        }
+    }
+
+    private static final class ThrowingUserPreferenceProfileRepository implements UserPreferenceProfileRepository {
+        @Override
+        public Optional<UserPreferenceProfileRecord> findByUserId(UUID userId) {
+            throw new RuntimeException("simulated preference repository failure");
+        }
+
+        @Override
+        public UserPreferenceProfileRecord upsert(UUID userId, InterestProfile interestProfile) {
+            throw new UnsupportedOperationException("not needed");
+        }
+    }
+
     private record TraceCreateRecord(
         UUID userId,
         String entryType,
@@ -393,16 +641,6 @@ class SearchApplicationServiceTest {
         UUID traceId,
         String resultSummary,
         Map<String, Object> orchestratorState
-    ) {
-    }
-
-    private record UserActionEventRecord(
-        UUID userId,
-        String eventType,
-        String entityType,
-        UUID entityId,
-        UUID traceId,
-        Map<String, Object> payload
     ) {
     }
 

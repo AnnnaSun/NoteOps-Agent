@@ -4,6 +4,7 @@ import com.noteops.agent.common.ApiException;
 import com.noteops.agent.controller.ApiExceptionHandler;
 import com.noteops.agent.model.preference.InterestProfile;
 import com.noteops.agent.service.preference.UserPreferenceProfileApplicationService;
+import com.noteops.agent.service.preference.UserPreferenceProfileRecomputeService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -23,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -36,6 +38,9 @@ class UserPreferenceProfileControllerTest {
 
     @MockBean
     private UserPreferenceProfileApplicationService userPreferenceProfileApplicationService;
+
+    @MockBean
+    private UserPreferenceProfileRecomputeService userPreferenceProfileRecomputeService;
 
     @Test
     void returnsPreferenceProfileWithEnvelope() throws Exception {
@@ -107,6 +112,51 @@ class UserPreferenceProfileControllerTest {
             .andExpect(jsonPath("$.success").value(false))
             .andExpect(jsonPath("$.trace_id").value(nullValue()))
             .andExpect(jsonPath("$.error.code").value("USER_PREFERENCE_PROFILE_NOT_FOUND"));
+    }
+
+    @Test
+    void recomputesPreferenceProfileWithTraceId() throws Exception {
+        UUID profileId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        when(userPreferenceProfileRecomputeService.recompute(any()))
+            .thenReturn(new UserPreferenceProfileRecomputeService.RecomputeCommandResult(
+                view(profileId, userId, List.of("agents", "automation"), List.of("crypto")),
+                "trace-preference-profile-recompute",
+                12
+            ));
+
+        mockMvc.perform(post("/api/v1/preferences/profile/recompute")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "user_id": "%s"
+                    }
+                    """.formatted(userId)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.trace_id").value("trace-preference-profile-recompute"))
+            .andExpect(jsonPath("$.data.id").value(profileId.toString()))
+            .andExpect(jsonPath("$.data.user_id").value(userId.toString()))
+            .andExpect(jsonPath("$.data.interest_profile.preferred_topics[0]").value("agents"))
+            .andExpect(jsonPath("$.meta.server_time").exists());
+    }
+
+    @Test
+    void returnsBadRequestEnvelopeWhenRecomputeUserIdIsInvalid() throws Exception {
+        when(userPreferenceProfileRecomputeService.recompute(any()))
+            .thenThrow(new ApiException(HttpStatus.BAD_REQUEST, "INVALID_USER_ID", "user_id must be a valid UUID"));
+
+        mockMvc.perform(post("/api/v1/preferences/profile/recompute")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "user_id": "not-a-uuid"
+                    }
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.error.code").value("INVALID_USER_ID"));
     }
 
     private UserPreferenceProfileApplicationService.UserPreferenceProfileView view(UUID profileId,

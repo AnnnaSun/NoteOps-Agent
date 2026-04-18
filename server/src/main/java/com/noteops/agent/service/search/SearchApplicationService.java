@@ -5,6 +5,7 @@ import com.noteops.agent.repository.event.UserActionEventRepository;
 import com.noteops.agent.repository.search.SearchRepository;
 import com.noteops.agent.repository.trace.AgentTraceRepository;
 import com.noteops.agent.repository.trace.ToolInvocationLogRepository;
+import com.noteops.agent.service.preference.PreferenceContextInjectionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +35,7 @@ import java.util.regex.Pattern;
 public class SearchApplicationService {
 
     private static final Logger log = LoggerFactory.getLogger(SearchApplicationService.class);
+    private static final String PREFERENCE_CONTEXT_LOAD_FAILED = "PREFERENCE_CONTEXT_LOAD_FAILED";
     private static final Pattern TOKEN_PATTERN = Pattern.compile("[\\p{L}\\p{N}]+");
     private static final Pattern CJK_WHITESPACE_PATTERN = Pattern.compile("(?<=[\\p{IsHan}])\\s+(?=[\\p{IsHan}])");
     private static final int MAX_AI_CANDIDATE_COUNT = 20;
@@ -45,18 +47,36 @@ public class SearchApplicationService {
     private final AgentTraceRepository agentTraceRepository;
     private final ToolInvocationLogRepository toolInvocationLogRepository;
     private final UserActionEventRepository userActionEventRepository;
+    private final PreferenceContextInjectionService preferenceContextInjectionService;
 
     @Autowired
     public SearchApplicationService(SearchRepository searchRepository,
                                     SearchAiEnhancer searchAiEnhancer,
                                     AgentTraceRepository agentTraceRepository,
                                     ToolInvocationLogRepository toolInvocationLogRepository,
-                                    UserActionEventRepository userActionEventRepository) {
+                                    UserActionEventRepository userActionEventRepository,
+                                    PreferenceContextInjectionService preferenceContextInjectionService) {
         this.searchRepository = searchRepository;
         this.searchAiEnhancer = searchAiEnhancer;
         this.agentTraceRepository = agentTraceRepository;
         this.toolInvocationLogRepository = toolInvocationLogRepository;
         this.userActionEventRepository = userActionEventRepository;
+        this.preferenceContextInjectionService = preferenceContextInjectionService;
+    }
+
+    public SearchApplicationService(SearchRepository searchRepository,
+                                    SearchAiEnhancer searchAiEnhancer,
+                                    AgentTraceRepository agentTraceRepository,
+                                    ToolInvocationLogRepository toolInvocationLogRepository,
+                                    UserActionEventRepository userActionEventRepository) {
+        this(
+            searchRepository,
+            searchAiEnhancer,
+            agentTraceRepository,
+            toolInvocationLogRepository,
+            userActionEventRepository,
+            PreferenceContextInjectionService.noOp()
+        );
     }
 
     public SearchApplicationService(SearchRepository searchRepository) {
@@ -65,7 +85,8 @@ public class SearchApplicationService {
             NO_OP_SEARCH_AI_ENHANCER,
             new NoOpAgentTraceRepository(),
             NO_OP_TOOL_INVOCATION_LOG_REPOSITORY,
-            NO_OP_USER_ACTION_EVENT_REPOSITORY
+            NO_OP_USER_ACTION_EVENT_REPOSITORY,
+            PreferenceContextInjectionService.noOp()
         );
     }
 
@@ -127,15 +148,16 @@ public class SearchApplicationService {
             .comparingInt(ScoredExactMatch::score).reversed()
             .thenComparing(match -> match.view().updatedAt(), Comparator.reverseOrder())
             .thenComparing(match -> match.view().noteId()));
-        relatedMatches.sort(Comparator
-            .comparingInt(ScoredRelatedMatch::score).reversed()
-            .thenComparing(match -> match.view().updatedAt(), Comparator.reverseOrder())
-            .thenComparing(match -> match.view().noteId()));
+        List<ScoredRelatedMatch> baseSortedRelatedMatches = new ArrayList<>(relatedMatches);
+        baseSortedRelatedMatches.sort(relatedMatchComparator());
+        PreferenceContextInjectionService.PreferenceContext preferenceContext = loadPreferenceContextSafely(userId, traceId);
+        List<ScoredRelatedMatch> rankedRelatedMatches = applyPreferenceToRelatedMatches(baseSortedRelatedMatches, preferenceContext);
+        int preferenceRerankCount = countOrderShift(baseSortedRelatedMatches, rankedRelatedMatches);
 
         List<ExternalSupplementSeed> externalSupplementSeeds = buildExternalSupplementSeeds(query);
         // Search AI 候选集做预算保护：总候选数最多 20，其中 related 按“最近更新 + 快到遗忘点”混合选取。
         SelectedRelatedCandidates selectedRelatedCandidates = selectRelatedCandidatesForEnhancement(
-            relatedMatches,
+            rankedRelatedMatches,
             externalSupplementSeeds.size(),
             Instant.now()
         );
@@ -147,7 +169,7 @@ public class SearchApplicationService {
             selectedRelatedCandidates.matches(),
             externalSupplementSeeds
         );
-        List<SearchRelatedMatchView> relatedViews = relatedMatches.stream()
+        List<SearchRelatedMatchView> relatedViews = rankedRelatedMatches.stream()
             .map(match -> enrichRelatedView(match.view(), enhancementOutcome.result()))
             .toList();
         List<ExternalSupplementView> externalSupplements = externalSupplementSeeds.stream()
@@ -169,6 +191,8 @@ public class SearchApplicationService {
                 "selected_related_candidate_count", selectedRelatedCandidates.matches().size(),
                 "selected_related_by_recency_count", selectedRelatedCandidates.recencyCount(),
                 "selected_related_by_forgetting_count", selectedRelatedCandidates.forgettingCount(),
+                "preference_profile_loaded", preferenceContext.profileLoaded(),
+                "preference_rerank_count", preferenceRerankCount,
                 "exact_count", exactMatches.size(),
                 "related_count", relatedViews.size(),
                 "external_count", externalSupplements.size()
@@ -189,6 +213,8 @@ public class SearchApplicationService {
             Map.of(
                 "ai_enhancement_status", enhancementOutcome.status(),
                 "selected_related_candidate_count", selectedRelatedCandidates.matches().size(),
+                "preference_profile_loaded", preferenceContext.profileLoaded(),
+                "preference_rerank_count", preferenceRerankCount,
                 "external_count", externalSupplements.size(),
                 "source_names", externalSupplements.stream().map(ExternalSupplementView::sourceName).toList(),
                 "relation_labels", externalSupplements.stream().map(ExternalSupplementView::relationLabel).toList()
@@ -209,7 +235,9 @@ public class SearchApplicationService {
                 "related_count", relatedViews.size(),
                 "external_count", externalSupplements.size(),
                 "ai_enhancement_status", enhancementOutcome.status(),
-                "selected_related_candidate_count", selectedRelatedCandidates.matches().size()
+                "selected_related_candidate_count", selectedRelatedCandidates.matches().size(),
+                "preference_profile_loaded", preferenceContext.profileLoaded(),
+                "preference_rerank_count", preferenceRerankCount
             )
         );
         userActionEventRepository.append(
@@ -225,26 +253,30 @@ public class SearchApplicationService {
                 "external_count", externalSupplements.size(),
                 "ai_enhancement_status", enhancementOutcome.status(),
                 "selected_related_candidate_count", selectedRelatedCandidates.matches().size(),
+                "preference_profile_loaded", preferenceContext.profileLoaded(),
+                "preference_rerank_count", preferenceRerankCount,
                 "relation_labels", externalSupplements.stream().map(ExternalSupplementView::relationLabel).toList()
             )
         );
         agentTraceRepository.markCompleted(
             traceId,
             "Search completed with " + exactMatches.size() + " exact matches, " + relatedViews.size() + " related matches and " + externalSupplements.size() + " external supplements",
-            Map.of(
-                "search_request_id", searchRequestId,
-                "query", query,
-                "exact_count", exactMatches.size(),
-                "related_count", relatedViews.size(),
-                "external_count", externalSupplements.size(),
-                "ai_enhancement_status", enhancementOutcome.status(),
-                "selected_related_candidate_count", selectedRelatedCandidates.matches().size(),
-                "selected_related_by_recency_count", selectedRelatedCandidates.recencyCount(),
-                "selected_related_by_forgetting_count", selectedRelatedCandidates.forgettingCount()
+            Map.ofEntries(
+                Map.entry("search_request_id", searchRequestId),
+                Map.entry("query", query),
+                Map.entry("exact_count", exactMatches.size()),
+                Map.entry("related_count", relatedViews.size()),
+                Map.entry("external_count", externalSupplements.size()),
+                Map.entry("ai_enhancement_status", enhancementOutcome.status()),
+                Map.entry("selected_related_candidate_count", selectedRelatedCandidates.matches().size()),
+                Map.entry("selected_related_by_recency_count", selectedRelatedCandidates.recencyCount()),
+                Map.entry("selected_related_by_forgetting_count", selectedRelatedCandidates.forgettingCount()),
+                Map.entry("preference_profile_loaded", preferenceContext.profileLoaded()),
+                Map.entry("preference_rerank_count", preferenceRerankCount)
             )
         );
         log.info(
-            "module=SearchApplicationService action=search_query_success path=/api/v1/search user_id={} search_request_id={} trace_id={} exact_count={} related_count={} external_count={} ai_enhancement_status={} selected_related_candidate_count={} duration_ms={}",
+            "module=SearchApplicationService action=search_query_success path=/api/v1/search user_id={} search_request_id={} trace_id={} exact_count={} related_count={} external_count={} ai_enhancement_status={} selected_related_candidate_count={} preference_profile_loaded={} preference_rerank_count={} duration_ms={}",
             userId,
             searchRequestId,
             traceId,
@@ -253,6 +285,8 @@ public class SearchApplicationService {
             externalSupplements.size(),
             enhancementOutcome.status(),
             selectedRelatedCandidates.matches().size(),
+            preferenceContext.profileLoaded(),
+            preferenceRerankCount,
             durationMs
         );
 
@@ -439,6 +473,58 @@ public class SearchApplicationService {
             relatedBudget - selected.size()
         );
         return new SelectedRelatedCandidates(selected, recencyCount, forgettingCount);
+    }
+
+    private List<ScoredRelatedMatch> applyPreferenceToRelatedMatches(List<ScoredRelatedMatch> baseSortedRelatedMatches,
+                                                                     PreferenceContextInjectionService.PreferenceContext preferenceContext) {
+        if (!preferenceContext.profileLoaded() || baseSortedRelatedMatches.isEmpty()) {
+            return baseSortedRelatedMatches;
+        }
+        List<ScoredRelatedMatch> ranked = baseSortedRelatedMatches.stream()
+            .map(match -> {
+                int preferenceScore = preferenceContextInjectionService.scoreSearchRelatedByTopics(
+                    preferenceContext,
+                    match.candidate().currentTags()
+                );
+                return new ScoredRelatedMatch(match.view(), match.candidate(), match.score() + preferenceScore);
+            })
+            .sorted(relatedMatchComparator())
+            .toList();
+        return ranked;
+    }
+
+    private Comparator<ScoredRelatedMatch> relatedMatchComparator() {
+        return Comparator
+            .comparingInt(ScoredRelatedMatch::score).reversed()
+            .thenComparing(match -> match.view().updatedAt(), Comparator.reverseOrder())
+            .thenComparing(match -> match.view().noteId());
+    }
+
+    private int countOrderShift(List<ScoredRelatedMatch> baseSortedRelatedMatches,
+                                List<ScoredRelatedMatch> rankedRelatedMatches) {
+        int positionCount = Math.min(baseSortedRelatedMatches.size(), rankedRelatedMatches.size());
+        int movedCount = 0;
+        for (int index = 0; index < positionCount; index++) {
+            if (!baseSortedRelatedMatches.get(index).view().noteId().equals(rankedRelatedMatches.get(index).view().noteId())) {
+                movedCount++;
+            }
+        }
+        return movedCount;
+    }
+
+    private PreferenceContextInjectionService.PreferenceContext loadPreferenceContextSafely(UUID userId, UUID traceId) {
+        try {
+            return preferenceContextInjectionService.loadContext(userId);
+        } catch (RuntimeException exception) {
+            log.warn(
+                "module=SearchApplicationService action=search_preference_context_degraded path=/api/v1/search trace_id={} user_id={} result=DEGRADED error_code={} error_message={}",
+                traceId,
+                userId,
+                PREFERENCE_CONTEXT_LOAD_FAILED,
+                exception.getMessage()
+            );
+            return PreferenceContextInjectionService.emptyContext();
+        }
     }
 
     private EnhancementOutcome enhanceSearchArtifacts(UUID userId,

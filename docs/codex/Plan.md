@@ -138,6 +138,9 @@ Phase 5 需要完成两个最小但真实可运行的闭环：
 - profile 内容能反映真实 Trend / Review / Task 行为倾向
 - 更新链路可追踪
 
+### 当前状态
+已完成最小闭环。当前仓库已新增 `PreferenceRecomputeService`（手动触发），可从 `user_action_events` 最近窗口聚合并重算 `interest_profile`，并通过 trace / structured logging 记录重算开始、成功、失败链路。
+
 ### deferred
 - 复杂权重学习
 - 批量离线重算平台
@@ -163,6 +166,9 @@ Phase 5 需要完成两个最小但真实可运行的闭环：
 - 至少一个现有能力读取 profile
 - 注入结果能影响排序或 suggested_action
 - 不直接改写正文 / 最终状态
+
+### 当前状态
+已完成最小闭环。当前仓库已新增 `PreferenceContextInjectionService`，并在 Trend Inbox 与 Search 链路接入 `interest_profile` 的建议层注入：可在运行时影响 Trend 候选排序与 `suggested_action`、Search related 排序，同时保持“不改写持久化最终状态”边界。
 
 ### deferred
 - 全局统一推荐层
@@ -190,6 +196,9 @@ Phase 5 需要完成两个最小但真实可运行的闭环：
 - Web 可被安装为 PWA（若当前技术栈支持）
 - 基础壳离线可打开
 - 已缓存页面具备最小访问能力
+
+### 当前状态
+已完成最小闭环。当前仓库已补齐 `manifest.webmanifest`、`service worker` 注册与核心静态资源缓存策略，并对 Review / Note summary / Task 相关 GET 请求提供最小数据缓存降级能力，满足 Step 5.5 的 PWA 基础壳要求。
 
 ### deferred
 - 深度缓存优化
@@ -220,6 +229,9 @@ Phase 5 需要完成两个最小但真实可运行的闭环：
 - 联网后能成功回传并被服务端接受
 - 重复回传具备基本幂等性
 
+### 当前状态
+已完成最小闭环。当前仓库已在 Web 端支持离线 review 动作本地 pending 记录与联网自动回传，并新增 `POST /api/v1/sync/actions` 服务端合并入口；服务端已落地按 `(user_id, client_id, offline_action_id)` 的幂等 receipt，重复回传会命中既有结果而不重复执行 review 完成主链路。
+
 ### deferred
 - 更多离线动作类型
 - 更复杂冲突解决
@@ -247,6 +259,16 @@ Phase 5 需要完成两个最小但真实可运行的闭环：
 - 未完成内容显式记录
 - 未把未来移动端/复杂推荐误写成已实现
 
+### 当前状态
+已完成最小闭环。当前仓库已完成 Step 5.1 ~ Step 5.6 的实现与文档对齐，并在 Step 5.7 完成 milestone 状态收口、deferred backlog 明确化、Phase 边界澄清与执行文档一致性校验。
+
+### deferred
+- Phase 6 目标与切片计划尚未在本文件展开
+- AGENTS.md 仍保留 Phase 4 章节作为历史冻结边界说明（不影响当前按 Phase 5 执行）
+
+### 建议后续
+进入 Phase 6 规划（仅规划，不在当前步骤实现）
+
 ---
 
 ## 5. 阶段完成定义
@@ -263,6 +285,8 @@ Phase 5 需要完成两个最小但真实可运行的闭环：
 8. trace / log / event / docs 已同步
 
 如果只做事件表或只做 PWA 壳子，不算 Phase 5 最小闭环。
+
+当前状态：以上 8 条条件均已满足，Phase 5 已达到最小闭环。
 
 ---
 

@@ -12,6 +12,8 @@ import type {
   ReviewCompletionResult,
   ReviewPrepResult,
   ReviewTodayItem,
+  SyncActionsPayload,
+  SyncActionsResult,
   SearchEvidenceResult,
   SearchResult,
   TaskItem,
@@ -202,6 +204,13 @@ export function completeReview(
   payload: ReviewCompletionPayload
 ): Promise<ReviewCompletionResult> {
   return request(`/api/v1/reviews/${encodeURIComponent(reviewItemId)}/complete`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function syncActions(payload: SyncActionsPayload): Promise<SyncActionsResult> {
+  return request("/api/v1/sync/actions", {
     method: "POST",
     body: JSON.stringify(payload)
   });

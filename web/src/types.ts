@@ -223,6 +223,46 @@ export type ReviewCompletionResult = {
   follow_up_task_suggestion: string | null;
 };
 
+export type SyncActionRequestItem = {
+  offline_action_id: string;
+  action_type: string;
+  entity_type: string;
+  entity_id: string;
+  payload: Record<string, unknown>;
+  occurred_at: string;
+};
+
+export type SyncActionsPayload = {
+  user_id: string;
+  client_id: string;
+  actions: SyncActionRequestItem[];
+};
+
+export type SyncAcceptedAction = {
+  offline_action_id: string;
+  action_type: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  duplicated: boolean;
+};
+
+export type SyncRejectedAction = {
+  offline_action_id: string;
+  action_type: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  error_code: string;
+  error_message: string;
+  retryable: boolean;
+  duplicated: boolean;
+};
+
+export type SyncActionsResult = {
+  accepted: SyncAcceptedAction[];
+  rejected: SyncRejectedAction[];
+  server_sync_cursor: string;
+};
+
 export type ChangeProposal = {
   id: string;
   user_id: string;

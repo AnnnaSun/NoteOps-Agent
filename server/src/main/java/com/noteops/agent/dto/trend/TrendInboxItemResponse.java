@@ -35,6 +35,10 @@ public record TrendInboxItemResponse(
 ) {
 
     public static TrendInboxItemResponse from(TrendItemRepository.TrendItemRecord record) {
+        return from(record, null);
+    }
+
+    public static TrendInboxItemResponse from(TrendItemRepository.TrendItemRecord record, String effectiveSuggestedAction) {
         return new TrendInboxItemResponse(
             record.id().toString(),
             record.userId().toString(),
@@ -45,7 +49,9 @@ public record TrendInboxItemResponse(
             record.summary(),
             record.normalizedScore(),
             record.status().name(),
-            record.suggestedAction() == null ? null : record.suggestedAction().name(),
+            effectiveSuggestedAction == null
+                ? (record.suggestedAction() == null ? null : record.suggestedAction().name())
+                : effectiveSuggestedAction,
             record.analysisPayload().toMap(),
             record.sourcePublishedAt(),
             record.lastIngestedAt(),

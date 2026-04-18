@@ -48,13 +48,104 @@
 - `interest_profile` 结构已稳定为 `preferred_topics`、`ignored_topics`、`source_weights`、`action_bias`、`task_bias`
 - 保存链路会写结构化日志
 - 保存链路会写 `agent_traces`，entry type 为 `USER_PREFERENCE_PROFILE_UPSERT`
-- 当前 profile 仍是静态持久化结果，不会自动从 `user_action_events` 重算
+- Step 5.2 只负责 profile 查询与保存基线，重算链路由 Step 5.3 承接
 
 当前 Step 5.2 仍明确不做：
 - `output_style_profile`
 - `agent_policy_profile`
 - 多版本 profile 回退
-- 事件聚合生成 profile 的 recompute / refresh
+
+### 1.3 Step 5.3 当前落地状态
+
+当前仓库已完成 Step 5.3 的最小 recompute / refresh 闭环：
+- 已新增 `PreferenceRecomputeService`，从 `user_action_events` 最近窗口聚合重算 `interest_profile`
+- 已补齐 `user_action_events` 的读取能力，支持按 `user_id` 读取最近事件（默认窗口 200）
+- 已提供手动重算接口：
+  - `POST /api/v1/preferences/profile/recompute`
+- 重算结果复用 `user_preference_profiles` 当前持久化模型（upsert）
+
+当前实现说明：
+- 重算聚合只覆盖 Step 5.3 范围内的 Trend / Review / Task 主链路事件
+- 重算链路已补结构化日志（start / success / fail）
+- 重算链路已补 `agent_traces`，entry type 为 `USER_PREFERENCE_PROFILE_RECOMPUTE`
+
+当前 Step 5.3 仍明确不做：
+- 复杂权重学习
+- 批量离线重算平台
+- 在线实时流式更新
+
+### 1.4 Step 5.4 当前落地状态
+
+当前仓库已完成 Step 5.4 的最小 context injection 闭环：
+- 已新增 `PreferenceContextInjectionService`，按 `user_id` 读取当前 `interest_profile` 并在无 profile 时回退为空注入
+- Trend Inbox 已接入建议层注入：
+  - 可基于 `normalized_score`、`source_weights`、topic 匹配做运行时重排
+  - 可基于 `action_bias` 与 ignored topic 命中覆盖返回层 `suggested_action`
+- Search 已接入建议层注入：
+  - 在 related matches 排序中叠加 profile topic 偏好分
+  - exact matches 与 existing external supplement contract 保持不变
+
+当前实现说明：
+- 注入只作用于运行时建议层，不回写 `trend_items` 或其他最终持久化状态
+- Search 仍沿用现有 trace entry type（`SEARCH_QUERY`），仅补充 orchestrator state / output digest 的 preference 统计字段
+- Trend / Search 成功日志已补 `preference_profile_loaded` 与 `preference_rerank_count`，Trend 额外补 `suggested_action_override_count`
+
+当前 Step 5.4 仍明确不做：
+- 全局统一推荐层
+- 更复杂个性化排序
+- 多 Agent 全面共享 profile
+
+### 1.5 Step 5.5 当前落地状态
+
+当前仓库已完成 Step 5.5 的最小 PWA 基础壳：
+- 已新增 `manifest.webmanifest` 与应用图标资源，支持基础安装元数据
+- 已新增并注册 `service worker`（生产构建下注册）
+- 已补齐最小缓存策略：
+  - 核心静态资源（`/`、`index.html`、manifest、icon）预缓存
+  - 同源静态资产（script/style/image/font）缓存优先
+  - 导航请求网络优先，离线回退到缓存 `index.html`
+  - Review / Note summary / Task 相关 GET 接口采用网络优先 + 缓存回退
+
+当前实现说明：
+- Step 5.5 只提供“壳 + 缓存基础设施”，不涉及离线动作写入与 `sync/actions` 回传
+- 不改动现有 API 路径与业务 DTO，仅新增前端运行时缓存层
+
+当前 Step 5.5 仍明确不做：
+- 离线 review 动作记录
+- `sync/actions` 回传
+- 更复杂缓存更新策略与精细失效治理
+
+### 1.6 Step 5.6 当前落地状态
+
+当前仓库已完成 Step 5.6 的最小 Offline Review + Sync 闭环：
+- Web 端在 review 提交失败且网络不可用时，会将动作写入本地 pending actions
+- Web 端启动与网络恢复时会自动调用 `POST /api/v1/sync/actions` 回传 pending actions
+- 服务端已新增 `sync_action_receipts` 幂等收据表，按 `(user_id, client_id, offline_action_id)` 去重
+- 当前 `sync/actions` 最小支持 `REVIEW_COMPLETE` 动作回放，复用现有 `ReviewApplicationService.complete` 主链路
+
+当前实现说明：
+- `sync/actions` 返回 `accepted[]` / `rejected[]` / `server_sync_cursor`，并标记 `duplicated` 便于客户端处理重复回传
+- 同步链路已补 `agent_traces`（`SYNC_ACTIONS_APPLY`）与结构化日志 `start/success/fail`
+- 同步链路已写 `user_action_events`：`OFFLINE_ACTION_SYNC_ACCEPTED`、`OFFLINE_ACTION_SYNC_REJECTED`
+
+当前 Step 5.6 仍明确不做：
+- 非 review 类离线动作回放
+- 复杂冲突解决策略
+- 后台静默同步优化
+
+### 1.7 Step 5.7 当前落地状态
+
+当前仓库已完成 Step 5.7 的最小文档与治理收口：
+- `docs/codex/Plan.md` 已补齐 Step 5.7 当前状态，并标注 Phase 5 最小闭环达成
+- `docs/codex/Documentation.md` 已覆盖 Step 5.1 ~ 5.6 的已实现能力、边界与 deferred
+- `sync/actions` 合同、幂等与错误处理语义已同步到文档（含 `retryable`）
+- 已对执行基线文档做一致性校验并记录结果
+
+一致性校验结果（Step 5.7 要求）：
+- `docs/codex/Prompt.md` 与 `docs/codex/Plan.md`：一致，均为 Phase 5 主线
+- `docs/codex/Implement.md`：已在本步骤更新为 Phase 5 默认执行基线
+- `AGENTS.md`：仍保留 Phase 4 冻结边界描述；当前按 Source of Truth 优先级，以“用户最新任务 + Prompt/Plan 的 Phase 5 定义”为执行主线，Phase 4 条款继续作为 Trend 语义 guardrail
+- `noteops-phase-implement` skill：描述示例仍以 Phase 4 为主，但工作流（先读文档、最小闭环、最窄验证、文档同步）可复用于 Phase 5，不构成执行阻塞
 
 ---
 
@@ -219,6 +310,7 @@ Preference 必须按“行为驱动 + 建议层注入”管理，而不是自由
 当前已落地：
 - `GET /api/v1/preferences/profile?user_id=...`
 - `PUT /api/v1/preferences/profile`
+- `POST /api/v1/preferences/profile/recompute`
 
 当前最小响应语义：
 - `id`
@@ -233,7 +325,8 @@ Preference 必须按“行为驱动 + 建议层注入”管理，而不是自由
 
 说明：
 - Step 5.2 只提供 profile 查询与保存基线
-- recompute / refresh 仍属于 Step 5.3
+- Step 5.3 通过 `POST /api/v1/preferences/profile/recompute` 提供手动重算入口
+- 当前重算窗口默认读取最近 200 条 `user_action_events`
 
 ### 5.3 Sync Actions
 
@@ -244,6 +337,7 @@ Preference 必须按“行为驱动 + 建议层注入”管理，而不是自由
 - 服务端执行幂等校验与最小合并
 
 最小输入语义：
+- `user_id`
 - `client_id`
 - `actions[]`
     - `offline_action_id`
@@ -255,8 +349,29 @@ Preference 必须按“行为驱动 + 建议层注入”管理，而不是自由
 
 最小输出语义：
 - `accepted[]`
+    - `offline_action_id`
+    - `action_type`
+    - `entity_type`
+    - `entity_id`
+    - `duplicated`
 - `rejected[]`
+    - `offline_action_id`
+    - `action_type`
+    - `entity_type`
+    - `entity_id`
+    - `error_code`
+    - `error_message`
+    - `retryable`
+    - `duplicated`
 - `server_sync_cursor`
+
+当前最小支持动作：
+- `REVIEW_COMPLETE`（`entity_type=REVIEW_STATE`）
+
+幂等与错误处理语义（当前实现）：
+- 服务端先原子写入 `PROCESSING` receipt 占位，再执行业务回放，避免并发重复执行副作用
+- 稳定业务错误（4xx）会返回 `rejected` 且 `retryable=false`
+- 暂时性错误（5xx / runtime）不会落永久 `rejected`，客户端应保留 pending actions 以便重试
 
 ---
 
@@ -292,13 +407,13 @@ Preference 必须按“行为驱动 + 建议层注入”管理，而不是自由
 客户端离线动作建议按 action log 保存，而不是直接本地覆盖最终状态。
 
 推荐最小字段：
+- `user_id`
 - `offline_action_id`
 - `action_type`
 - `entity_type`
 - `entity_id`
 - `payload`
 - `occurred_at`
-- `sync_status`
 
 这样可以与服务端真相源模式保持一致。
 
@@ -392,3 +507,5 @@ Phase 5 新增核心链路必须补齐：
 8. trace / log / event / docs 已同步
 
 如果只完成事件表、只完成 profile 表、或只做 PWA 外壳，都不可标记为已完成最小闭环。
+
+当前状态：以上 8 条条件已满足，Phase 5 已达到最小闭环完成定义。
