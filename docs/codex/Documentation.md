@@ -446,6 +446,22 @@ Phase 5 新增核心链路必须补齐：
 - `duration_ms`（如适用）
 - `error_code` / `error_message`（失败时）
 
+=======
+同时建议至少记录以下 `user_action_events`：
+- `TREND_IGNORED`
+- `TREND_SAVED_AS_NOTE`
+- `TREND_PROMOTED_TO_IDEA`
+
+这些事件将作为未来偏好学习和排序评估输入。
+
+当前 Trend 最小闭环已落地的最小 `tool_invocation_logs` 包括：
+- `trend.source_registry.resolve`
+- `trend.source.fetch`
+- `trend.item.upsert`
+- `trend.item.analyze`
+- `trend.item.action`
+- `trend.note.convert`
+- `trend.idea.convert`
 ---
 
 ## 8. Web / PWA 交付基线（Phase 5）
