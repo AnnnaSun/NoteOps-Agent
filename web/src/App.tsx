@@ -17,6 +17,7 @@ import {
   listIdeas,
   listChangeProposals,
   listNotes,
+  syncActions,
   listTrendInbox,
   saveSearchEvidence,
   searchNotes,
@@ -35,6 +36,13 @@ import {
 } from "./ideaWorkspaceState";
 import { NAVIGATION_HASH_BY_VIEW, parseNavigationHash, toNavigationHash, type MainView } from "./navigationState";
 import { TREND_INBOX_DEFAULT_FILTERS, type TrendInboxFilters } from "./trendInboxState";
+import {
+  countPendingActionsByUser,
+  enqueuePendingReviewCompleteAction,
+  getSyncClientId,
+  listPendingActionsByUser,
+  removePendingActions
+} from "./offlineSync";
 import type {
   CaptureResponse,
   ChangeProposal,
@@ -64,6 +72,7 @@ import { WorkspaceView } from "./views/WorkspaceView";
 
 const DEFAULT_USER_ID = "11111111-1111-1111-1111-111111111111";
 const USER_ID_STORAGE_KEY = "noteops-user-id";
+const SYNC_ACTION_BATCH_SIZE = 200;
 const REVIEW_COMPLETION_STATUS_OPTIONS = ["COMPLETED", "PARTIAL", "NOT_STARTED", "ABANDONED"] as const;
 const REVIEW_COMPLETION_REASON_OPTIONS = ["TIME_LIMIT", "TOO_HARD", "VAGUE_MEMORY", "DEFERRED"] as const;
 const REVIEW_SELF_RECALL_RESULT_OPTIONS = ["GOOD", "VAGUE", "FAILED"] as const;
@@ -457,6 +466,22 @@ function normalizeOptionalValue(value: string): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function isLikelyOfflineError(error: unknown): boolean {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return true;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("load failed") ||
+    message.includes("network request failed")
+  );
+}
+
 function hasIdeaAssessmentResult(result: IdeaAssessmentResult | null | undefined): boolean {
   if (!result) {
     return false;
@@ -529,6 +554,7 @@ export default function App() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchActionMessage, setSearchActionMessage] = useState<string | null>(null);
   const [reviewFormError, setReviewFormError] = useState<string | null>(null);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isSubmittingCapture, setIsSubmittingCapture] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -571,6 +597,7 @@ export default function App() {
   const relatedMatches = searchResult?.related_matches ?? [];
   const externalSupplements = searchResult?.external_supplements ?? [];
   const searchAiEnhancementStatus = searchResult?.ai_enhancement_status ?? "SKIPPED";
+  const pendingSyncCount = countPendingActionsByUser(activeUserId);
   const lastReviewFeedbackView = lastReviewFeedback
     ? {
         reviewId: lastReviewFeedback.reviewId,
@@ -620,6 +647,81 @@ export default function App() {
     setActiveReviewFormId(null);
     setReviewFormDraft(null);
     setReviewFormError(null);
+  }
+
+  async function flushPendingActions(userId: string) {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      return;
+    }
+    const pendingActions = listPendingActionsByUser(userId);
+    if (!pendingActions.length) {
+      return;
+    }
+    try {
+      const clientId = getSyncClientId();
+      let acceptedCount = 0;
+      let rejectedCount = 0;
+      let retryableRejectedCount = 0;
+
+      for (let index = 0; index < pendingActions.length; index += SYNC_ACTION_BATCH_SIZE) {
+        const batch = pendingActions.slice(index, index + SYNC_ACTION_BATCH_SIZE);
+        if (!batch.length) {
+          continue;
+        }
+
+        const result = await syncActions({
+          user_id: userId,
+          client_id: clientId,
+          actions: batch.map((action) => ({
+            offline_action_id: action.offline_action_id,
+            action_type: action.action_type,
+            entity_type: action.entity_type,
+            entity_id: action.entity_id,
+            payload: action.payload,
+            occurred_at: action.occurred_at
+          }))
+        });
+
+        acceptedCount += result.accepted.length;
+        rejectedCount += result.rejected.length;
+        retryableRejectedCount += result.rejected.filter((item) => item.retryable).length;
+        const removableOfflineActionIds = [
+          ...result.accepted.map((item) => item.offline_action_id),
+          ...result.rejected.filter((item) => !item.retryable).map((item) => item.offline_action_id)
+        ];
+        removePendingActions(userId, removableOfflineActionIds);
+      }
+
+      if (activeUserIdRef.current !== userId) {
+        return;
+      }
+
+      if (rejectedCount > 0) {
+        setSyncNotice(
+          `离线回传完成：accepted=${acceptedCount}，rejected=${rejectedCount}，retryable_rejected=${retryableRejectedCount}。`
+        );
+      } else {
+        setSyncNotice(`已回传 ${acceptedCount} 条离线动作。`);
+      }
+      try {
+        const workspaceSnapshot = await fetchWorkspaceSnapshot(userId);
+        if (activeUserIdRef.current === userId) {
+          applyWorkspaceSnapshot(workspaceSnapshot);
+          setWorkspaceError(null);
+        }
+      } catch (error) {
+        if (activeUserIdRef.current === userId) {
+          setWorkspaceError(error instanceof Error ? error.message : "离线动作回传后刷新工作台失败");
+        }
+      }
+    } catch (error) {
+      if (activeUserIdRef.current === userId) {
+        setSyncNotice(toErrorMessage(error, "离线动作回传失败"));
+      }
+    }
   }
 
   useEffect(() => {
@@ -677,6 +779,20 @@ export default function App() {
 
   useEffect(() => {
     activeUserIdRef.current = activeUserId;
+  }, [activeUserId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    const syncForCurrentUser = () => {
+      void flushPendingActions(activeUserIdRef.current);
+    };
+    syncForCurrentUser();
+    window.addEventListener("online", syncForCurrentUser);
+    return () => {
+      window.removeEventListener("online", syncForCurrentUser);
+    };
   }, [activeUserId]);
 
   useEffect(() => {
@@ -979,6 +1095,7 @@ export default function App() {
     setIsIdeaTaskListVisibleById({});
     setIdeaActionError(null);
     setIdeaActionNotice(null);
+    setSyncNotice(null);
     setActiveUserId(nextUserId);
   }
 
@@ -1407,8 +1524,9 @@ export default function App() {
     startReviewTransition(() => {
       void (async () => {
         setReviewFormError(null);
+        const completionPayload = buildReviewCompletionPayload(review, reviewFormDraft);
         try {
-          const result = await completeReview(review.id, buildReviewCompletionPayload(review, reviewFormDraft));
+          const result = await completeReview(review.id, completionPayload);
           setLastReviewFeedback({
             reviewId: review.id,
             result,
@@ -1427,6 +1545,13 @@ export default function App() {
           }
           closeReviewForm();
         } catch (error) {
+          if (isLikelyOfflineError(error)) {
+            enqueuePendingReviewCompleteAction(activeUserIdRef.current, review.id, completionPayload);
+            setReviewsToday((current) => current.filter((item) => item.id !== review.id));
+            closeReviewForm();
+            setSyncNotice("当前网络不可用，已保存 review 完成动作，恢复联网后会自动回传。");
+            return;
+          }
           setReviewFormError(error instanceof Error ? error.message : "提交复习结果失败");
         }
       })();
@@ -1442,6 +1567,8 @@ export default function App() {
           <p className="hero-copy">
             Home 负责总览与 Capture，Notes / Ideas / Workspace 分别承载各自主体，Trends 现在是独立的 Trend Inbox。
           </p>
+          {pendingSyncCount > 0 ? <p className="status-message">待回传离线动作：{pendingSyncCount}</p> : null}
+          {syncNotice ? <p className="status-message">{syncNotice}</p> : null}
         </div>
         <form className="user-form" onSubmit={handleUserIdApply}>
           <label htmlFor="user-id">当前 user_id</label>

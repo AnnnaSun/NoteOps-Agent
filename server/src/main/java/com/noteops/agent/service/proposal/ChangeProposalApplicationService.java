@@ -248,6 +248,65 @@ public class ChangeProposalApplicationService {
         return new ChangeProposalCommandResult(updated, traceId.toString());
     }
 
+    @Transactional
+    // 拒绝 proposal：不改 Note，只推进 proposal 状态并补治理记录。
+    public ChangeProposalCommandResult reject(String proposalIdRaw, String userIdRaw) {
+        UUID proposalId = parseUuid(proposalIdRaw, "INVALID_CHANGE_PROPOSAL_ID", "proposal_id must be a valid UUID");
+        UUID userId = parseUuid(userIdRaw, "INVALID_USER_ID", "user_id must be a valid UUID");
+        log.info("action=change_proposal_reject_start user_id={} proposal_id={}", userId, proposalId);
+
+        ChangeProposalView proposal = changeProposalRepository.findByIdAndUserId(proposalId, userId)
+            .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "CHANGE_PROPOSAL_NOT_FOUND", "change proposal not found"));
+        ensureRejectable(proposal);
+
+        UUID traceId = agentTraceRepository.create(
+            userId,
+            "CHANGE_PROPOSAL_REJECT",
+            "Reject change proposal " + proposalId,
+            "CHANGE_PROPOSAL",
+            proposalId,
+            List.of("proposal-worker"),
+            Map.of("proposal_id", proposalId, "note_id", proposal.noteId(), "action", "REJECT")
+        );
+
+        changeProposalRepository.updateStatus(proposalId, ChangeProposalStatus.REJECTED, proposal.rollbackToken());
+        ChangeProposalView updated = changeProposalRepository.findByIdAndUserId(proposalId, userId).orElseThrow();
+
+        toolInvocationLogRepository.append(
+            userId,
+            traceId,
+            "proposal.reject",
+            "COMPLETED",
+            Map.of("proposal_id", proposalId, "note_id", proposal.noteId()),
+            Map.of("status", updated.status().name(), "rollback_token_present", hasText(updated.rollbackToken())),
+            1,
+            null,
+            null
+        );
+        userActionEventRepository.append(
+            userId,
+            "CHANGE_PROPOSAL_REJECTED",
+            "CHANGE_PROPOSAL",
+            proposalId,
+            traceId,
+            Map.of(
+                "note_id", proposal.noteId(),
+                "target_layer", updated.targetLayer().name(),
+                "risk_level", updated.riskLevel().name(),
+                "status", updated.status().name()
+            )
+        );
+        agentTraceRepository.markCompleted(
+            traceId,
+            "Rejected change proposal " + proposalId,
+            Map.of("proposal_id", proposalId, "note_id", proposal.noteId(), "result", "REJECTED")
+        );
+
+        log.info("action=change_proposal_reject_success user_id={} proposal_id={} trace_id={}",
+            userId, proposalId, traceId);
+        return new ChangeProposalCommandResult(updated, traceId.toString());
+    }
+
     private DraftInterpretation draftInterpretation(NoteQueryService.NoteDetailView note) {
         String sourceText = sourceText(note);
         List<String> keyPoints = NoteInterpretationSupport.extractKeyPoints(sourceText);
@@ -321,6 +380,18 @@ public class ChangeProposalApplicationService {
         }
         if (!hasText(proposal.rollbackToken())) {
             throw new ApiException(HttpStatus.CONFLICT, "CHANGE_PROPOSAL_ROLLBACK_TOKEN_MISSING", "rollback token is missing");
+        }
+    }
+
+    private void ensureRejectable(ChangeProposalView proposal) {
+        if (proposal.status() == ChangeProposalStatus.APPLIED) {
+            throw new ApiException(HttpStatus.CONFLICT, "CHANGE_PROPOSAL_ALREADY_APPLIED", "change proposal is already applied");
+        }
+        if (proposal.status() == ChangeProposalStatus.ROLLED_BACK) {
+            throw new ApiException(HttpStatus.CONFLICT, "CHANGE_PROPOSAL_ALREADY_ROLLED_BACK", "change proposal is already rolled back");
+        }
+        if (proposal.status() == ChangeProposalStatus.REJECTED) {
+            throw new ApiException(HttpStatus.CONFLICT, "CHANGE_PROPOSAL_ALREADY_REJECTED", "change proposal is already rejected");
         }
     }
 

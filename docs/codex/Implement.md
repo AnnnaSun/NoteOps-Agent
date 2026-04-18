@@ -6,7 +6,7 @@
 本文件定义 Codex 在 NoteOps 仓库内执行任务时的默认工作方式。  
 目标是减少发散、减少误改、减少“看起来做了很多但主线没推进”的情况。
 
-当前默认服务于 **Phase 4：Trend Source Registry / Trend Inbox / Trend Conversion**。
+当前默认服务于 **Phase 5：Preference Signal Layer + PWA Limited Offline Review + Sync**。
 
 ---
 
@@ -18,7 +18,7 @@
 2. 阅读 `docs/codex/Prompt.md`
 3. 阅读 `docs/codex/Plan.md`
 4. 阅读 `docs/codex/Implement.md`
-5. 确定当前任务所属 Phase 4 子步骤
+5. 确定当前任务所属 Phase 5 子步骤
 6. 只实现该子步骤的最小闭环
 7. 跑最小验证
 8. 需要时更新 `docs/codex/Documentation.md`
@@ -40,7 +40,7 @@
 不符合以下情况：
 
 - 为了“以后可能会用”提前铺很多抽象层
-- 把 Phase 5/6 的逻辑塞进 Phase 4
+- 把 Phase 6+ 的逻辑塞进 Phase 5
 - 一次改 schema、API、页面、算法、移动端预研全部内容
 - 大量生成占位文件却没有跑通主链路
 
@@ -75,17 +75,15 @@
 
 ### 5.1 总优先级
 
-Phase 4 默认按以下顺序推进：
+Phase 5 默认按以下顺序推进：
 
-1. schema / state machine / enum 正确性
-2. Trend API contract 与 DTO 一致性
-3. source registry / connector contract 可用
-4. ingest / normalize / dedupe 可用
-5. Trend AI 最小分析合同可用
-6. Trend Inbox 结果合同可用
-7. Trend -> Note / Idea 转化治理链路补齐
-8. Web 页面接真实接口
-9. 复杂算法、复杂 provider、复杂偏好学习、视觉细节后置
+1. `user_action_events` / `user_preference_profiles` / `sync` schema 与 contract 正确性
+2. preference recompute / refresh 可调用性
+3. preference context injection（仅建议层）可用性
+4. PWA 基础壳与最小缓存策略可用性
+5. offline review + pending actions + `sync/actions` 回传闭环
+6. trace / structured logs / 文档对齐
+7. 复杂推荐、复杂离线冲突、移动端能力后置
 
 ### 5.2 后端偏好
 
@@ -98,13 +96,12 @@ Phase 4 默认按以下顺序推进：
 
 关键日志默认必须覆盖：
 - controller 请求入口
-- source connector 调用开始 / 成功 / 失败
-- trend ingest / normalize / dedupe
-- AI analyze 开始 / 成功 / 失败
-- trend convert to note / idea
-- trend ignore / save / promote
-- proposal apply / rollback（如涉及）
-- task create / complete / skip / reschedule
+- preference recompute 开始 / 成功 / 失败
+- preference injection 降级 / 成功（如涉及）
+- offline action 入队（前端）与回传入口（后端）
+- sync action 接受 / 拒绝 / 幂等命中
+- review complete / task create / task complete（如涉及）
+- proposal apply / reject / rollback（如涉及）
 
 日志至少包含：
 - `trace_id`
@@ -132,16 +129,16 @@ Phase 4 默认按以下顺序推进：
 
 优先：
 - 页面能连上真实接口
-- Trend Inbox 主路径能跑通
-- 状态边界清楚（加载、空、错误、成功）
-- 候选动作边界清晰（ignore / save / promote）
-- 来源、摘要、分数、建议动作可见
+- PWA 基础壳可安装、可离线打开已缓存页面
+- Review 主路径离线动作可记录并可回传
+- 状态边界清楚（加载、空、错误、成功、离线/回传）
+- 不破坏 Notes / Ideas / Workspace / Trends 既有主路径
 
 不优先：
 - 复杂视觉效果
-- 完整组件系统
-- 动画、主题、多端适配细节
-- 高级筛选与看板视图
+- 全站离线
+- 复杂冲突解决与后台静默同步
+- 原生移动端适配细节
 
 ---
 
@@ -235,7 +232,9 @@ Proposal 只允许作用于：
 
 ---
 
-## 10. Trend / Task / Workspace 特殊规则
+## 10. Phase 4 遗留约束（仅触及 Trend/Task/Workspace 时适用）
+
+以下规则来自 Phase 4 冻结边界。当前 Phase 5 任务若未触及相关模块，可不作为本步骤主目标；一旦触及，则必须继续遵守。
 
 ### 10.1 Trend
 不要把 Trend 简化成：
@@ -284,12 +283,10 @@ Trend 转化若生成 follow-up task：
 则采用以下策略：
 
 ### 11.1 文档冲突
-优先采用当前 Phase 4 基线中的冻结结论，尤其是：
-- Trend source registry
-- Trend Inbox
-- HN / GITHUB 默认计划
-- AI 只做摘要 / 标签 / 建议动作
-- Trend -> Note / Idea 转化
+优先采用当前 Phase 5 主线中的冻结结论，并保留 Phase 4 遗留治理边界，尤其是：
+- `user_action_events` / `user_preference_profiles` / recompute / injection / PWA / sync 的阶段边界
+- preference 仅进入建议层，不静默覆盖最终状态
+- offline actions 必须经 `sync/actions` 回传与幂等处理
 - 外部证据不得静默覆盖解释层
 - Proposal / Trace / Event 治理链路
 

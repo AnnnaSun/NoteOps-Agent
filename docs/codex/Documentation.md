@@ -5,481 +5,448 @@
 
 当前仓库开发基线已进入：
 
-# Phase 4：Trend Source Registry / Trend Inbox
+# Phase 5：Preference + PWA
 
-本阶段从 Phase 3 的 Idea Lifecycle / Idea Workspace 继续向前推进，当前新增主线为：
-- Trend Source Registry
-- Default Trend Plan
-- Trend ingest
-- Trend AI 结构化分析
-- Trend Inbox
-- Trend -> Note / Idea 转化
+本阶段从 Phase 4 的 Trend 最小闭环继续向前推进，当前新增主线为：
+- `user_action_events` 行为信号层
+- `user_preference_profiles` 最小画像层
+- preference recompute / refresh
+- context injection 到建议层
+- PWA 基础壳
+- 有限离线 review 与 sync 回传
 
-Preference Learning 正式闭环、PWA 与移动端仍未进入当前主线。
+移动端、复杂推荐平台、全站离线仍未进入当前主线。
 
-### 1.1 Step 4.1 当前落地状态
+### 1.1 Step 5.1 当前落地状态
 
-当前仓库已完成 Step 4.1 的合同冻结：
-- `trend_items` schema / index / foreign key 已落地
-- Trend source / status / action 枚举已冻结
-- Trend analysis payload 结构已冻结
-- Trend repository 与未来 API DTO 形状已补齐
+当前仓库已完成 Step 5.1 的最小 `user_action_events` 覆盖面补齐：
+- Trend 关键动作已写事件：`TREND_ITEM_IGNORED`、`TREND_SAVED_AS_NOTE`、`TREND_PROMOTED_TO_IDEA`
+- Review 关键动作已写事件：`REVIEW_COMPLETED`、`REVIEW_PARTIAL`、`REVIEW_NOT_STARTED`、`REVIEW_ABANDONED`
+- Task 关键动作已写事件：`TASK_CREATED`、`TASK_COMPLETED`、`TASK_SKIPPED`
+- Proposal 关键动作已写事件：`CHANGE_PROPOSAL_CREATED`、`CHANGE_PROPOSAL_APPLIED`、`CHANGE_PROPOSAL_REJECTED`、`CHANGE_PROPOSAL_ROLLED_BACK`
 
-当前仓库尚未完成：
-- real ingest
-- Trend AI analyze runtime
-- Trend Inbox controller / page
-- Trend -> Note / Idea conversion
+当前实现说明：
+- Proposal reject 已提供真实接口 `POST /api/v1/change-proposals/{proposalId}/reject`
+- reject 只允许 `PENDING_REVIEW -> REJECTED`，不修改 Note 解释层
+- reject 链路已补齐 `agent_traces`、`tool_invocation_logs`、`user_action_events`
 
-说明：
-- Step 4.1 当前只冻结 persistence 与 contract
-- 不提供可调用的 `/api/v1/trends/*` endpoint
-- 不应把 Step 4.5/4.6 误记为已完成
+当前 Step 5.1 仍明确不做：
+- 更细粒度的 UI 交互事件
+- session 分析与漏斗分析
 
-### 1.2 Step 4.2 当前落地状态
+### 1.2 Step 5.2 当前落地状态
 
-当前仓库已完成 Step 4.2 的最小骨架：
-- `TrendSourceRegistry` 已注册并解析 `HN` / `GITHUB`
-- Default Trend Plan 已可从配置读取
-- 已提供显式 trigger 入口 `POST /api/v1/trends/plans/default/trigger`
-- trigger 当前只执行 `REGISTRY_ONLY`
-- trigger 链路已写 `agent_traces`、结构化日志、最小 `tool_invocation_logs`
+当前仓库已完成 Step 5.2 的最小 `user_preference_profiles` 基线：
+- 已新增 `user_preference_profiles` 表，按 `user_id` 一行持久化当前 profile
+- 当前只支持 `interest_profile`
+- 已提供 repository / application service / controller / DTO 读写基线
+- 已提供最小查询与保存接口：
+  - `GET /api/v1/preferences/profile?user_id=...`
+  - `PUT /api/v1/preferences/profile`
 
-当前仓库在 Step 4.2 仍明确不做：
-- 真实外部抓取
-- `trend_items` 入库
-- Trend AI 分析
-- Trend Inbox 列表 / 动作
-- Trend -> Note / Idea 转化
+当前实现说明：
+- `interest_profile` 结构已稳定为 `preferred_topics`、`ignored_topics`、`source_weights`、`action_bias`、`task_bias`
+- 保存链路会写结构化日志
+- 保存链路会写 `agent_traces`，entry type 为 `USER_PREFERENCE_PROFILE_UPSERT`
+- Step 5.2 只负责 profile 查询与保存基线，重算链路由 Step 5.3 承接
 
-说明：
-- Step 4.2 当前只完成来源注册与默认计划的显式触发骨架
-- Step 4.3 才开始真实 ingest / normalize / dedupe / persistence
+当前 Step 5.2 仍明确不做：
+- `output_style_profile`
+- `agent_policy_profile`
+- 多版本 profile 回退
 
-### 1.3 Step 4.3 当前落地状态
+### 1.3 Step 5.3 当前落地状态
 
-当前仓库已完成 Step 4.3 的最小 ingest 闭环：
-- `POST /api/v1/trends/plans/default/trigger` 已从 `REGISTRY_ONLY` 升级为真实 `INGEST`
-- 默认 plan 会同时触发 `HN` 与 `GITHUB` 两个 source 的最小候选拉取
-- 候选会经过最小 normalize 与幂等去重后写入 `trend_items`
-- `(user_id, source_type, source_item_key)` 已用于最小 dedupe
-- ingest 链路已补齐 `agent_traces`、结构化日志、最小 `tool_invocation_logs`
+当前仓库已完成 Step 5.3 的最小 recompute / refresh 闭环：
+- 已新增 `PreferenceRecomputeService`，从 `user_action_events` 最近窗口聚合重算 `interest_profile`
+- 已补齐 `user_action_events` 的读取能力，支持按 `user_id` 读取最近事件（默认窗口 200）
+- 已提供手动重算接口：
+  - `POST /api/v1/preferences/profile/recompute`
+- 重算结果复用 `user_preference_profiles` 当前持久化模型（upsert）
 
-当前仓库在 Step 4.3 仍明确不做：
-- Trend AI 分析
-- Trend Inbox 列表 / 动作
-- Trend -> Note / Idea 转化
-- 复杂聚类、复杂评分、复杂 provider 平台化
+当前实现说明：
+- 重算聚合只覆盖 Step 5.3 范围内的 Trend / Review / Task 主链路事件
+- 重算链路已补结构化日志（start / success / fail）
+- 重算链路已补 `agent_traces`，entry type 为 `USER_PREFERENCE_PROFILE_RECOMPUTE`
 
-说明：
-- 当前 trigger 的 `trigger_mode = INGEST`
-- 当前单个 source fetch 失败时，整次 trigger 失败
-- Step 4.4 才开始写 `analysis_payload` 和 `suggested_action`
+当前 Step 5.3 仍明确不做：
+- 复杂权重学习
+- 批量离线重算平台
+- 在线实时流式更新
 
-### 1.4 Step 4.4 当前落地状态
+### 1.4 Step 5.4 当前落地状态
 
-当前仓库已完成 Step 4.4 的最小 Trend AI 分析闭环：
-- 新增 `TrendAnalysisService`
-- 新增 `TrendAgent` interface，并提供本地 `StubTrendAgent`
-- `POST /api/v1/trends/plans/default/trigger` 在 ingest 后会同步执行最小结构化分析
-- 分析结果会写回 `trend_items.summary`
-- 分析结果会写回 `trend_items.analysis_payload`
-- 分析结果会写回 `trend_items.suggested_action`
-- 已落 `ANALYZED` 状态
-- analysis 链路已补齐 `agent_traces` 关联、结构化日志、`tool_invocation_logs`
+当前仓库已完成 Step 5.4 的最小 context injection 闭环：
+- 已新增 `PreferenceContextInjectionService`，按 `user_id` 读取当前 `interest_profile` 并在无 profile 时回退为空注入
+- Trend Inbox 已接入建议层注入：
+  - 可基于 `normalized_score`、`source_weights`、topic 匹配做运行时重排
+  - 可基于 `action_bias` 与 ignored topic 命中覆盖返回层 `suggested_action`
+- Search 已接入建议层注入：
+  - 在 related matches 排序中叠加 profile topic 偏好分
+  - exact matches 与 existing external supplement contract 保持不变
 
-当前仓库在 Step 4.4 仍明确不做：
-- 真实外部模型 provider
-- 个性化排序
-- Trend Inbox controller / page
-- Trend -> Note / Idea 转化
-- 用户动作事件
+当前实现说明：
+- 注入只作用于运行时建议层，不回写 `trend_items` 或其他最终持久化状态
+- Search 仍沿用现有 trace entry type（`SEARCH_QUERY`），仅补充 orchestrator state / output digest 的 preference 统计字段
+- Trend / Search 成功日志已补 `preference_profile_loaded` 与 `preference_rerank_count`，Trend 额外补 `suggested_action_override_count`
 
-说明：
-- 当前实现使用本地 deterministic stub，先稳定 analysis contract 与治理链路
-- 当前 `trigger_mode` 仍保持 `INGEST`，但 trigger 运行时已包含 analyze 阶段
-- 当前 analysis 对单条 trend item 的写库与 `trend.item.analyze` completed log 在同一事务内提交
-- 当前 analysis 失败时，失败条目的分析写回会回滚到 `INGESTED`；同一 trigger 中已成功提交的更早条目会保留 `ANALYZED`
-- 当前 analysis 失败时，trace 与 trigger 结果会标记失败；已完成 ingest 的 `trend_items` 仍保留为后续重试输入
+当前 Step 5.4 仍明确不做：
+- 全局统一推荐层
+- 更复杂个性化排序
+- 多 Agent 全面共享 profile
 
-### 1.5 Step 4.5 当前落地状态
+### 1.5 Step 5.5 当前落地状态
 
-当前仓库已完成 Trend Inbox 的后端查询链路：
-- `GET /api/v1/trends/inbox` 已可用
-- 默认只返回当前用户的 `ANALYZED` trend items
-- 支持可选 `status` 与 `source_type` 过滤
-- 查询结果按 `updated_at desc` 返回
-- 返回体复用 `TrendInboxItemResponse`
-- 查询链路已补齐 controller / service 结构化日志，包含 `trace_id`、`user_id` 与过滤条件
+当前仓库已完成 Step 5.5 的最小 PWA 基础壳：
+- 已新增 `manifest.webmanifest` 与应用图标资源，支持基础安装元数据
+- 已新增并注册 `service worker`（生产构建下注册）
+- 已补齐最小缓存策略：
+  - 核心静态资源（`/`、`index.html`、manifest、icon）预缓存
+  - 同源静态资产（script/style/image/font）缓存优先
+  - 导航请求网络优先，离线回退到缓存 `index.html`
+  - Review / Note summary / Task 相关 GET 接口采用网络优先 + 缓存回退
 
-当前仓库已完成 Step 4.5 的前端最小闭环：
-- `#/trends` 已接入独立 Trend Inbox 视图，不再是导航壳
-- Trend Inbox 页面为单列阅读流，包含最小 `status` / `source_type` 过滤
-- 页面支持 loading / empty / error 态
-- `IGNORE` 为真实动作，执行后会更新 `trend_items.status = IGNORED` 并刷新列表
-- `IGNORE` 失败以卡片级错误提示呈现，不会把整页当成列表加载失败
-- `IGNORE`、`SAVE_AS_NOTE`、`PROMOTE_TO_IDEA` 的失败尝试都会保留 `trace_id`，便于从前端错误回查服务端日志
-- `SAVE_AS_NOTE` 现在是真实动作，成功后会创建 Note、回写 `converted_note_id`，并跳转到 Notes 详情
-- `PROMOTE_TO_IDEA` 现在是真实动作，成功后会创建 Idea、回写 `converted_idea_id`，并跳转到 Ideas 详情
-- `Home` 现在是轻量入口页，保留 Capture；Capture 成功后跳转到 Notes 并打开新 Note 详情
+当前实现说明：
+- Step 5.5 只提供“壳 + 缓存基础设施”，不涉及离线动作写入与 `sync/actions` 回传
+- 不改动现有 API 路径与业务 DTO，仅新增前端运行时缓存层
 
-说明：
-- 当前 inbox 已补齐最小动作链路：`POST /api/v1/trends/{trendItemId}/actions`
-- 当前真实支持 `IGNORE`、`SAVE_AS_NOTE` 与 `PROMOTE_TO_IDEA`
-- `IGNORE` 链路已写 `agent_traces`、`tool_invocation_logs`、`user_action_events`
-- `SAVE_AS_NOTE` 链路已写 `agent_traces`、`tool_invocation_logs`、`user_action_events`
-- `PROMOTE_TO_IDEA` 链路已写 `agent_traces`、`tool_invocation_logs`、`user_action_events`
-- 成功响应会回传 `trace_id`
+当前 Step 5.5 仍明确不做：
+- 离线 review 动作记录
+- `sync/actions` 回传
+- 更复杂缓存更新策略与精细失效治理
 
-### 1.6 Step 4.6 当前落地状态
+### 1.6 Step 5.6 当前落地状态
 
-当前仓库已完成 Step 4.6A / Step 4.6B 的 `Trend -> Note / Idea` 真闭环：
-- `SAVE_AS_NOTE` 已接真实转化服务
-- 转化成功后会创建 Note，并保留 trend 来源链与分析载荷
-- 转化成功后会回写 `trend_items.status = SAVED_AS_NOTE`
-- 转化成功后会回写 `converted_note_id`
-- 前端会自动跳转到 `Notes` 并打开新建 Note 详情
-- `PROMOTE_TO_IDEA` 已接真实转化服务
-- 转化成功后会创建 Idea，并保留 trend 来源链与分析载荷
-- 转化成功后会回写 `trend_items.status = PROMOTED_TO_IDEA`
-- 转化成功后会回写 `converted_idea_id`
-- 前端会自动跳转到 `Ideas` 并打开新建 Idea 详情
-- 转化链路已补齐 `agent_traces`、`tool_invocation_logs`、`user_action_events`
+当前仓库已完成 Step 5.6 的最小 Offline Review + Sync 闭环：
+- Web 端在 review 提交失败且网络不可用时，会将动作写入本地 pending actions
+- Web 端启动与网络恢复时会自动调用 `POST /api/v1/sync/actions` 回传 pending actions
+- 服务端已新增 `sync_action_receipts` 幂等收据表，按 `(user_id, client_id, offline_action_id)` 去重
+- 当前 `sync/actions` 最小支持 `REVIEW_COMPLETE` 动作回放，复用现有 `ReviewApplicationService.complete` 主链路
 
-当前仓库在 Step 4.6 仍明确不做：
-- `PROMOTE_TO_IDEA` 自动批量转化
-- Trend -> Idea 后自动触发 assess 主链
-- Trend 转化后的复杂 proposal 治理
+当前实现说明：
+- `sync/actions` 返回 `accepted[]` / `rejected[]` / `server_sync_cursor`，并标记 `duplicated` 便于客户端处理重复回传
+- 同步链路已补 `agent_traces`（`SYNC_ACTIONS_APPLY`）与结构化日志 `start/success/fail`
+- 同步链路已写 `user_action_events`：`OFFLINE_ACTION_SYNC_ACCEPTED`、`OFFLINE_ACTION_SYNC_REJECTED`
 
-说明：
-- 当前 `SAVE_AS_NOTE` 失败会返回 `TREND_NOTE_CONVERSION_FAILED`
-- 当前 `PROMOTE_TO_IDEA` 失败会返回 `TREND_IDEA_CONVERSION_FAILED`
-- `Trend -> Idea` 后的 assess 仍保持显式用户动作，不在转化步骤里自动触发
+当前 Step 5.6 仍明确不做：
+- 非 review 类离线动作回放
+- 复杂冲突解决策略
+- 后台静默同步优化
 
-### 1.7 Step 4.7 当前落地状态
+### 1.7 Step 5.7 当前落地状态
 
-当前仓库已完成 Step 4.7 的文档与治理收口：
-- `docs/codex/Plan.md` 已同步标记 Step 4.7 完成，并把 Phase 4 最小闭环的完成定义收束到当前实现事实
-- `docs/codex/Documentation.md` 已对齐当前 Phase 4 落地范围、完成条件与 deferred backlog
-- `docs/codex/Prompt.md` 已与 Phase 4 推荐切片顺序保持一致，不再与 Plan / Documentation 漂移
+当前仓库已完成 Step 5.7 的最小文档与治理收口：
+- `docs/codex/Plan.md` 已补齐 Step 5.7 当前状态，并标注 Phase 5 最小闭环达成
+- `docs/codex/Documentation.md` 已覆盖 Step 5.1 ~ 5.6 的已实现能力、边界与 deferred
+- `sync/actions` 合同、幂等与错误处理语义已同步到文档（含 `retryable`）
+- 已对执行基线文档做一致性校验并记录结果
 
-当前仓库在 Step 4.7 不再追加新的业务能力，仅保留后续文档维护和治理对齐的常规工作。
+一致性校验结果（Step 5.7 要求）：
+- `docs/codex/Prompt.md` 与 `docs/codex/Plan.md`：一致，均为 Phase 5 主线
+- `docs/codex/Implement.md`：已在本步骤更新为 Phase 5 默认执行基线
+- `AGENTS.md`：仍保留 Phase 4 冻结边界描述；当前按 Source of Truth 优先级，以“用户最新任务 + Prompt/Plan 的 Phase 5 定义”为执行主线，Phase 4 条款继续作为 Trend 语义 guardrail
+- `noteops-phase-implement` skill：描述示例仍以 Phase 4 为主，但工作流（先读文档、最小闭环、最窄验证、文档同步）可复用于 Phase 5，不构成执行阻塞
 
 ---
 
-## 2. Phase 4 目标说明
+## 2. Phase 5 目标说明
 
-Phase 4 的目标不是做一个普通热点流，而是让外部高价值输入进入 Knowledge-to-Action 主线。
+Phase 5 的目标不是做一个复杂推荐系统，也不是做“任何时候都能离线的全功能客户端”。
 
-Trend 在当前阶段应具备以下能力：
-1. 可从受控来源拉取候选
-2. 可做最小结构化分析
-3. 可进入 Trend Inbox
-4. 可由用户决策去留
-5. 可转为 Note
-6. 可转为 Idea
-7. 可为后续偏好学习积累行为事件
+当前阶段要完成两个最小但真实的闭环：
 
----
+1. **行为 -> 偏好 -> 建议**
+2. **缓存 -> 离线动作 -> 回传同步**
 
-## 3. Phase 4 领域语义
+Preference 主线解决的问题：
+- 系统能否逐步学习用户真正关心的主题、来源与行为偏好
+- 学到的结果能否以可控方式影响现有 Agent / 排序 / suggested action
 
-### 3.1 Trend 的定位
-
-Trend 不是孤立对象，也不是产品唯一卖点。
-Trend 是高价值输入增强模块：
-- 为系统提供外部候选输入
-- 为 Note 生成提供素材
-- 为 Idea 孵化提供触发源
-- 为后续 Preference 学习提供行为事件
-
-### 3.2 Default Trend Plan 的定位
-
-当前阶段建议提供一个默认内置计划，而不是一开始就建设复杂的用户自定义平台。
-
-默认计划建议为：
-- `plan_key = default_ai_engineering_trends`
-- 来源：`HN`、`GITHUB`
-- 频率：`DAILY`
-- 每源抓取上限：5
-- 关键词偏置：agent / llm / memory / retrieval / tooling / coding
-- `auto_ingest = true`
-- `auto_convert = false`
-
-说明：
-- 当前阶段允许系统自动入箱
-- 当前阶段不允许系统静默自动创建大量 Note / Idea
-
-当前仓库在 Step 4.2 已落地的最小语义：
-- plan 配置来源于 `noteops.trend.default-plan`
-- 当前 trigger 会真实执行双 source ingest，并在 ingest 后同步执行最小 Trend analysis
-- 返回 `trigger_mode = INGEST`
+PWA 主线解决的问题：
+- 在弱网或离线情况下，用户能否继续完成最关键的 review 行为
+- 这些行为能否在联网后回传并合并
 
 ---
 
-## 4. Trend AI 最小分析切片
+## 3. Phase 5 领域语义
 
-## 4.1 为什么这是 Phase 4 必须项
+### 3.1 UserActionEvent 的定位
 
-如果没有结构化分析，Trend 只是一批外部链接，并不能成为可决策候选。
+`user_action_events` 不是普通审计日志，而是：
+- 偏好学习输入
+- Agent 评估输入
+- 排序 / suggested action 调整输入
+- 后续长期记忆注入输入
 
-因此，Phase 4 的最小闭环明确要求提供：
-- `TrendAnalysisService`
-- `TrendAgent`（最小 provider/stub 均可）
-- analysis result 结构化落库
-- Trend Inbox 展示分析结果
-- 转化动作以分析建议为参考
-- trace / log / event 补齐
+当前阶段优先覆盖以下行为：
+- trend ignored / saved / promoted
+- review completed / partial / not_started
+- task completed / skipped
+- proposal applied / rejected / rolled_back
 
-## 4.2 Trend AI 的管理原则
+### 3.2 UserPreferenceProfile 的定位
 
-Trend AI 必须按“受控 Worker Agent”管理，而不是自由模型调用。
+`user_preference_profiles` 是长期偏好画像。
+当前阶段优先实现：
+- `interest_profile`
 
-AI 负责：
-- 结构化理解趋势候选
-- 输出简练摘要
-- 给出 why-it-matters 解释
-- 判断更适合转 Note 还是转 Idea
-- 产出 `suggested_action`
+后置：
+- `output_style_profile`
+- 更复杂的 `agent_policy_profile`
 
-AI 不负责：
-- 自己抓取网页
-- 越权直接创建主业务对象
-- 静默大批量转化
-- 绕过用户决策直接推进高影响动作
+当前阶段遵循冻结语义：
+- 系统先学习“用户关心什么”
+- 再学习“用户怎么表达”
+- 学习结果默认进入建议层，而不是静默覆盖产品输出
 
-应用层 / 领域层负责：
-- 来源拉取
-- 输入准备
-- provider 调用
-- 结果校验
-- 入库
-- Inbox 展示
-- 转化命令执行
-- trace / log / event
+### 3.3 Preference 注入边界
 
-### 4.3 Step 4.4 当前实现说明
+Preference 在当前阶段只能影响：
+- Trend 候选排序
+- Trend suggested action
+- Search 的最小相关性排序或补充建议排序
+- Task / Idea 的建议优先级（若当前步骤已实现）
 
-当前最小 runtime 采用以下边界：
-- `TrendPlanApplicationService` 负责编排默认 plan trigger、ingest summary、trace 完成态
-- `TrendAnalysisService` 负责逐条调用 `TrendAgent`、校验结果、写回 `trend_items`
-- `StubTrendAgent` 负责基于 source type、title、score 生成确定性结构化 payload
+Preference 在当前阶段不得直接影响：
+- 原始正文
+- 已确认的业务最终状态
+- 未经确认的关键内容改写
 
-当前最小写回语义：
-- `summary` 使用 analysis summary
-- `status` 由 `INGESTED` 升级为 `ANALYZED`
-- `analysis_payload` 保存结构化分析载荷
-- `suggested_action` 保存当前建议动作
-- 同一 trigger 内重复命中的同一 `trend_item_id` 只 analyze 一次
+### 3.4 PWA / Offline 的定位
 
-当前最小失败语义：
-- source fetch / upsert 失败仍按 Step 4.3 视为整次 trigger 失败
-- analysis 失败时，当前 trigger 也视为失败
-- `trendAgent` 或 payload contract 校验失败会返回 `TREND_ANALYSIS_FAILED` / `TREND_ANALYSIS_INVALID`
-- analysis 写库或 completed tool log 落库失败会返回 `TREND_ANALYSIS_PERSIST_FAILED`
-- 失败条目的 analysis 写回会回滚；已落库的 ingest 结果保留，便于后续 retry analyze
+当前阶段的离线能力是有限离线：
+- 允许查看已缓存 Note 摘要
+- 允许查看 Today Review
+- 允许完成基础 review
+- 允许写简短备注
+- 允许本地保存 pending actions 并联网回传
+
+明确禁止：
+- 离线外部检索
+- 离线 URL 抽取
+- 离线 Trend 抓取
+- 离线深度 LLM 分析
+- 离线 proposal apply / rollback
 
 ---
 
-## 5. Trend analysis 合同
+## 4. 最小 Preference 闭环
+
+### 4.1 为什么这是 Phase 5 必须项
+
+如果没有行为信号与 profile 产物，Preference 只会停留在文档概念层。
+
+因此，Phase 5 最小闭环明确要求提供：
+- `user_action_events`
+- `user_preference_profiles`
+- recompute / refresh 机制
+- 至少一个读取 profile 的真实使用点
+- trace / log / event / docs 对齐
+
+### 4.2 Preference 的管理原则
+
+Preference 必须按“行为驱动 + 建议层注入”管理，而不是自由自改写系统。
+
+系统负责：
+- 记录用户行为
+- 聚合生成 profile
+- 在建议层注入 profile
+- 记录注入链路与结果
+
+系统不负责：
+- 静默改写最终文本
+- 跳过规则系统直接强制排序或覆盖
+- 把 preference 当成万能配置中心
+
+### 4.3 `interest_profile` 建议合同
 
 当前阶段建议最小结构如下：
 
 ```json
 {
-  "summary": "string",
-  "why_it_matters": "string",
-  "topic_tags": ["string"],
-  "signal_type": "string",
-  "note_worthy": true,
-  "idea_worthy": false,
-  "suggested_action": "SAVE_AS_NOTE",
-  "reasoning_summary": "string"
+  "preferred_topics": ["string"],
+  "ignored_topics": ["string"],
+  "source_weights": {
+    "HN": 0.8,
+    "GITHUB": 1.0,
+    "SEARCH_EXTERNAL": 0.4
+  },
+  "action_bias": {
+    "save_as_note": 0.7,
+    "promote_to_idea": 0.9,
+    "ignore_trend": 0.2
+  },
+  "task_bias": {
+    "review": 0.8,
+    "idea_followup": 1.0
+  }
 }
 ```
 
 说明：
-- 当前阶段不要求复杂个性化分数模型
-- 当前阶段不要求正式偏好重算
-- 当前阶段优先保证结构稳定、可展示、可落库
+- 当前阶段不要求复杂画像维度
+- 当前阶段不要求多版本实验平台
+- 当前阶段优先保证结构稳定、可生成、可读取、可解释
 
-### 5.1 Step 4.1 已冻结的 `trend_items` 合同
+---
 
-当前 schema 已冻结以下字段：
+## 5. API / Contract 基线（Phase 5）
+
+### 5.1 UserActionEvent
+
+当前阶段不一定需要直接暴露完整外部 CRUD API，但至少需要：
+- 服务端有统一写入入口或内部 service
+- 文档明确 action_type 语义
+- 关键动作在 trace / log 中可关联
+
+当前已落地的关键 action_type 至少包括：
+- Trend：`TREND_ITEM_IGNORED`、`TREND_SAVED_AS_NOTE`、`TREND_PROMOTED_TO_IDEA`
+- Review：`REVIEW_COMPLETED`、`REVIEW_PARTIAL`、`REVIEW_NOT_STARTED`、`REVIEW_ABANDONED`
+- Task：`TASK_CREATED`、`TASK_COMPLETED`、`TASK_SKIPPED`
+- Proposal：`CHANGE_PROPOSAL_CREATED`、`CHANGE_PROPOSAL_APPLIED`、`CHANGE_PROPOSAL_REJECTED`、`CHANGE_PROPOSAL_ROLLED_BACK`
+
+### 5.2 Preference Profile
+
+当前已落地：
+- `GET /api/v1/preferences/profile?user_id=...`
+- `PUT /api/v1/preferences/profile`
+- `POST /api/v1/preferences/profile/recompute`
+
+当前最小响应语义：
 - `id`
 - `user_id`
-- `source_type`
-- `source_item_key`
-- `title`
-- `url`
-- `summary`
-- `normalized_score`
-- `analysis_payload`
-- `extra_attributes`
-- `status`
-- `suggested_action`
-- `source_published_at`
-- `last_ingested_at`
-- `converted_note_id`
-- `converted_idea_id`
+- `interest_profile`
 - `created_at`
 - `updated_at`
 
-当前约束已冻结：
-- `source_type in ('HN', 'GITHUB')`
-- `status in ('INGESTED', 'ANALYZED', 'IGNORED', 'SAVED_AS_NOTE', 'PROMOTED_TO_IDEA')`
-- `suggested_action in ('IGNORE', 'SAVE_AS_NOTE', 'PROMOTE_TO_IDEA') or null`
-- `(user_id, source_type, source_item_key)` 唯一，用于后续 dedupe
+当前最小写入语义：
+- `user_id`
+- `interest_profile`
 
----
+说明：
+- Step 5.2 只提供 profile 查询与保存基线
+- Step 5.3 通过 `POST /api/v1/preferences/profile/recompute` 提供手动重算入口
+- 当前重算窗口默认读取最近 200 条 `user_action_events`
 
-## 6. API 基线（Phase 4）
+### 5.3 Sync Actions
 
-### 6.1 Trend Inbox
-
-`GET /api/v1/trends/inbox`
-
-用途：
-- 查询当前趋势候选列表
-- 提供最小排序与过滤
-- 返回 AI 分析后的摘要与建议动作
-
-最小输出语义：
-- `trend_item_id`
-- `title`
-- `source_type`
-- `url`
-- `summary`
-- `normalized_score`
-- `suggested_action`
-
-### 6.2 Trend Actions
-
-建议最小新增一个动作接口，例如：
-
-`POST /api/v1/trends/{trend_item_id}/actions`
+`POST /api/v1/sync/actions`
 
 用途：
-- 对 Trend 候选执行用户决策动作
+- 客户端回传离线动作
+- 服务端执行幂等校验与最小合并
 
 最小输入语义：
-- `action = IGNORE | SAVE_AS_NOTE | PROMOTE_TO_IDEA`
-- `operator_note`（可选）
+- `user_id`
+- `client_id`
+- `actions[]`
+    - `offline_action_id`
+    - `action_type`
+    - `entity_type`
+    - `entity_id`
+    - `payload`
+    - `occurred_at`
 
 最小输出语义：
-- `trend_item_id`
-- `action_result`
-- `converted_note_id`（如有）
-- `converted_idea_id`（如有）
+- `accepted[]`
+    - `offline_action_id`
+    - `action_type`
+    - `entity_type`
+    - `entity_id`
+    - `duplicated`
+- `rejected[]`
+    - `offline_action_id`
+    - `action_type`
+    - `entity_type`
+    - `entity_id`
+    - `error_code`
+    - `error_message`
+    - `retryable`
+    - `duplicated`
+- `server_sync_cursor`
 
-说明：
-- 也可以按仓库风格拆成多个 endpoint
-- 但当前阶段必须保证动作合同真实存在
-- 当前 Step 4.1 仅冻结 DTO 形状，不提供 controller 实现
+当前最小支持动作：
+- `REVIEW_COMPLETE`（`entity_type=REVIEW_STATE`）
 
-### 6.3 Trend Default Plan Trigger
+幂等与错误处理语义（当前实现）：
+- 服务端先原子写入 `PROCESSING` receipt 占位，再执行业务回放，避免并发重复执行副作用
+- 稳定业务错误（4xx）会返回 `rejected` 且 `retryable=false`
+- 暂时性错误（5xx / runtime）不会落永久 `rejected`，客户端应保留 pending actions 以便重试
 
-`POST /api/v1/trends/plans/default/trigger`
+---
 
-用途：
-- 显式触发一次默认 Trend plan
-- 校验默认 plan 配置
-- 解析 `HN` / `GITHUB` source registration
-- 拉取候选并执行最小 ingest
-- 对本次 ingest / dedupe 命中的条目执行最小结构化分析
-- 写 trace / tool log
+## 6. 最小 PWA / Offline 闭环
 
-当前输入语义：
+### 6.1 为什么这是 Phase 5 必须项
+
+如果只有 manifest 和 service worker，没有真实离线行为链路，那么 PWA 只是包装，不是产品能力。
+
+因此，Phase 5 的最小闭环要求至少包含：
+- PWA 基础壳
+- review 主路径缓存
+- 离线 review 动作记录
+- `sync/actions` 回传
+- 幂等与最小错误处理
+
+### 6.2 推荐缓存对象
+
+当前阶段优先缓存：
+- Today Review 队列
+- Note 摘要
+- 基础 task 列表（如果当前 Web 已依赖）
+- 核心静态资源
+
+当前阶段不优先缓存：
+- 大量历史数据
+- 外部 evidence 搜索结果
+- Trend 原始抓取结果
+- 大体量媒体或附件
+
+### 6.3 Pending Actions 语义
+
+客户端离线动作建议按 action log 保存，而不是直接本地覆盖最终状态。
+
+推荐最小字段：
 - `user_id`
+- `offline_action_id`
+- `action_type`
+- `entity_type`
+- `entity_id`
+- `payload`
+- `occurred_at`
 
-当前输出语义：
-- `plan_key`
-- `enabled`
-- `resolved_sources`
-- `fetch_limit_per_source`
-- `schedule`
-- `keyword_bias`
-- `auto_ingest`
-- `auto_convert`
-- `trigger_mode = INGEST`
-- `fetched_count`
-- `inserted_count`
-- `deduped_count`
-- `source_results`
-- `result`
-
-说明：
-- 当前 Step 4.4 已执行真实抓取并写入 `trend_items`
-- 当前 Step 4.4 会同步写入 `summary`、`analysis_payload`、`suggested_action`
-- 当前 Step 4.3 的最小 dedupe 语义是：重复命中仅刷新 `last_ingested_at`（必要时补齐缺失的 `source_published_at`），不覆盖既有 `title`、`url`、`normalized_score`、`extra_attributes`
-- 当前 Step 4.3 的最小失败语义是：若 normalize / upsert 中途失败，则本次 ingest 视为整体失败，不保留部分 `trend_items` 写入
-- 当前 Step 4.4 的最小 analysis 语义是：按去重后的 `trend_item_id` 写 `trend.item.analyze` tool log，并在 trace 完成态补 `analyzed_count`
-- 当前 Step 4.4 的最小 analysis 失败语义是：trigger 返回失败，trace 标记失败；失败条目回滚到 `INGESTED`，但已成功提交的更早分析条目保留
-- 当前 Step 4.3 不写 Trend Inbox 用户动作事件
+这样可以与服务端真相源模式保持一致。
 
 ---
 
-## 7. Trend -> Note / Idea 转化
+## 7. 可观测性与治理要求（Phase 5）
 
-### 7.1 Trend -> Note
-
-适用于信息型候选：
-- 新 benchmark
-- 高价值文章/讨论
-- 热门仓库的核心能力总结
-
-当前阶段要求：
-- 生成 Note
-- 保留来源链
-- 写入简练摘要与必要标签
-- 必要时可追加 evidence block
-
-### 7.2 Trend -> Idea
-
-适用于启发型候选：
-- 某个设计触发了产品想法
-- 某个趋势暴露了需求空白
-- 某个项目能被抽象成新功能或实验方向
-
-当前阶段要求：
-- 生成 Idea
-- 保留来源链
-- 允许复用既有 Idea assess 流程
-
-说明：
-- Trend 阶段不重复实现 Idea 评估平台
-- Trend -> Idea 的后续评估应复用既有 `ideas/{id}/assess`
-
----
-
-## 8. 可观测性与治理要求（Phase 4）
-
-Phase 4 新增核心链路必须补齐：
+Phase 5 新增核心链路必须补齐：
 
 1. 结构化日志
 2. `agent_traces`
-3. 必要的 `tool_invocation_logs`
-4. 至少一个相关 `user_action_event`
+3. 必要时的 `tool_invocation_logs`
+4. `user_action_events`
+5. sync 合并结果记录
 
 最小日志点应覆盖：
-- Trend plan 触发入口
-- source 拉取开始 / 成功 / 失败
-- Trend analysis 调用开始 / 成功 / 失败
-- trend item 入库
-- Trend Inbox 用户动作
-- Trend -> Note 转化
-- Trend -> Idea 转化
+- 关键用户动作写事件
+- profile recompute 开始 / 成功 / 失败
+- preference 注入开始 / 成功 / 失败
+- 离线动作保存本地
+- sync 请求入口
+- action 接受 / 拒绝 / 幂等忽略
 
 日志至少应包含：
 - `trace_id`
 - `user_id`
-- `trend_item_id`（如适用）
-- `source_type`
 - `action`
+- 关键业务 id
 - `result`
 - `duration_ms`（如适用）
 - `error_code` / `error_message`（失败时）
 
+=======
 同时建议至少记录以下 `user_action_events`：
 - `TREND_IGNORED`
 - `TREND_SAVED_AS_NOTE`
@@ -495,76 +462,66 @@ Phase 4 新增核心链路必须补齐：
 - `trend.item.action`
 - `trend.note.convert`
 - `trend.idea.convert`
-
 ---
 
-## 9. Web 交付基线（Phase 4）
+## 8. Web / PWA 交付基线（Phase 5）
 
 当前阶段前端最小目标：
 
-1. Trend Inbox List
-2. 候选摘要展示
-3. suggested_action 展示
-4. IGNORE 按钮
-5. SAVE_AS_NOTE 按钮
-6. PROMOTE_TO_IDEA 按钮
-7. 加载 / 空 / 错误态
+1. PWA 基础安装能力
+2. 离线时可打开已缓存核心页面
+3. Today Review 主路径最小可用
+4. 离线动作可记录并反馈状态
+5. 联网后可触发同步或自动回传
+6. 加载 / 空 / 错误 / 离线状态清晰
 
 当前阶段前端不优先：
 - 复杂视觉重构
-- 可拖拽多列布局
-- 个性化筛选平台
-- 高级趋势图表
+- 全站离线
+- 离线高级搜索
+- 多端统一 UI 壳
 
 ---
 
-## 10. 当前 deferred backlog
+## 9. 当前 deferred backlog
 
 以下能力当前阶段可以明确后置，但不能丢失：
 
-1. 用户自定义 Trend Plan
-    - 原因：当前先保证默认计划与最小闭环
-    - 预计补回：Phase 4 后段或 Phase 5
-    - 当前限制：暂不支持按用户偏好调整 source、schedule 或 keyword bias
+1. `output_style_profile` 深化学习
+    - 原因：当前先优先学习用户关心什么
+    - 预计补回：Phase 5 后段或后续优化阶段
 
-2. 多来源正式 connector 平台
-    - 原因：当前先保证 HN / GitHub 默认主线
-    - 预计补回：Phase 4 后段
-    - 当前限制：除 HN / GitHub 外的 provider 仍需显式接入，不能直接平台化扩展
+2. 更复杂的 preference ranking / recommendation
+    - 原因：当前先保证行为 -> 画像 -> 建议的最小闭环
+    - 预计补回：Phase 5 后段或 Phase 6 以后
 
-3. Trend 个性化排序
-    - 原因：Preference 正式闭环尚未开始
-    - 预计补回：Phase 5
-    - 当前限制：Trend Inbox 只按当前阶段的最小规则排序，尚不依赖个体画像
+3. 全站离线与更复杂同步冲突解决
+    - 原因：当前只做有限离线主路径
+    - 预计补回：后续 PWA 强化阶段
 
-4. Trend 去重 / 聚类高级优化
-    - 原因：当前先保证可运行，不做复杂质量工程
-    - 预计补回：Phase 4 后段
-    - 当前限制：只保留最小 dedupe 语义，尚未做高级聚类、事件合并或主题漂移分析
+4. 原生移动端
+    - 原因：路线图中属于更后阶段
+    - 预计补回：Phase 6
 
-5. Trend 批量转化与自动化规则
-    - 原因：当前坚持建议优先，不做静默高影响动作
-    - 预计补回：Phase 4 后段或 Phase 5
-    - 当前限制：所有高影响转化仍需用户显式动作，不提供静默批量转化
-
-6. Trend 真实模型 provider / prompt 治理
-    - 原因：当前先用本地 stub 稳定 analysis contract、trace 与日志链路
-    - 预计补回：Phase 4 后段
-    - 当前限制：分析结果仍由本地 deterministic stub 产生，尚未接入真实外部模型 provider
+5. 多 provider / prompt platform 深化
+    - 原因：当前不是模型平台化阶段
+    - 预计补回：后续能力增强阶段
 
 ---
 
-## 11. 当前完成定义
+## 10. 当前完成定义
 
-仅当以下条件同时满足，才可标记为“Phase 4 已完成最小闭环”：
+仅当以下条件同时满足，才可标记为“Phase 5 已完成最小闭环”：
 
-1. 有默认 Trend Plan
-2. 至少支持 HN / GitHub 两个默认来源
-3. 能真实拉取并入库 Trend 候选
-4. 能对候选做结构化分析
-5. 有 Trend Inbox
-6. 可执行 ignore / save as note / promote to idea
-7. Trend -> Note / Idea 真实可用
+1. 关键用户动作可写入 `user_action_events`
+2. `user_preference_profiles` 已有最小产物
+3. 至少存在一条真实的 recompute / refresh 链路
+4. 至少一个现有能力读取 profile 并形成建议层注入
+5. 前端具备 PWA 基础壳
+6. 可离线完成至少一条 review 主路径
+7. `sync/actions` 回传与幂等合并可用
 8. trace / log / event / docs 已同步
 
-若只完成表、静态列表、假数据或手工写库，不可标记为已完成最小闭环。
+如果只完成事件表、只完成 profile 表、或只做 PWA 外壳，都不可标记为已完成最小闭环。
+
+当前状态：以上 8 条条件已满足，Phase 5 已达到最小闭环完成定义。

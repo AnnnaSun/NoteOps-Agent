@@ -3,308 +3,252 @@
 
 ## 1. 当前阶段
 
-当前开发阶段已从 Phase 3 切换到：
+当前开发阶段已进入：
 
-# Phase 4：Trend Source Registry / Trend Inbox
+# Phase 5：Preference + PWA
 
-本阶段以 **Trend 正式最小闭环** 为唯一目标。
-Preference Learning、PWA、移动端均不进入当前主线。
+本阶段不是简单“补功能”，而是把系统从“能吸收并转化知识”推进到“会逐步理解用户，并且在有限离线场景下继续运作”。
 
 ---
 
 ## 2. 阶段目标
 
-Phase 4 需要完成的不是一个简单的“热点列表”，而是一个最小但真实可运行的 Trend 产品闭环：
+Phase 5 需要完成两个最小但真实可运行的闭环：
 
-1. 系统能从受控来源拉取趋势候选
-2. 系统有默认 Trend Plan（HN + GitHub）
-3. 候选能被结构化分析与评分
-4. 候选进入 Trend Inbox
-5. 用户能执行 Trend 决策动作
-6. 趋势候选可转为 Note 或 Idea
-7. 转 Idea 后复用已有 Idea 流程
-8. 全链路保持 trace / event / structured logging / doc sync 一致
+1. **Preference Signal Layer**
+    - 记录用户行为
+    - 生成偏好画像
+    - 将画像以建议层 context injection 注入现有能力
+
+2. **PWA Limited Offline Review + Sync**
+    - 提供 PWA 基础壳
+    - 支持离线 review 最小闭环
+    - 支持 pending actions 回传与服务端合并
 
 ---
 
 ## 3. 当前冻结边界
 
-### 3.1 Phase 4 必做
+### 3.1 Phase 5 必做
 
-1. Trend 领域模型落地
-2. Trend Source Registry 最小落地
-3. Default Trend Plan 落地：
-    - `HN`
-    - `GITHUB`
-4. Trend ingest 最小闭环
-5. Trend AI 结构化分析最小切片
-6. Trend Inbox 最小可用
-7. Trend -> Note / Idea 转化
+1. `user_action_events` 关键事件链路补齐
+2. `user_preference_profiles` 最小结构落地
+3. `interest_profile` recompute / refresh 最小闭环
+4. 至少一个现有能力读取 preference 并形成建议层注入
+5. PWA 基础壳
+6. 离线 review 最小闭环
+7. `POST /api/v1/sync/actions` 回传闭环
 8. trace / log / event / docs 对齐
 
-### 3.2 Phase 4 可预留但不做正式闭环
+### 3.2 Phase 5 可预留但不做正式闭环
 
-1. 用户自定义 Trend Plan UI
-2. 更复杂的 source 权重与个性化规则
-3. 正式 `user_preference_profiles` 对 Trend 排序生效
-4. 多 provider 抓取平台化
-5. 复杂去重、聚类与事件合并
-6. 高保真 UI 重构
+1. `output_style_profile` 深化学习
+2. 更复杂的推荐系统
+3. 更多离线对象与更强同步能力
+4. 多端统一离线 SDK
+5. 更复杂的 prompt / model routing
+6. 移动端正式实现
 
-### 3.3 Phase 4 明确不做
+### 3.3 Phase 5 明确不做
 
-1. 任意网站自由抓取
-2. Preference 正式画像重算器
-3. PWA 离线 Trend 抓取
-4. 原生移动端
-5. 导出中心
-6. 多 provider 复杂 AI 平台化
-7. 全自动静默生成大量 Note / Idea
-
----
-
-## 4. Phase 4 切片计划
-
-## Step 4.1：Trend schema / contract 基线
-
-### 目标
-先冻结 Phase 4 的后端合同和数据边界，防止后续 registry / ingest / inbox 漂移。
-
-### 交付
-1. `trend_items` 表 / migration（如仍需补齐）
-2. enum / source type / action constants
-3. entity / model / repository
-4. request / response DTO
-5. 基础 API contract
-6. 文档同步到 Phase 4 语义
-
-### 最小验收
-- `trend_items` 可被持久化
-- source type 与 action 常量可统一使用
-- API contract 与 persistence 对齐
-- 文档明确记录 Phase 4 已开始
-
-### 风险
-- 若字段设计过早泛化，会影响后续 default plan 与 inbox 合同
-- 若 source/action 枚举没冻结，前后端会漂移
-
-### 建议后续
-进入 Step 4.2
+1. 原生 Android / iOS
+2. 任意离线外部检索
+3. 离线 URL 抽取
+4. 离线 Trend 抓取
+5. 离线深度 LLM 分析
+6. 全站离线编辑
+7. 复杂商业推荐平台
 
 ---
 
-## Step 4.2：Trend Source Registry + Default Trend Plan
+## 4. Phase 5 切片计划
+
+## Step 5.1：UserActionEvent 覆盖面补齐
 
 ### 目标
-让 Trend 具备正式来源入口，而不是手工塞数据。
-
-### 范围
-最小支持：
-1. `HN`
-2. `GITHUB`
+把当前真实用户动作沉淀成长期偏好学习与评估输入，而不是零散埋点。
 
 ### 交付
-1. `TrendSourceRegistry`
-2. source connector interface
-3. 默认 `HN` / `GITHUB` source registration
-4. Default Trend Plan config
-5. 最小调度或显式触发入口
+1. `user_action_events` 领域模型 / repository / DTO / service 对齐
+2. 覆盖 Trend、Review、Task、Proposal 关键动作
+3. 关键动作写入 trace/log/event
+4. 文档明确记录 action_type 范围
 
 ### 最小验收
-- registry 能注册并解析 HN/GitHub source
-- 默认 Trend Plan 配置可读取
-- 能触发一次默认 plan 的 ingest 流程
-- 写入必要 trace/log
+- 至少一条 Trend 动作被写入事件表
+- 至少一条 Review 动作被写入事件表
+- 至少一条 Task 或 Proposal 动作被写入事件表
+- 事件带 `user_id`、`entity_type`、`entity_id`、`action_type`
+
+### 当前状态
+已完成最小闭环。当前仓库已覆盖 Trend、Review、Task、Proposal 的关键动作事件，并补齐 proposal reject 的真实治理链路。
 
 ### deferred
-- 用户自定义 source
-- 多计划并行
-- 复杂定时任务治理
+- 更细粒度的 UI 交互事件
+- session 分析与漏斗分析
 
 ### 建议后续
-进入 Step 4.3
+进入 Step 5.2
 
 ---
 
-## Step 4.3：Trend ingest 最小闭环
+## Step 5.2：Preference Profile 基线
 
 ### 目标
-让外部候选真正进入系统，而不是只有 registry。
+落地 `user_preference_profiles` 的最小结构，先支持 `interest_profile`。
 
 ### 交付
-1. 拉取趋势候选
-2. 基础归一化
-3. 去重 / 幂等（最小）
-4. 写入 `trend_items`
-5. 基础分数或 rank 字段写入
-6. 必要的 trace/log
+1. `user_preference_profiles` 表 / migration（若尚未落地）
+2. entity / model / repository
+3. request / response DTO（若当前阶段需要）
+4. 最小 `interest_profile` 合同
+5. 文档同步 Phase 5 语义
 
 ### 最小验收
-- 至少能从一个 source 拉取候选并落库
-- `trend_items` 包含 title/url/source_type
-- 重复拉取不会无限重复写入
-- trace/log 可查
+- profile 可被持久化
+- `interest_profile` 字段结构稳定
+- 与事件模型能形成后续联动基础
+
+### 当前状态
+已完成最小闭环。当前仓库已落地 `user_preference_profiles` 表、`interest_profile` 最小合同、repository / service / controller / DTO 基线，并提供 profile 查询与保存接口。
 
 ### deferred
-- 高级聚类
-- 高级摘要抓取
-- 更复杂评分
+- `output_style_profile`
+- `agent_policy_profile`
+- 复杂多版本回退
 
 ### 建议后续
-进入 Step 4.4
+进入 Step 5.3
 
 ---
 
-## Step 4.4：Trend AI 分析最小切片（Phase 4 关键步骤）
+## Step 5.3：Preference Recompute / Refresh 最小闭环
 
 ### 目标
-让 Trend 从“抓到一条热点”升级为“可决策的候选项”。
-
-### 这是 Phase 4 的关键要求
-若缺失本步骤，Phase 4 不能视为真正完成最小闭环。
+让系统不只是存 profile，而是真能从行为生成 profile。
 
 ### 交付
-1. `TrendAnalysisService`
-2. `TrendAgent` interface（可先最小实现）
-3. analysis request / result contract
-4. analysis payload 落库
-5. 输出：
-    - `summary`
-    - `why_it_matters`
-    - `topic_tags`
-    - `note_worthy`
-    - `idea_worthy`
-    - `suggested_action`
-6. `agent_traces` 记录
-7. 结构化日志
-
-### 可以接受的实现方式
-- 单 provider
-- 单 prompt
-- stub / mock adapter
-- 同步调用
-
-### 不可接受的实现方式
-- controller 中直接调用模型
-- analysis 只返回自然语言长文本
-- 没有落库
-- 没有 trace/log
-- analysis 结果直接静默创建 Note / Idea
+1. `PreferenceRecomputeService`
+2. 从 `user_action_events` 聚合生成 `interest_profile`
+3. 手动触发或最小 job 触发
+4. profile 更新日志与 trace
 
 ### 最小验收
-- analysis 真实可调用
-- 能返回结构化分析结果
-- `trend_items.extra_attributes` 或等价字段被写入
-- trace/log 可查
+- 至少能对一个用户生成 profile
+- profile 内容能反映真实 Trend / Review / Task 行为倾向
+- 更新链路可追踪
+
+### 当前状态
+已完成最小闭环。当前仓库已新增 `PreferenceRecomputeService`（手动触发），可从 `user_action_events` 最近窗口聚合并重算 `interest_profile`，并通过 trace / structured logging 记录重算开始、成功、失败链路。
 
 ### deferred
-- 多模型路由
-- 个性化排序
-- prompt registry 平台化
-- 复杂评分模板
+- 复杂权重学习
+- 批量离线重算平台
+- 在线实时流式更新
 
 ### 建议后续
-进入 Step 4.5
+进入 Step 5.4
 
 ---
 
-## Step 4.5：Trend Inbox
+## Step 5.4：Preference Context Injection
 
 ### 目标
-让 Phase 4 在前端和 API 层可见、可决策、可演示。
+让 Preference 真正影响现有系统，但只进入建议层，不静默覆盖最终结果。
 
 ### 交付
-1. `GET /api/v1/trends/inbox`
-2. 最小列表排序 / 过滤
-3. 展示字段：
-    - title
-    - source_type
-    - summary
-    - score
-    - suggested_action
-4. 用户动作：
-    - `IGNORE`
-    - `SAVE_AS_NOTE`
-    - `PROMOTE_TO_IDEA`
+1. Trend suggested action / 排序增强
+2. Search 相关性或 external suggestion 的最小排序增强
+3. 必要的上下文注入 service / mapper
+4. 注入链路的日志与文档
 
 ### 最小验收
-- 可以浏览 Trend 候选列表
-- 可以看到 AI 分析结果
-- 可以执行至少一种用户动作
-- 候选状态变化可追溯
+- 至少一个现有能力读取 profile
+- 注入结果能影响排序或 suggested_action
+- 不直接改写正文 / 最终状态
+
+### 当前状态
+已完成最小闭环。当前仓库已新增 `PreferenceContextInjectionService`，并在 Trend Inbox 与 Search 链路接入 `interest_profile` 的建议层注入：可在运行时影响 Trend 候选排序与 `suggested_action`、Search related 排序，同时保持“不改写持久化最终状态”边界。
 
 ### deferred
-- 高级筛选
-- 批量操作
-- 复杂可视化排序
+- 全局统一推荐层
+- 更复杂个性化排序
+- 多 Agent 全面共享 profile
 
 ### 建议后续
-进入 Step 4.6
+进入 Step 5.5
 
 ---
 
-## Step 4.6A：Trend -> Note 转化
+## Step 5.5：PWA 基础壳
 
 ### 目标
-把 Trend 的价值先推进到 Note 主知识链路，优先保证最小闭环可验证。
+建立有限离线能力所需的最小前端基础设施。
 
 ### 交付
-1. `SAVE_AS_NOTE`：生成 Note 并保留来源链
-2. 必要时记录 Trend 与目标 Note 的关联 id
-3. 相关 `user_action_events`
-4. 相关 trace/log
-5. 转化成功后前端跳转到 Note 详情
+1. manifest
+2. service worker
+3. 核心静态资源缓存
+4. 基础数据缓存策略说明
+5. 前端基础安装/离线可访问能力
 
 ### 最小验收
-- 至少能从一个 trend item 成功生成 Note
-- 转化后来源链可追溯
-- 相关事件与日志可查
-- Note 详情页可直接读取新建结果
+- Web 可被安装为 PWA（若当前技术栈支持）
+- 基础壳离线可打开
+- 已缓存页面具备最小访问能力
+
+### 当前状态
+已完成最小闭环。当前仓库已补齐 `manifest.webmanifest`、`service worker` 注册与核心静态资源缓存策略，并对 Review / Note summary / Task 相关 GET 请求提供最小数据缓存降级能力，满足 Step 5.5 的 PWA 基础壳要求。
 
 ### deferred
-- 自动批量转化
-- 智能二次整理
-- 转化后的复杂 proposal 治理
+- 深度缓存优化
+- 更复杂更新策略
+- 多页面精细缓存控制
 
 ### 建议后续
-Step 4.6B 已完成，见 `docs/codex/Documentation.md` 中的当前落地状态。
+进入 Step 5.6
 
 ---
 
-## Step 4.6B：Trend -> Idea 转化（已完成）
+## Step 5.6：Offline Review + Sync 最小闭环
 
 ### 目标
-把 Trend 的价值真正推进到 Idea 主知识链路。
+让最重要的离线主路径真实可用。
 
 ### 交付
-1. `PROMOTE_TO_IDEA`：生成 Idea 并保留来源链
-2. 必要时记录 Trend 与目标 Idea 的关联 id
-3. 相关 `user_action_events`
-4. 相关 trace/log
-5. Trend -> Idea 后允许走既有 assess 流程
+1. 缓存 Today Review / Note 摘要 / 基础 task 数据
+2. 离线完成 review
+3. 记录 pending actions
+4. `POST /api/v1/sync/actions`
+5. 服务端幂等与基本合并
+6. 关键同步日志与错误处理
 
 ### 最小验收
-- 至少能从一个 trend item 成功生成 Idea
-- 转化后来源链可追溯
-- 相关事件与日志可查
+- 可在离线状态完成至少一个 review
+- 动作会保存在本地 pending actions
+- 联网后能成功回传并被服务端接受
+- 重复回传具备基本幂等性
+
+### 当前状态
+已完成最小闭环。当前仓库已在 Web 端支持离线 review 动作本地 pending 记录与联网自动回传，并新增 `POST /api/v1/sync/actions` 服务端合并入口；服务端已落地按 `(user_id, client_id, offline_action_id)` 的幂等 receipt，重复回传会命中既有结果而不重复执行 review 完成主链路。
 
 ### deferred
-- 自动批量转化
-- 智能二次整理
-- 转化后的复杂 proposal 治理
+- 更多离线动作类型
+- 更复杂冲突解决
+- 后台同步优化
 
 ### 建议后续
-进入 Step 4.7
+进入 Step 5.7
 
 ---
 
-## Step 4.7：Phase 4 文档与治理收口
+## Step 5.7：Phase 5 文档与治理收口
 
 ### 状态
 已完成。
 
 ### 目标
-确保实现、文档、仓库规范一致，不留明显漂移。
+确保实现、文档、日志、边界一致，不留明显漂移。
 
 ### 交付
 1. 更新 `docs/codex/Documentation.md`
@@ -314,29 +258,38 @@ Step 4.6B 已完成，见 `docs/codex/Documentation.md` 中的当前落地状态
 5. 校验 `AGENTS.md` / `Implement.md` / skill 是否仍与当前阶段一致
 
 ### 最小验收
-- 文档能准确描述当前 Phase 4 实现范围
-- 未完成内容被显式记录
-- 没有把 Phase 5 能力误写成已实现
+- 文档准确描述当前 Phase 5 已实现能力
+- 未完成内容显式记录
+- 未把未来移动端/复杂推荐误写成已实现
 
 ### 当前状态
-已完成。当前仓库的 Step 4.7 只保留文档维护与治理对齐，不再作为未完成子步骤。
+已完成最小闭环。当前仓库已完成 Step 5.1 ~ Step 5.6 的实现与文档对齐，并在 Step 5.7 完成 milestone 状态收口、deferred backlog 明确化、Phase 边界澄清与执行文档一致性校验。
+
+### deferred
+- Phase 6 目标与切片计划尚未在本文件展开
+- AGENTS.md 仍保留 Phase 4 章节作为历史冻结边界说明（不影响当前按 Phase 5 执行）
+
+### 建议后续
+进入 Phase 6 规划（仅规划，不在当前步骤实现）
 
 ---
 
 ## 5. 阶段完成定义
 
-仅当以下条件同时满足，才可以说 Phase 4 达到最小闭环并完成收口：
+仅当以下条件同时满足，才可以说 Phase 5 达到最小闭环：
 
-1. 有默认 Trend Plan
-2. 能从 HN / GitHub 拉取候选
-3. 候选能做结构化 Trend 分析
-4. 有 Trend Inbox
-5. 用户能执行 ignore / save as note / promote to idea
-6. 趋势候选可真实转为 Note / Idea
-7. trace / log / event / docs 已同步
-8. 文档与治理收口已完成，且 deferred backlog 已显式记录
+1. 已有真实 `user_action_events` 链路
+2. 已有最小 `user_preference_profiles`
+3. 已有至少一种 recompute / refresh 机制
+4. 已有至少一个现有能力读取 profile 形成建议层注入
+5. Web 已具备 PWA 基础壳
+6. 已有离线 review 主路径
+7. 已有 `sync/actions` 回传与幂等合并
+8. trace / log / event / docs 已同步
 
-只完成表结构、静态列表页或手工写库，不算 Phase 4 闭环。
+如果只做事件表或只做 PWA 壳子，不算 Phase 5 最小闭环。
+
+当前状态：以上 8 条条件均已满足，Phase 5 已达到最小闭环。
 
 ---
 
@@ -346,7 +299,7 @@ Step 4.6B 已完成，见 `docs/codex/Documentation.md` 中的当前落地状态
 
 1. 跳过了什么
 2. 为什么现在不做
-3. 预期在哪个 Phase 补回
+3. 预期在哪个 Phase 或后续子步骤补回
 4. 当前造成什么限制
 
 阶段性跳过，不代表永久删除。

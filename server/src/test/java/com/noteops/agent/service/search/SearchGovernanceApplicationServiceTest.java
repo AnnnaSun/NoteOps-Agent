@@ -61,7 +61,7 @@ class SearchGovernanceApplicationServiceTest {
         assertThat(noteRepository.appendedContentType).isEqualTo("EVIDENCE");
         assertThat(noteRepository.currentSummary).isEqualTo("Current summary");
         assertThat(noteRepository.updateInterpretationCalls).isZero();
-        assertThat(userActionEventRepository.events).extracting(UserActionEventRecord::eventType)
+        assertThat(userActionEventRepository.events).extracting(UserActionEventRepository.UserActionEventRecord::eventType)
             .containsExactly("SEARCH_EVIDENCE_SAVED");
         assertThat(toolInvocationLogRepository.logs.getFirst().toolName()).isEqualTo("search.evidence.save");
         assertThat(traceRepository.completed.orchestratorState()).containsEntry("content_type", "EVIDENCE");
@@ -104,7 +104,7 @@ class SearchGovernanceApplicationServiceTest {
         assertThat(result.proposal().targetLayer()).isEqualTo(ChangeProposalTargetLayer.INTERPRETATION);
         assertThat(result.proposal().afterSnapshot()).containsKey("current_summary");
         assertThat(result.proposal().sourceRefs().getFirst()).containsEntry("source_uri", "stub://search/background?q=kickoff+alpha");
-        assertThat(userActionEventRepository.events).extracting(UserActionEventRecord::eventType)
+        assertThat(userActionEventRepository.events).extracting(UserActionEventRepository.UserActionEventRecord::eventType)
             .containsExactly("SEARCH_PROPOSAL_CREATED");
         assertThat(toolInvocationLogRepository.logs.getFirst().toolName()).isEqualTo("search.proposal.generate");
         assertThat(traceRepository.completed.orchestratorState()).containsEntry("result", "CREATED");
@@ -241,11 +241,20 @@ class SearchGovernanceApplicationServiceTest {
 
     private static final class RecordingUserActionEventRepository implements UserActionEventRepository {
 
-        private final List<UserActionEventRecord> events = new ArrayList<>();
+        private final List<UserActionEventRepository.UserActionEventRecord> events = new ArrayList<>();
 
         @Override
         public void append(UUID userId, String eventType, String entityType, UUID entityId, UUID traceId, Map<String, Object> payload) {
-            events.add(new UserActionEventRecord(userId, eventType, entityType, entityId, traceId, payload));
+            events.add(new UserActionEventRepository.UserActionEventRecord(
+                UUID.randomUUID(),
+                userId,
+                eventType,
+                entityType,
+                entityId,
+                traceId,
+                payload,
+                Instant.now()
+            ));
         }
     }
 
@@ -274,16 +283,6 @@ class SearchGovernanceApplicationServiceTest {
         UUID traceId,
         String resultSummary,
         Map<String, Object> orchestratorState
-    ) {
-    }
-
-    private record UserActionEventRecord(
-        UUID userId,
-        String eventType,
-        String entityType,
-        UUID entityId,
-        UUID traceId,
-        Map<String, Object> payload
     ) {
     }
 

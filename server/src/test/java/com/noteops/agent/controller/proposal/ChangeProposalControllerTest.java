@@ -140,6 +140,32 @@ class ChangeProposalControllerTest {
     }
 
     @Test
+    void rejectsProposalWithTraceId() throws Exception {
+        UUID proposalId = UUID.randomUUID();
+        UUID noteId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        when(changeProposalApplicationService.reject(proposalId.toString(), userId.toString()))
+            .thenReturn(new ChangeProposalApplicationService.ChangeProposalCommandResult(
+                view(proposalId, noteId, userId, ChangeProposalStatus.REJECTED),
+                "trace-proposal-reject"
+            ));
+
+        mockMvc.perform(post("/api/v1/change-proposals/{proposalId}/reject", proposalId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "user_id": "%s"
+                    }
+                    """.formatted(userId)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.trace_id").value("trace-proposal-reject"))
+            .andExpect(jsonPath("$.data.status").value("REJECTED"))
+            .andExpect(jsonPath("$.data.rollback_token").value(nullValue()));
+    }
+
+    @Test
     void returnsConflictEnvelopeForAlreadyAppliedProposal() throws Exception {
         when(changeProposalApplicationService.apply(eq("bad-note"), eq("bad-proposal"), any()))
             .thenThrow(new ApiException(HttpStatus.CONFLICT, "CHANGE_PROPOSAL_ALREADY_APPLIED", "change proposal is already applied"));
@@ -154,6 +180,23 @@ class ChangeProposalControllerTest {
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.success").value(false))
             .andExpect(jsonPath("$.error.code").value("CHANGE_PROPOSAL_ALREADY_APPLIED"));
+    }
+
+    @Test
+    void returnsConflictEnvelopeForAlreadyRejectedProposal() throws Exception {
+        when(changeProposalApplicationService.reject(eq("bad-proposal"), any()))
+            .thenThrow(new ApiException(HttpStatus.CONFLICT, "CHANGE_PROPOSAL_ALREADY_REJECTED", "change proposal is already rejected"));
+
+        mockMvc.perform(post("/api/v1/change-proposals/{proposalId}/reject", "bad-proposal")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "user_id": "11111111-1111-1111-1111-111111111111"
+                    }
+                    """))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.error.code").value("CHANGE_PROPOSAL_ALREADY_REJECTED"));
     }
 
     private ChangeProposalApplicationService.ChangeProposalView view(UUID proposalId,
@@ -172,7 +215,7 @@ class ChangeProposalControllerTest {
             Map.of("current_summary", "before", "current_key_points", List.of("before-point")),
             Map.of("current_summary", "after", "current_key_points", List.of("after-point")),
             List.of(Map.of("content_type", "CAPTURE_RAW")),
-            status == ChangeProposalStatus.PENDING_REVIEW ? null : "rollback-token",
+            status == ChangeProposalStatus.APPLIED || status == ChangeProposalStatus.ROLLED_BACK ? "rollback-token" : null,
             status,
             Instant.parse("2026-03-16T01:00:00Z"),
             Instant.parse("2026-03-16T01:05:00Z")
